@@ -1,0 +1,18 @@
+[
+  {
+    "id": "q001",
+    "document": "attention_is_all_you_need.pdf",
+    "question": "What problem does the Transformer architecture address?",
+    "answer": "...",
+    "evidence_pages": [1, 2],
+    "question_type": "factual"
+  },
+  {
+    "id": "q002",
+    "document": "attention_is_all_you_need.pdf",
+    "question": "Why does the paper use multi-head attention?",
+    "answer": "...",
+    "evidence_pages": [4],
+    "question_type": "why"
+  }
+]
