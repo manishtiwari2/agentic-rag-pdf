@@ -63,7 +63,6 @@ class Page:
     blocks: tuple[Block, ...] = ()
     #: Images found on the page. Used only for scanned-document detection.
     image_count: int = 0
-    char_count_raw: int = 0
     metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

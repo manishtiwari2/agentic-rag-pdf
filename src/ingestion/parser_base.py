@@ -49,7 +49,6 @@ class RawPage:
     page_number: int
     blocks: list[RawBlock] = field(default_factory=list)
     image_count: int = 0
-    char_count_raw: int = 0
     height: float = 0.0
 
     def margin_flags(self, margin_fraction: float) -> list[bool]:
@@ -195,7 +194,6 @@ class BaseParser(ABC):
                     text=page_text,
                     blocks=tuple(blocks),
                     image_count=raw.image_count,
-                    char_count_raw=raw.char_count_raw,
                     metadata={
                         "block_count": len(blocks),
                         "table_count": sum(1 for b in blocks if b.is_table),

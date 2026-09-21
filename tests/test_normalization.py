@@ -14,13 +14,23 @@ from src.config import IngestionConfig
 from src.ingestion.normalization import (
     collapse_blank_lines,
     count_running_keys,
-    find_running_lines,
+    edge_lines,
     join_hyphenated_linebreaks,
     keep_mask,
     line_key,
     normalize_text,
-    strip_running_lines,
 )
+
+
+def running_keys(pages_lines, config):
+    """Detect furniture the way a parser without geometry would.
+
+    The real parser passes margin-band candidates instead. This exercises the
+    positional fallback, which is the same `count_running_keys` either way.
+    """
+    return count_running_keys(
+        [edge_lines(lines, config) for lines in pages_lines], len(pages_lines), config
+    )
 
 
 @pytest.fixture
@@ -93,7 +103,7 @@ class TestRunningLines:
 
     def test_repeated_edge_line_is_detected(self, config):
         pages = [["Annual Report", f"body {i}", f"{i}"] for i in range(1, 6)]
-        running = find_running_lines(pages, config)
+        running = running_keys(pages, config)
         assert "annual report" in running
         assert "#" in running  # the bare page number
 
@@ -103,13 +113,13 @@ class TestRunningLines:
             ["title", "intro", f"body {i}", "the same line", "more", "tail"]
             for i in range(1, 6)
         ]
-        running = find_running_lines(pages, config)
+        running = running_keys(pages, config)
         assert "the same line" not in running
         assert "title" in running  # the genuine edge line still is
 
     def test_short_documents_are_left_alone(self, config):
         pages = [["Annual Report", "body"], ["Annual Report", "body"]]
-        assert find_running_lines(pages, config) == set()
+        assert running_keys(pages, config) == set()
 
     def test_long_lines_are_never_furniture(self, config):
         """A 200-character line is a paragraph, however often it repeats."""
@@ -118,10 +128,17 @@ class TestRunningLines:
         assert line_key(long_line) not in count_running_keys(pages, 5, config)
 
     def test_stripping_removes_only_edge_occurrences(self, config):
-        pages = [["Annual Report", "Annual Report", "body"] for _ in range(5)]
-        # scan_lines defaults to 2, so both leading copies are at the edge.
-        stripped = strip_running_lines(pages, {"annual report"}, config)
-        assert stripped[0] == ["body"]
+        lines = ["Annual Report", "body", "more body", "Annual Report"]
+        mask = keep_mask(lines, {"annual report"}, config)
+        # scan_lines defaults to 2, so the first and last two lines are edges.
+        assert mask == [False, True, True, False]
+
+    def test_mid_page_occurrence_survives_stripping(self, config):
+        """The same text mid-page is content, and is kept."""
+        lines = ["top", "sub", "Annual Report", "more", "tail", "end"]
+        mask = keep_mask(lines, {"annual report"}, config)
+        # scan_lines=2 on six lines makes 0, 1, 4 and 5 edges; 2 and 3 are not.
+        assert mask == [True, True, True, True, True, True]
 
     def test_candidate_flags_override_position(self, config):
         lines = ["Annual Report", "body", "Annual Report"]

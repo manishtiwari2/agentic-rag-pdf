@@ -17,7 +17,7 @@ from src.generation.abstention import (
     is_abstention,
 )
 from src.generation.backends import ScriptedBackend
-from src.generation.citations import extract_markers, resolve_citations
+from src.generation.citations import resolve_citations
 from src.generation.evidence import build_evidence, evidence_blocks
 from src.generation.generator import GroundedGenerator
 from src.generation.prompts import (
@@ -123,24 +123,36 @@ class TestEvidenceBudget:
 # ---------------------------------------------------------------------------
 
 
-class TestMarkerExtraction:
+class TestMarkerSyntax:
+    """Marker forms, checked through the resolver that actually runs.
+
+    Tested here rather than against a separate extraction helper: two
+    implementations of the same syntax can drift apart, and only one of them
+    decides what gets cited.
+    """
+
     @pytest.mark.parametrize(
         ("text", "expected"),
         [
-            ("Claim [C1].", [[1]]),
-            ("Claim [C1] and [C2].", [[1], [2]]),
-            ("Claim [C1, C2].", [[1, 2]]),
-            ("Claim [C1;C3].", [[1, 3]]),
-            ("Claim [c2].", [[2]]),
-            ("Claim [2].", [[2]]),  # small models drop the prefix
-            ("Claim [ C1 ].", [[1]]),
+            ("Claim [C1].", [1]),
+            ("Claim [C1] and [C2].", [1, 2]),
+            ("Claim [C1, C2].", [1, 2]),
+            ("Claim [C1;C3].", [1, 3]),
+            ("Claim [c2].", [2]),
+            ("Claim [2].", [2]),  # small models drop the prefix
+            ("Claim [ C1 ].", [1]),
         ],
     )
-    def test_marker_forms(self, text, expected):
-        assert extract_markers(text) == expected
+    def test_marker_forms(self, text, expected, evidence):
+        resolution = resolve_citations(text, evidence)
+        assert [c.evidence_number for c in resolution.citations] == expected
+        assert resolution.dropped_markers == ()
 
-    def test_bracketed_prose_is_not_a_marker(self):
-        assert extract_markers("See [the appendix] for details.") == []
+    def test_bracketed_prose_is_not_a_marker(self, evidence):
+        resolution = resolve_citations("See [the appendix] for details.", evidence)
+        assert resolution.citations == ()
+        assert resolution.dropped_markers == ()
+        assert "[the appendix]" in resolution.answer  # and is left in place
 
 
 class TestCitationResolution:
