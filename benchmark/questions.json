@@ -1,18 +1,112 @@
 [
-  {
-    "id": "q001",
-    "document": "attention_is_all_you_need.pdf",
-    "question": "What problem does the Transformer architecture address?",
-    "answer": "...",
-    "evidence_pages": [1, 2],
-    "question_type": "factual"
-  },
-  {
-    "id": "q002",
-    "document": "attention_is_all_you_need.pdf",
-    "question": "Why does the paper use multi-head attention?",
-    "answer": "...",
-    "evidence_pages": [4],
-    "question_type": "why"
-  }
+{
+"id": "q001",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "factual",
+"difficulty": "easy",
+"notes": ""
+},
+{
+"id": "q002",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "definition",
+"difficulty": "easy",
+"notes": ""
+},
+{
+"id": "q003",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "explanation",
+"difficulty": "medium",
+"notes": ""
+},
+{
+"id": "q004",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "comparison",
+"difficulty": "medium",
+"notes": ""
+},
+{
+"id": "q005",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "numerical",
+"difficulty": "medium",
+"notes": ""
+},
+{
+"id": "q006",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "table",
+"difficulty": "medium",
+"notes": ""
+},
+{
+"id": "q007",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "multi_hop",
+"difficulty": "hard",
+"notes": ""
+},
+{
+"id": "q008",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_QUESTION",
+"answer": null,
+"evidence_pages": [],
+"evidence_chunk_ids": [],
+"question_type": "unanswerable",
+"difficulty": "medium",
+"notes": "The document must genuinely not contain enough information to answer this question."
+},
+{
+"id": "q009",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_AMBIGUOUS_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "ambiguous",
+"difficulty": "hard",
+"notes": ""
+},
+{
+"id": "q010",
+"document": "document_01.pdf",
+"question": "REPLACE_WITH_REAL_SUMMARY_QUESTION",
+"answer": "REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+"evidence_pages": [0],
+"evidence_chunk_ids": [],
+"question_type": "summary",
+"difficulty": "medium",
+"notes": ""
+}
 ]

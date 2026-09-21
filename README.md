@@ -478,7 +478,9 @@ agentic-pdf-rag/
 │
 └── results/
     ├── baseline/
-    ├── experiments/
+    ├── hybrid/
+    ├── agentic/
+    ├── ablations/
     └── final/
 ```
 
@@ -704,24 +706,114 @@ These questions should be answered using measured experiments rather than assump
 
 ## 19. Project Status
 
-**Current status: Architecture and evaluation design**
+**Current status: Phases 1 and 2 implemented. No benchmark numbers yet.**
 
-The implementation is intentionally not considered complete until:
+| Phase | State |
+| --- | --- |
+| 0 — Benchmark construction | **Not started.** `benchmark/documents/` is empty and `questions.json` still holds placeholders |
+| 1 — Ingestion and indexing | **Done.** Page-attributed chunks, two chunking strategies, two PDF backends, explicit failure modes |
+| 2 — Dense baseline | **Code complete.** Answers an arbitrary PDF end to end; `results/baseline/` empty pending Phase 0 |
+| 3 — Metrics harness | Not started, blocked on Phase 0 |
+| 4 — Hybrid retrieval and reranking | Not started |
+| 5 — Agentic pipeline | Not started |
+| 6 — Ablations and write-up | Not started |
 
-* the benchmark exists,
-* the baseline works,
-* the agentic pipeline works,
-* comparative experiments are complete,
-* resource usage is measured,
-* and the final Colab notebook is reproducible.
+What runs today:
 
-Benchmark numbers will be added only after running the experiments.
+* PDF ingestion with 1-based page numbers, ligature/hyphen/header normalization,
+  and distinct errors for scanned, encrypted and blank files.
+* Two chunkers behind one interface — structure-aware (DD-009) and a fixed-size
+  baseline — both preserving `document_id`, `page_number`, `pages`, `page_span`,
+  `section` and `chunk_id`.
+* Dense retrieval over FAISS with an exact numpy fallback.
+* Grounded generation with deterministic citation resolution: the model emits
+  `[C1]` markers against a numbered evidence list and never sees a page number;
+  code maps markers to pages (DD-031). Out-of-range markers are dropped, not
+  guessed.
+* Abstention with a fixed canonical refusal sentence and a versioned detector.
+* Dependency-free fallbacks — a hashing embedder and a scripted extractive
+  backend — so the whole pipeline is testable on CPU with no model weights.
+
+291 tests pass. **No benchmark numbers exist**, and none will be published until
+the dataset in Phase 0 is built and verified.
+
+What is deliberately absent, because DD-013 requires a baseline to measure
+against: lexical retrieval, rank fusion, reranking, the query planner, the
+evidence controller and the verifier.
+
+---
+
+## 19.1 Quick start
+
+```bash
+pip install -r requirements.txt          # pdfplumber, numpy, faiss-cpu
+python -m src.cli ask --pdf paper.pdf --question "What was measured?" --offline
+```
+
+`--offline` uses the hashing embedder and the scripted backend: no downloads, no
+GPU, weak answers. Drop it to use the real models, which requires
+`pip install -r requirements-models.txt` and a GPU.
+
+```text
+3 Hardware
+
+Peak memory during generation reached 9.4 gigabytes with four-bit
+weights, leaving sufficient headroom for the key-value cache. [C1]
+
+Evidence:
+  [C1] page 3 - 3 Hardware
+```
+
+Other commands:
+
+```bash
+python -m src.cli inspect --pdf paper.pdf --offline --show-chunks 3
+python -m src.cli ask --pdf paper.pdf --question "..." --strategy fixed --top-k 8 --json
+pip install -r requirements-dev.txt && python -m pytest    # 291 tests
+```
+
+In Python:
+
+```python
+from src.config import RAGConfig
+from src.pipeline import DenseRAGPipeline
+
+pipeline = DenseRAGPipeline(RAGConfig.default())   # or .low_memory() / .offline()
+pipeline.index("paper.pdf")
+result = pipeline.ask("What is the main contribution?")
+
+print(result.answer)
+print(result.cited_pages)      # (4, 9) -- resolved by code, not written by the model
+print(result.abstained)
+```
+
+Every model name, chunk size, top-k and threshold lives in `src/config.py`
+(DD-017). `RAGConfig.validate()` refuses a configuration that exceeds the
+free-tier T4 budget or that makes a research-licensed model the default
+(DD-024).
 
 ---
 
 ## 20. License
 
-The project code will be released under an open-source license.
+**Apache-2.0.** See [LICENSE](LICENSE); third-party and model licences are
+recorded in [NOTICE](NOTICE).
+
+Chosen for its explicit patent grant, and because it matches the licence of the
+default model stack. It was unblocked by DD-033, which moved the default PDF
+backend from PyMuPDF (AGPL-3.0) to pdfplumber (MIT); the whole runtime
+dependency chain is now permissive — pdfplumber MIT, pdfminer.six MIT,
+pypdfium2 BSD-3-Clause/Apache-2.0, Pillow MIT-CMU, numpy BSD-3-Clause,
+faiss-cpu MIT.
+
+Two licence facts worth stating plainly:
+
+* **PyMuPDF remains an optional test-only dependency** (AGPL-3.0). It writes the
+  synthetic PDFs the test suite builds, and is the second parser backend. It is
+  in the `dev` extra, never in the runtime dependencies.
+* **The default generator must be Apache-2.0** (DD-024). `Qwen2.5-3B-Instruct`
+  is `qwen-research`, research/non-commercial only; `RAGConfig.validate()`
+  raises rather than let it become the default.
 
 The final repository must separately document the licenses of:
 
