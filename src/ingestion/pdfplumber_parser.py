@@ -102,7 +102,6 @@ class PdfPlumberParser(BaseParser):
             order += 1
 
         lines = self._text_lines(page, table_bboxes)
-        raw.char_count_raw = sum(len(line["text"].strip()) for line in lines)
 
         for group in _group_lines_into_blocks(lines):
             texts = normalize_lines([item["text"] for item in group], self.config)

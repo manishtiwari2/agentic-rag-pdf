@@ -143,18 +143,6 @@ def is_list(text: str) -> bool:
     return bulleted >= max(2, len(lines) // 2)
 
 
-def split_sentences(text: str) -> list[str]:
-    """Split on sentence boundaries.
-
-    Deliberately simple. It is used only to choose a split point inside an
-    oversized paragraph and to pick an overlap tail, so an occasional bad split
-    at an abbreviation costs a slightly awkward chunk boundary, not a wrong
-    answer.
-    """
-    parts = [part.strip() for part in _SENTENCE_END.split(text) if part.strip()]
-    return parts or ([text.strip()] if text.strip() else [])
-
-
 # ---------------------------------------------------------------------------
 # Segmentation
 # ---------------------------------------------------------------------------

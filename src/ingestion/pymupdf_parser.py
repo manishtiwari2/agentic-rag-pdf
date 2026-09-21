@@ -122,7 +122,6 @@ class PyMuPDFParser(BaseParser):
             if not cleaned:
                 continue
 
-            raw.char_count_raw += total_chars
             raw.blocks.append(
                 RawBlock(
                     lines=cleaned,
