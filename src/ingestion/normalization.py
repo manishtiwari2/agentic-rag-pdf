@@ -188,15 +188,6 @@ def edge_lines(lines: list[str], config: IngestionConfig) -> list[str]:
     return lines[:n] + lines[-n:]
 
 
-def find_running_lines(
-    pages_lines: list[list[str]], config: IngestionConfig
-) -> set[str]:
-    """Geometry-free convenience wrapper over :func:`count_running_keys`."""
-    return count_running_keys(
-        [edge_lines(lines, config) for lines in pages_lines], len(pages_lines), config
-    )
-
-
 def keep_mask(
     lines: list[str],
     running: set[str],
@@ -229,14 +220,3 @@ def keep_mask(
         mask.append(not drop)
     return mask
 
-
-def strip_running_lines(
-    pages_lines: list[list[str]], running: set[str], config: IngestionConfig
-) -> list[list[str]]:
-    """Remove detected header/footer lines from the edges of each page."""
-    if not running:
-        return pages_lines
-    return [
-        [line for line, keep in zip(lines, keep_mask(lines, running, config)) if keep]
-        for lines in pages_lines
-    ]

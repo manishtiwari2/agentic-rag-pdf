@@ -97,25 +97,15 @@ class CitationResolution:
         }
 
 
-def extract_markers(text: str) -> list[list[int]]:
-    """Every marker group in order, each as its list of numbers.
-
-    Handles ``[C1]``, ``[C1, C2]``, ``[C1;C2]``, ``[c1]`` and the bare ``[1]``
-    that small models produce when they drop the prefix.
-    """
-    groups: list[list[int]] = []
-    for match in _BRACKET.finditer(text):
-        inner = match.group(1)
-        if not _MARKER_GROUP.match(inner):
-            continue
-        groups.append([int(n) for n in _NUMBER.findall(inner)])
-    return groups
-
-
 def resolve_citations(
     raw_answer: str, evidence: list[EvidenceItem]
 ) -> CitationResolution:
-    """Map the answer's markers to pages, dropping the ones that do not resolve."""
+    """Map the answer's markers to pages, dropping the ones that do not resolve.
+
+    Recognises ``[C1]``, ``[C1, C2]``, ``[C1;C2]``, ``[c1]`` and the bare ``[1]``
+    that small models produce when they drop the prefix. Bracketed prose --
+    ``[see the appendix]`` -- is left alone.
+    """
     by_number = {item.number: item for item in evidence}
     citations: list[Citation] = []
     dropped: list[int] = []
