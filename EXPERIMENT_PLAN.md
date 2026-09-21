@@ -62,11 +62,12 @@ distinct error with a remedy.
 **Exit:** Baseline A answers the benchmark end to end and produces
 `results/baseline/`. Numbers may be poor. They must exist.
 
-**Status: code complete, exit criterion blocked on Phase 0.** The pipeline
-answers an arbitrary PDF end to end with deterministic page citations and
-abstention. `results/baseline/` is empty because there is no benchmark to run
-against yet — which is section 1 of this document being right about the critical
-path.
+**Status: met, 2026-09-21.** All 76 questions answered end to end against the
+five benchmark PDFs; `results/baseline/` holds the four files
+`EVALUATION_PROTOCOL.md` section 27 names. The numbers are poor — accuracy 0.171
+over all questions — and they were produced by the dependency-free fallback
+stack on a machine with no GPU, which `STATUS.md` section 9.1 states beside
+every figure. The criterion asked for numbers that exist, not good ones.
 
 ### Phase 3 — Metrics harness
 
@@ -76,10 +77,23 @@ taxonomy assigns a category to every failure; per-question records saved.
 Deliberately before the interesting systems. Without it there is no way to
 tell whether the next change helped.
 
+**Status: met, 2026-09-21.** `src/evaluation/metrics.py` and
+`src/evaluation/benchmark.py`, driven by `python -m src.cli run-benchmark`.
+Retrieval is scored at page level with `unanswerable` questions excluded rather
+than scored 0.0 (DD-025); the nine-category taxonomy (DD-038) assigned exactly
+one category to each of the 65 failing records in the first run, and the two
+categories whose components DD-013 leaves out stay reserved rather than
+invented. The harness is system-agnostic, so Phases 4 and 5 reuse it.
+
 ### Phase 4 — Hybrid retrieval and reranking
 
 **Exit:** Baseline B measured against Baseline A with a paired test (DD-028).
 Answers RQ1 and RQ2.
+
+**Unblocked.** The first thing the baseline measured is that retrieval is not
+its bottleneck: Recall@5 is 0.886, clearing the stopping rule below, while 46 of
+65 failures are filed as `generation`. Phase 4 improves retrieval, so the honest
+expectation is a small gain — which is worth recording now, before the result.
 
 ### Phase 5 — Agentic pipeline
 
