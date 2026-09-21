@@ -295,11 +295,34 @@ class TestValidationRules:
 
 
 class TestValidateBenchmarkEntryPoint:
-    def test_the_placeholder_template_is_rejected(self):
-        """benchmark/questions.json ships as a schema example, not a dataset,
-        and BENCHMARK_SPEC.md section 5.1 says it must fail by design."""
-        result = validate_benchmark()
+    def test_a_placeholder_dataset_is_rejected(self, tmp_path, documents_dir):
+        """A REPLACE_WITH-style template fails several BENCHMARK_SPEC.md section
+        5.1 checks at once, by design -- this is what `questions.json` looked
+        like before the real dataset replaced it."""
+        path = tmp_path / "questions.json"
+        save_questions(
+            path,
+            [
+                Question(
+                    id="q001",
+                    document="document_01.pdf",
+                    question="REPLACE_WITH_REAL_QUESTION",
+                    answer="REPLACE_WITH_MANUALLY_VERIFIED_REFERENCE_ANSWER",
+                    evidence_pages=(0,),
+                    question_type="factual",
+                    difficulty="easy",
+                    split=None,
+                )
+            ],
+        )
+        result = validate_benchmark(path, documents_dir, manifest_path=None)
         assert not result.ok
+
+    def test_the_shipped_dataset_validates_cleanly(self):
+        """benchmark/questions.json now holds the real ~75-question dataset,
+        not the placeholder template, and should pass every section 5.1 rule."""
+        result = validate_benchmark()
+        assert result.ok, result.report()
 
     def test_a_hand_built_valid_fixture_passes(self, tmp_path, documents_dir):
         path = tmp_path / "questions.json"
@@ -319,14 +342,19 @@ class TestValidateBenchmarkEntryPoint:
         result = validate_benchmark(path, documents_dir, manifest_path=None)
         assert result.ok, result.report()
 
-    def test_require_valid_benchmark_raises_on_failure(self):
+    def test_require_valid_benchmark_raises_on_failure(self, tmp_path, documents_dir):
+        path = tmp_path / "questions.json"
+        save_questions(path, [_question(id="q1", evidence_pages=(0,))])
         with pytest.raises(BenchmarkValidationError):
-            require_valid_benchmark()
+            require_valid_benchmark(path, documents_dir, manifest_path=None)
 
     def test_require_valid_benchmark_passes_a_good_dataset(self, tmp_path, documents_dir):
         path = tmp_path / "questions.json"
         save_questions(path, [_question(id="q1", evidence_pages=(1,))])
         require_valid_benchmark(path, documents_dir, manifest_path=None)
+
+    def test_require_valid_benchmark_passes_the_shipped_dataset(self):
+        require_valid_benchmark()
 
 
 class TestManifestChecksumVerification:
