@@ -974,3 +974,292 @@ The notice currently reads `The agentic-pdf-rag authors`, which is valid and
 avoids asserting a legal name that has not been stated. Replace it with a
 personal or organisational name if individual attribution is wanted; it appears
 in `LICENSE` and `NOTICE`.
+
+---
+
+# DD-036 — Deterministic Correctness Is Token Overlap Plus Exact Numeric Agreement
+
+**Status:** Accepted
+
+### Decision
+
+An answerable question is scored correct when **both** hold against the
+reference answer (or any `alternative_answers` entry):
+
+```text
+token overlap  >= 0.6    share of the reference's content tokens present in the answer
+numeric agreement        every number in the reference appears in the answer, exactly
+```
+
+`CORRECTNESS_OVERLAP_THRESHOLD` and the tokenizer live in
+`src/evaluation/metrics.py` and are recorded in every result set.
+
+### Reason
+
+`EVALUATION_PROTOCOL.md` section 18 requires deterministic checks and forbids
+relying entirely on a judge. Section 19.2 puts numeric agreement out of the
+judge's reach specifically because telling 86.7 from 87.6 is the comparison
+that matters most and the one a small model is least reliable at, so numbers
+are a separate gate rather than tokens among tokens.
+
+Overlap is **recall-oriented, not F1**. Reference answers here are a phrase and
+system answers are extracted sentences; an F1 would mark a correct answer down
+for the sentence it was extracted from.
+
+The threshold was fixed before any results existed, per `EXPERIMENT_PLAN.md`
+section 3: a threshold chosen after seeing the numbers is not a threshold.
+
+### Known weakness
+
+A system that emits the whole document scores well on overlap. That is why
+`answer_chars` is recorded per question, why citation and faithfulness metrics
+are reported beside correctness rather than folded into it, and why the judge
+(DD-027) exists for the paraphrase case at all. It is a measured weakness, not
+an unnoticed one.
+
+### Consequence
+
+The evaluation layer keeps its **own** stopword list and tokenizer, deliberately
+separate from the one in `src/generation/backends.py`. A scorer sharing the
+system's tokenizer flatters the system, and the scripted backend is one of the
+systems this scorer grades.
+
+---
+
+# DD-037 — Faithfulness Is Two Numbers, and the Numeric One May Be Undefined
+
+**Status:** Accepted
+
+### Decision
+
+```text
+faithfulness_token     share of the answer's content tokens present in the retrieved evidence
+faithfulness_numeric   share of the answer's numbers present in the retrieved evidence
+```
+
+`faithfulness_token` is the headline figure because it is always defined.
+`faithfulness_numeric` is `null` when the answer contains no numbers.
+
+### Reason
+
+`EVALUATION_PROTOCOL.md` section 19.1 names the numeric measure explicitly as
+the deterministic counterpart the judged faithfulness score must be reported
+beside. But most answers contain no numbers, and returning 1.0 for those would
+credit every number-free answer with perfect grounding — inflating the metric
+exactly where it has no evidence. `BENCHMARK_SPEC.md` section 14 still requires
+a faithfulness figure for every configuration, so a second, always-defined
+measure is needed alongside it.
+
+### Consequence
+
+`unsupported_answer_rate` (section 13, over **all** questions) is derived from
+these: an answer is unsupported when it carries no citation at all, or contains
+a number absent from the evidence it was generated from.
+
+---
+
+# DD-038 — The Error Taxonomy Is an Ordered, Versioned, First-Match Rule Set
+
+**Status:** Accepted
+
+### Decision
+
+Nine categories, tried in this order, first match wins:
+
+```text
+1  system-runtime      the run raised
+2  retrieval           no gold page on the answer path
+3  reranking           [reserved] a reranker had it and lost it
+4  context-selection   retrieved, then dropped before the generator saw it
+5  abstention          refused an answerable question, or answered an unanswerable one
+6  hallucination       answered from evidence, with something the evidence does not say
+7  citation            right answer, wrong pages
+8  verification        [reserved] a verifier ran and did not pass
+9  generation          terminal: had what it needed, still wrong
+```
+
+`ERROR_TAXONOMY_VERSION` is recorded with every result set, like
+`ABSTENTION_PATTERNS_VERSION`.
+
+### Reason
+
+`EVALUATION_PROTOCOL.md` section 23 and `BENCHMARK_SPEC.md` section 20 both
+require every failure to be categorised, and DD-021 says the point is diagnosis
+rather than a score. A failure with two categories diagnoses nothing.
+
+Ordering makes exclusivity **structural** rather than a property the predicates
+happen to have: one `return`, so one category. The order is
+most-upstream-cause-first, because a question whose evidence was never retrieved
+is a retrieval failure whatever the generator then did with the wrong passages —
+blaming the generator would point Phase 4 at the wrong component.
+
+`generation` is terminal rather than a peer, so a failing record can never fall
+through to no category at all.
+
+### Reserved categories
+
+`reranking` and `verification` describe components DD-013 deliberately leaves
+out of the dense baseline. Rather than dropping them (both specifications name
+them) or building the components early, each fires only for a system that
+**declares the stage** in the record's `stages`. One taxonomy therefore serves
+Phases 3, 4 and 5, and a test exercises the reserved rules against a synthetic
+record without either component existing.
+
+### Consequence
+
+Blame follows the **answer path**, not the deeper probe of DD-039: a gold page
+ranked eighth never reached the generator, so it is a retrieval failure and not
+a context-selection failure.
+
+---
+
+# DD-039 — Retrieval Is Scored at Depth 10 by a Read-Only Probe
+
+**Status:** Accepted
+
+### Decision
+
+`DenseRAGPipeline.retrieve(question, k)` ranks chunks without generating. The
+harness calls it at depth 10 for the retrieval metrics, while the answer comes
+from `ask()` at the configured `top_k` (5), untouched.
+
+### Reason
+
+`BENCHMARK_SPEC.md` section 10 requires Recall@10 and MRR@10, and defines them
+over "the top K **retrieved chunks**" — the retriever's ranking, not the
+generation context. With `top_k = 5` and no probe, Recall@10 would be a copy of
+Recall@5 under a bigger name, and Phase 4 could not compare a hybrid system that
+ranks deeper.
+
+`ARCHITECTURE.md` section 26 requires benchmark instrumentation not to change
+answer behaviour. The probe reads the index and returns; it mutates nothing. A
+test asserts the stronger property directly: a harness-run `RAGResult` equals a
+bare `pipeline.ask()` `RAGResult` on every field but the timings.
+
+### Alternative rejected
+
+Running the benchmark at `top_k = 10`. That changes what the generator sees,
+which changes Baseline A into a different system.
+
+### Consequence
+
+`QueryableSystem` makes `retrieve` optional. A system without one is scored on
+what its `ask` returned, and the shallower depth is recorded in the per-question
+record's `capped_ks` rather than hidden.
+
+---
+
+# DD-040 — nDCG Is Reported Under Binary Relevance, and Labelled As Such
+
+**Status:** Accepted
+
+### Decision
+
+`ndcg_at_10` is computed with binary gains and every record carries
+`ndcg_relevance_scale: "binary"`.
+
+### Reason
+
+Both specifications condition nDCG on graded labels — "Use nDCG when graded
+relevance labels are available" (`BENCHMARK_SPEC.md` section 10), "Where graded
+relevance is available" (`EVALUATION_PROTOCOL.md` section 17). This dataset has
+none: `evidence_pages` is a set, not a ranking. Reporting the figure silently
+would pass a binary computation off as the graded one the specs describe;
+omitting it entirely would discard a usable secondary diagnostic. Labelling it
+does neither.
+
+---
+
+# DD-041 — The Judge Is Optional, Off by Default, and a Skip Is Never a Zero
+
+**Status:** Accepted — implements DD-027
+
+### Decision
+
+`--judge` enables it. Nothing the Phase 3 exit criterion asks for depends on it.
+Every failure path — no model, no `transformers`, a refusal to load, an
+unparseable reply, the offline scripted backend — records `judge_skipped: true`
+with its reason and leaves the judged fields `null`. The run continues.
+
+### Reason
+
+DD-027 already established that the only judge fitting the memory budget is the
+generator grading itself. A harness whose headline figures depended on that
+would be reporting a bias as a result. And a judged metric defaulting to 0 on a
+skip is worse than no metric: it is a number that looks like a measurement.
+
+### What is recorded
+
+The fixed prompt, the scale, the model id, the parse-failure rate
+(`EXPERIMENT_PLAN.md` section 4 names unreliable structured output from a small
+model as a likely risk and asks for it to be measured), and — section 19.1's
+second mitigation — the **judge/deterministic disagreement rate**.
+
+### Scope
+
+The judge never decides abstention, numeric agreement or retrieval metrics
+(section 19.2). A test asserts that `src/evaluation/judge.py` does not so much
+as import the abstention detector.
+
+---
+
+# DD-042 — Citation Completeness Is Sentence-Level Marker Coverage
+
+**Status:** Accepted
+
+### Decision
+
+```text
+citation precision          cited pages that are gold / cited pages
+citation completeness       answer sentences carrying a marker / substantive sentences
+citation any-correct        1.0 when at least one cited page is gold
+citation gold-page recall   gold pages cited / gold pages
+```
+
+Pages come from `Citation.pages` and are never re-read out of the answer text.
+Precision is `null`, not 0.0, when nothing was cited.
+
+### Reason
+
+`EVALUATION_PROTOCOL.md` section 22 asks whether an important claim is missing a
+citation and then concedes that claim-level evaluation needs a manually reviewed
+sample. Sentence-level marker coverage is the deterministic proxy, and is
+labelled as a proxy rather than presented as claim-level scoring.
+
+Reading pages from the answer text would measure a fabrication: DD-031 means the
+generator has never been shown a page number, so any it writes is invented.
+Those mentions are counted separately as `fabricated_page_mentions`.
+
+Precision over an empty set is undefined, not zero; averaging it as zero would
+conflate "cited badly" with "did not cite". `citation any-correct` **is** 0.0 in
+that case, because `EXPERIMENT_PLAN.md` section 3 sets a stopping rule on it and
+an uncited answer fails that rule.
+
+---
+
+# DD-043 — Abstention Is Scored From the Answer Text, With the Self-Report Beside It
+
+**Status:** Accepted
+
+### Decision
+
+The harness calls `src/generation/abstention.py::is_abstention` on the answer
+text. `RAGResult.abstained` — the system's own flag — is recorded beside it as
+`self_reported_abstention`, with `abstention_agrees_with_self_report`.
+
+### Reason
+
+`BENCHMARK_SPEC.md` section 13.2 requires abstention to be detected from the
+answer text rather than from system self-report. Grading a system on its own
+flag lets the system decide its own abstention accuracy.
+
+Reusing the existing detector rather than writing a second one is not
+convenience: the patterns are versioned and must be fixed before the run, and
+two copies would be two things to keep in step, with the copy further from the
+generator drifting. A test in `tests/test_architecture.py` enforces that the
+harness imports the detector and hard-codes no refusal phrase of its own.
+
+### Consequence
+
+A disagreement between the two is visible per question rather than silently
+resolved in the system's favour.
