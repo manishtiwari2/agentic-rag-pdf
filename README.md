@@ -478,7 +478,9 @@ agentic-pdf-rag/
 │
 └── results/
     ├── baseline/
-    ├── experiments/
+    ├── hybrid/
+    ├── agentic/
+    ├── ablations/
     └── final/
 ```
 
