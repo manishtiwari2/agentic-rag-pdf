@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-21 (Phase 0 tooling added)
 
 A factual record of what exists, what it is verified to do, and what blocks the
 next step. `EXPERIMENT_PLAN.md` says what order to build in; this says how far
@@ -13,9 +13,9 @@ along that order the project actually is.
 | | |
 | --- | --- |
 | Phases complete | 1 (ingestion + indexing), 2 (dense baseline) — code |
-| Blocking phase | **0 (benchmark construction)** — not started |
-| Tests | 292 passing |
-| Source | 4,324 lines in `src/`, 2,059 lines in `tests/` |
+| Blocking phase | **0 (benchmark construction)** — tooling built, dataset itself not started |
+| Tests | 330 passing |
+| Source | 5,296 lines in `src/`, 2,544 lines in `tests/` |
 | Licence | Apache-2.0 (DD-035) |
 | Merged | PR #1 and PR #2, both in `main` |
 | **Benchmark numbers** | **none exist, and none are claimed** |
@@ -28,7 +28,7 @@ Against the exit criteria in `EXPERIMENT_PLAN.md` section 2.
 
 | Phase | Exit criterion | State |
 | --- | --- | --- |
-| **0 — Benchmark** | 5–10 licensed PDFs, ~75 questions, every evidence page verified against the rendered PDF, dev/eval split assigned | **Not started.** `benchmark/documents/` does not exist; `questions.json` is a 10-question template with 19 `REPLACE_WITH` placeholders |
+| **0 — Benchmark** | 5–10 licensed PDFs, ~75 questions, every evidence page verified against the rendered PDF, dev/eval split assigned | **Tooling complete, dataset not started.** `python -m src.cli validate-benchmark` enforces every `BENCHMARK_SPEC.md` section 5.1 rule and correctly rejects the current file with 39 problems; `python -m src.cli inspect-page` renders a page to PNG and prints its extracted text for manual verification. `benchmark/documents/` still does not exist; `questions.json` is still the 10-question placeholder template — choosing documents, writing questions, and eyeballing evidence pages is the remaining work, and it is manual |
 | **1 — Ingestion + indexing** | A PDF parses to page-attributed chunks; page numbers checked against the source; a scanned PDF errors clearly | **Met**, verified mechanically |
 | **2 — Dense baseline** | Baseline A answers the benchmark end to end, produces `results/baseline/` | **Code complete, exit criterion blocked on Phase 0.** Answers an arbitrary PDF end to end; `results/baseline/` is empty because there is nothing to run against |
 | **3 — Metrics harness** | Retrieval, answer, citation and abstention metrics; error taxonomy; per-question records | Not started, blocked on Phase 0 |
@@ -70,10 +70,25 @@ Evidence:
   and abstention with a fixed canonical refusal sentence.
 * **Fallbacks** — a hashing embedder and a scripted extractive backend, both
   real if weak, so the whole pipeline runs and is tested on CPU with no weights.
+* **Benchmark tooling** (`src/benchmark/`) — `validate-benchmark` enforces every
+  `BENCHMARK_SPEC.md` section 5.1 rule (unique ids, no placeholders, evidence
+  pages checked against a real page count read through `PdfParser`, document
+  files exist, `question_type`/`split` in the allowed sets) and reports every
+  failure in one pass, not just the first; `inspect-page` renders a page to PNG
+  and prints its extracted text so a reviewer can verify an evidence page
+  without leaving the terminal; `manifest.py` checksum-verifies documents that
+  cannot be committed to the repo.
+
+```bash
+python -m src.cli validate-benchmark   # exits non-zero on any dataset problem
+python -m src.cli inspect-page --pdf benchmark/documents/document_01.pdf --page 4
+```
 
 Module layout is in `ARCHITECTURE.md` section 3. The one deviation:
 `src/ingestion/parser_base.py` holds the backend-independent parsing machinery,
-added when DD-033 made the PDF library swappable.
+added when DD-033 made the PDF library swappable. `src/ingestion/render.py`
+(page-to-PNG rendering for `inspect-page`) is a second, smaller deviation for
+the same reason: PDF-library use stays confined to `src/ingestion/`.
 
 ---
 
@@ -159,18 +174,17 @@ decided (4, 5) or correctly deferred pending a dev set (1, 2, 3).
 
 ## 9. Next step
 
-**Phase 0.** Its hard part is manual and cannot be delegated: choosing
-redistributable PDFs, writing ~75 questions, and opening each PDF to confirm
-every evidence page by eye. `BENCHMARK_SPEC.md` section 4.1 lists the
-categories that are safe to redistribute, and warns that "arXiv" is not a
-licence.
+**Phase 0's dataset.** The tooling that makes the manual work checkable is
+now built: `src/benchmark/validate.py` enforces every rule in
+`BENCHMARK_SPEC.md` section 5.1 and refuses a run on any failure
+(`require_valid_benchmark`), `src/benchmark/manifest.py` checksum-verifies
+documents that cannot be committed, and `src/benchmark/inspect.py` renders an
+evidence page to PNG with its extracted text so a human can verify it without
+leaving the terminal.
 
-The part that can be built first is the tooling that makes the manual work
-checkable: a dataset validator enforcing every rule in `BENCHMARK_SPEC.md`
-section 5.1, a document manifest with SHA-256 checksums for PDFs that cannot be
-committed, and a helper that renders an evidence page so a human can verify it
-without leaving the terminal.
-
-A malformed benchmark produces plausible-looking numbers, which is the worst
-failure mode an evaluation harness has. The validator should refuse to let a
-run start.
+What is left is the hard part, and it is manual and cannot be delegated:
+choosing 5–10 redistributable PDFs, writing ~75 questions, and opening each
+PDF to confirm every evidence page by eye. `BENCHMARK_SPEC.md` section 4.1
+lists the categories that are safe to redistribute, and warns that "arXiv" is
+not a licence. `python -m src.cli validate-benchmark` should report clean
+before any of that ground truth is trusted.

@@ -75,3 +75,14 @@ class ModelLoadError(RAGError):
 
 class ConfigurationError(RAGError):
     """The configuration is internally inconsistent or violates a hard constraint."""
+
+
+# --- benchmark ---------------------------------------------------------------
+
+
+class BenchmarkValidationError(RAGError):
+    """The benchmark dataset fails a BENCHMARK_SPEC.md section 5.1 rule.
+
+    Raised by callers that must refuse to start a run on an invalid dataset
+    rather than produce plausible-looking numbers from a malformed one.
+    """
