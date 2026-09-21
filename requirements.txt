@@ -1,0 +1,23 @@
+# Core dependencies for Phase 1 (ingestion + indexing) and Phase 2 (dense baseline).
+#
+# The pipeline runs on these alone, using the dependency-free fallback
+# components: RAGConfig.offline() pairs a hashing embedder with a scripted
+# extractive backend, so everything below the model layer is testable on CPU
+# without downloading weights.
+#
+# Every licence below is permissive. MODEL_SELECTION.md 11.3 required this audit
+# before release, and DD-033 records why it changed the default PDF backend:
+# PyMuPDF is AGPL-3.0 and would have imposed copyleft on every downstream user.
+
+pdfplumber>=0.11       # MIT          (pulls pdfminer.six MIT, pypdfium2
+                       #               BSD-3-Clause/Apache-2.0, Pillow MIT-CMU)
+numpy>=1.24            # BSD-3-Clause
+faiss-cpu>=1.8         # MIT          (optional: the numpy index is an exact fallback)
+
+# OPTIONAL SECOND PDF BACKEND
+# PyMuPDF remains available behind the same PdfParser protocol
+# (ingestion.parser='pymupdf'). It is faster and reports layout blocks directly.
+# It is AGPL-3.0, so selecting it means accepting copyleft terms for whatever
+# you build on top. Not installed by default; see requirements-dev.txt.
+#
+#   pymupdf>=1.24      # AGPL-3.0 or commercial

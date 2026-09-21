@@ -1,0 +1,26 @@
+# Development and test dependencies.
+
+-r requirements.txt
+
+pytest>=8.0            # MIT
+
+# PyMuPDF is a TEST-ONLY dependency here, for two reasons:
+#
+#   1. tests/pdf_fixtures.py builds the synthetic PDFs at test time -- with
+#      ruled tables, an encrypted file and an image-only scan. pdfplumber reads
+#      PDFs but cannot write them, and AES-256 encryption in particular is not
+#      something to hand-roll in a fixture.
+#   2. It is the second parser backend, so installing it makes the ingestion
+#      tests run against both implementations and catch divergence.
+#
+# It is AGPL-3.0 (DD-033). Confining it to the development extra keeps it out of
+# the distributed runtime, where it would impose copyleft on downstream users.
+# Without it, `pytest` cannot collect: the fixtures need a PDF writer. The
+# shipped package does not.
+#
+# Replacing it here would mean generating fixtures with a permissively licensed
+# writer (reportlab, BSD-3-Clause) and dropping the encrypted-PDF fixture or
+# checking one in as a binary. Recorded as a known wart rather than fixed,
+# because it does not affect what users install.
+
+pymupdf>=1.24          # AGPL-3.0 or commercial -- test fixtures only

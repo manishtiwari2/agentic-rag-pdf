@@ -210,6 +210,54 @@ The system should target a conservative memory budget.
 
 The implementation should assume that GPU availability can vary between Colab sessions.
 
+## 9.1 The budget, stated as a number
+
+"Conservative" is not actionable. The target is the free-tier NVIDIA T4:
+
+```text
+Total VRAM              ~15 GB usable (16 GB nominal)
+Budget for all models   <= 10 GB resident
+Headroom reserved       >= 5 GB for activations, KV cache and fragmentation
+System RAM              ~12 GB
+```
+
+The headroom is not padding. Peak VRAM during generation is driven by the KV
+cache and activations, not by the weights, and a stack that fits at rest can
+still fail on a long-context query.
+
+Three models must fit inside the 10 GB at once, or be loaded and released in
+sequence:
+
+| Component | Approximate resident VRAM |
+| --- | --- |
+| Generation, 4B @ 4-bit NF4 | ~2.5 GB |
+| Generation, 4B @ bf16 | ~8.0 GB |
+| Generation, 1.5B @ bf16 | ~3.1 GB |
+| `bge-m3` embeddings @ fp16 | ~1.2 GB |
+| `bge-reranker-v2-m3` @ fp16 | ~1.2 GB |
+
+These are estimates from parameter counts, not measurements. They exist to set
+expectations before the first run; section 3 of `EVALUATION_PROTOCOL.md`
+requires the measured figures to be recorded and they supersede this table.
+
+The practical consequence: a 4B generator in bf16 plus both retrieval models
+leaves too little headroom to be safe on a T4, so either quantisation or
+sequential loading is required rather than optional.
+
+## 9.2 Session constraints beyond memory
+
+The free tier also imposes limits that affect experiment design:
+
+* Sessions are reclaimed after a period of inactivity, and have a wall-clock
+  ceiling. A benchmark run that cannot finish inside one session must
+  checkpoint per-question results to disk as it goes, not only at the end.
+* The assigned GPU varies between sessions (T4, sometimes L4). Results are not
+  comparable across sessions unless the GPU is recorded — which section 2 of
+  `EVALUATION_PROTOCOL.md` already requires.
+* Local disk does not persist. Model weights are re-downloaded on every fresh
+  runtime unless a mounted Drive cache is used; that download time must be
+  reported separately from inference latency.
+
 At runtime record:
 
 ```text
@@ -257,19 +305,57 @@ However, model unloading/reloading should only be used if the latency trade-off 
 
 Before final selection, verify the license of every model and relevant dependency.
 
-Record:
-
-```text
-Model
-License
-Source
-Commercial-use restrictions
-Redistribution considerations
-```
-
-The final repository should clearly document model licenses.
-
 Do not describe a model as suitable for the project until its licensing terms have been checked.
+
+## 11.1 Verified model licenses
+
+Checked against the Hugging Face model cards on 2026-09-20. Re-verify before
+release: model cards are edited, and a license can change between revisions.
+
+| Model | Role | License | Commercial use | Notes |
+| --- | --- | --- | --- | --- |
+| `Qwen/Qwen3-4B-Instruct-2507` | generation | Apache-2.0 | Yes | 4.0B params (3.6B excl. embeddings), 262k native context |
+| `Qwen/Qwen2.5-3B-Instruct` | generation | **`qwen-research`** | **No — research only** | See 11.2 |
+| `Qwen/Qwen2.5-1.5B-Instruct` | generation | Apache-2.0 | Yes | |
+| `BAAI/bge-m3` | embeddings | MIT | Yes | |
+| `BAAI/bge-reranker-v2-m3` | reranking | Apache-2.0 | Yes | |
+
+## 11.2 Finding: Qwen2.5-3B-Instruct is not openly licensed
+
+Candidate B is the only model in the pool released under the Qwen Research
+License rather than Apache-2.0. That license restricts use to research and
+non-commercial purposes.
+
+This matters because the project describes itself as open source and intends
+the notebook to be reusable by others. Shipping a default configuration that
+silently pulls a research-only model would hand every downstream user a
+licensing problem they did not choose.
+
+Consequences for model selection:
+
+* Candidate B may still be **benchmarked**, as a research comparison point.
+* Candidate B must **not** become the default configuration.
+* If Candidate B wins on quality, the recommended stack must still default to
+  an Apache-2.0 model, and the notebook must state the licensing trade-off
+  rather than quietly selecting the better-scoring model.
+
+This restriction is specific to the 3B checkpoint. Other sizes in the Qwen2.5
+family are Apache-2.0, so the restriction does not generalise across the
+family and must be checked per checkpoint rather than per vendor.
+
+Recorded as DD-024 in `DESIGN_DECISIONS.md`.
+
+## 11.3 Licenses still to record
+
+The license audit is not complete. Before release, also record:
+
+* **Benchmark documents** — source URL and license for every PDF
+  (`BENCHMARK_SPEC.md` section 4). Blocked until the documents are chosen.
+* **Python dependencies** — the transitive set, in particular any GPL/AGPL
+  component that would constrain the project's own license.
+* **The project's own license** — `README.md` section 20 says only that one
+  will be chosen. Until it is named, contributors cannot know what terms they
+  are contributing under.
 
 ---
 

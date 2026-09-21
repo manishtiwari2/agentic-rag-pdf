@@ -1,0 +1,63 @@
+agentic-pdf-rag
+Copyright 2026 The agentic-pdf-rag authors
+
+This product includes software developed as part of the agentic-pdf-rag
+project, licensed under the Apache License, Version 2.0. See LICENSE.
+
+------------------------------------------------------------------------------
+Third-party dependencies
+------------------------------------------------------------------------------
+
+The runtime dependency chain is permissive throughout. Verified against the
+installed distribution metadata on 2026-09-21; re-verify before release, since
+a licence can change between versions.
+
+  pdfplumber           MIT                          PDF parsing (default)
+  pdfminer.six         MIT                          via pdfplumber
+  pypdfium2            BSD-3-Clause / Apache-2.0    via pdfplumber
+  Pillow               MIT-CMU                      via pdfplumber
+  numpy                BSD-3-Clause                 vectors
+  faiss-cpu            MIT                          vector index (optional)
+
+Optional, for running the open-weight models:
+
+  torch                BSD-3-Clause
+  transformers         Apache-2.0
+  accelerate           Apache-2.0
+  bitsandbytes         MIT
+  sentencepiece        Apache-2.0
+
+Development and test only, NOT a runtime dependency:
+
+  pytest               MIT
+  PyMuPDF              AGPL-3.0 or commercial
+
+PyMuPDF is deliberately excluded from the runtime dependencies. It is used only
+to write the synthetic PDFs the test suite builds, and as an alternative parser
+backend for anyone who accepts AGPL terms. Installing this project does not
+install it. See DD-033 in DESIGN_DECISIONS.md.
+
+------------------------------------------------------------------------------
+Model weights
+------------------------------------------------------------------------------
+
+Model weights are downloaded at runtime and are NOT covered by this project's
+licence. Their terms are their own and must be checked per checkpoint, not
+inferred from the vendor (DD-024):
+
+  Qwen/Qwen3-4B-Instruct-2507      Apache-2.0      default generator
+  Qwen/Qwen2.5-1.5B-Instruct       Apache-2.0      low-memory preset
+  Qwen/Qwen2.5-3B-Instruct         qwen-research   NON-COMMERCIAL, not a default
+  BAAI/bge-m3                      MIT             embeddings
+  BAAI/bge-reranker-v2-m3          Apache-2.0      reranking (Phase 4)
+
+Verified against the Hugging Face model cards on 2026-09-20. The configuration
+layer refuses to make a non-commercially-licensed checkpoint the default
+generator unless the caller explicitly opts in.
+
+------------------------------------------------------------------------------
+Benchmark documents
+------------------------------------------------------------------------------
+
+Not yet selected (Phase 0). Every benchmark PDF must have its source URL and
+licence recorded here before release, per BENCHMARK_SPEC.md section 4.

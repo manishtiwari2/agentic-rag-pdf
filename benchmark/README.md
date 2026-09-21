@@ -327,16 +327,22 @@ A practical first version:
 Suggested distribution:
 
 ```text
-15 factual
-8 definition
-10 explanation
-8 comparison
-8 numerical
-6 table
+14 factual
+ 7 definition
+ 9 explanation
+ 7 comparison
+ 8 numerical
+ 6 table
 10 multi-hop
-6 unanswerable
-4 ambiguous
+ 4 summary
+ 6 unanswerable
+ 4 ambiguous
+---
+75 total
 ```
+
+This matches `BENCHMARK_SPEC.md` section 8 and covers all ten categories in
+section 8 above. Keep the two files in step: if one changes, change both.
 
 The distribution may change depending on the available PDFs.
 
