@@ -930,3 +930,47 @@ weights from Hugging Face, so no new failure mode is introduced.
 Unpinned cloning of the default branch is explicitly rejected. A benchmark run
 that cannot say which commit produced it is not reproducible, which
 `MODEL_SELECTION.md` section 15 requires.
+
+
+---
+
+# DD-035 — The Project Is Licensed Apache-2.0
+
+**Status:** Accepted — resolves `README.md` section 20 and
+`EXPERIMENT_PLAN.md` section 5.5
+
+### Decision
+
+Apache-2.0. `LICENSE` holds the licence text; `NOTICE` records the licences of
+dependencies, model weights and (once Phase 0 chooses them) benchmark documents.
+
+### Reason
+
+Chosen over MIT for the explicit patent grant in section 3, which MIT does not
+provide. It also matches the licence of the default model stack —
+`Qwen3-4B-Instruct-2507` and `bge-reranker-v2-m3` are Apache-2.0 — so a user
+reading the repository sees one set of terms rather than two.
+
+The choice was only available because DD-033 replaced the AGPL-3.0 PDF backend.
+Had PyMuPDF remained a runtime dependency, this decision would have been made
+for the project rather than by it.
+
+### Scope, stated because it is routinely confused
+
+The project licence covers **this repository's code**. It does not cover:
+
+* **Model weights**, downloaded at runtime under their own terms. `NOTICE`
+  records them, and DD-024 keeps a non-commercially-licensed checkpoint out of
+  the default configuration.
+* **Benchmark documents**, not yet chosen. `BENCHMARK_SPEC.md` section 4
+  requires a source URL and licence for each before release.
+* **PyMuPDF**, which is AGPL-3.0 and remains available as an optional parser
+  backend. Selecting it means accepting copyleft terms for the result. It is
+  not installed by default.
+
+### Copyright holder
+
+The notice currently reads `The agentic-pdf-rag authors`, which is valid and
+avoids asserting a legal name that has not been stated. Replace it with a
+personal or organisational name if individual attribution is wanted; it appears
+in `LICENSE` and `NOTICE`.

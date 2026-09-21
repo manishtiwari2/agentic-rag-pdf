@@ -7,6 +7,8 @@ name = "agentic-pdf-rag"
 version = "0.2.0"
 description = "Local agentic RAG for PDF question answering, Phases 1-2"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = ["pdfplumber>=0.11", "numpy>=1.24"]
 
 [project.optional-dependencies]

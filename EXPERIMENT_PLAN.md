@@ -153,10 +153,8 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
    `sys.path`. The pinned ref is recorded with every run. The notebook is not
    self-contained, which is accepted because it already needs network access
    for the model weights.
-5. ~~**Project license.**~~ **Unblocked 2026-09-21 (DD-033):** the default PDF
-   backend moved from PyMuPDF (AGPL-3.0) to pdfplumber (MIT), so the whole
-   runtime dependency chain is now permissive and the project is free to choose
-   a permissive licence. The remaining sub-decision is MIT vs Apache-2.0;
-   Apache-2.0 is suggested, since it carries an explicit patent grant and
-   matches the licence of the default models. `README.md` section 20 still
-   needs updating once that is settled.
+5. ~~**Project license.**~~ **Decided 2026-09-21 (DD-035): Apache-2.0.**
+   Unblocked by DD-033, which moved the default PDF backend from PyMuPDF
+   (AGPL-3.0) to pdfplumber (MIT). `LICENSE` and `NOTICE` are in place and
+   `README.md` section 20 is updated. The only licence work left is Phase 0's:
+   recording the source and licence of every benchmark PDF.
