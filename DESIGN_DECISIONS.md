@@ -574,3 +574,148 @@ Final configuration
 ```
 
 No component should remain in the final architecture solely because it was part of the original design.
+
+---
+
+# DD-024 — Qwen2.5-3B Cannot Be the Default Generator
+
+**Status:** Accepted
+
+### Decision
+
+`Qwen2.5-3B-Instruct` may be benchmarked but must not be the default model.
+The default generator must be Apache-2.0: `Qwen3-4B-Instruct-2507`, or
+`Qwen2.5-1.5B-Instruct` in the low-memory configuration.
+
+### Reason
+
+License verification (`MODEL_SELECTION.md` 11.1, checked 2026-09-20) found
+that `Qwen2.5-3B-Instruct` is released under `qwen-research`, which is
+research/non-commercial only. Every other candidate in the pool is Apache-2.0
+or MIT.
+
+The project presents itself as open source. A default configuration that
+downloads a research-only model hands every downstream user a licensing
+problem they did not choose and probably will not notice.
+
+### Trade-off
+
+If the 3B model turns out to score best, the default is deliberately not the
+highest-scoring option. The notebook must state that trade-off rather than
+quietly selecting on score alone.
+
+### Note
+
+The restriction is per-checkpoint, not per-vendor. Other Qwen2.5 sizes are
+Apache-2.0. Licences must be checked per model, not inferred from the family.
+
+---
+
+# DD-025 — Retrieval Metrics Are Scored at Page Level
+
+**Status:** Accepted
+
+### Decision
+
+Ground-truth evidence is annotated and scored by **page**, not chunk ID.
+`evidence_chunk_ids` remains an optional secondary annotation.
+
+### Reason
+
+Chunk IDs are a function of the chunking configuration. Scoring against them
+would change the answer key whenever the chunker changes, making the
+structure-aware vs. fixed-size comparison in DD-009 meaningless.
+
+Page numbers are stable across configurations and are the unit the system
+cites, so retrieval metrics and citation metrics share a scale.
+
+### Consequence
+
+A chunk spanning a page break counts as a hit for every page it covers.
+
+---
+
+# DD-026 — Both "Any" and "All" Recall Are Reported
+
+**Status:** Accepted
+
+### Decision
+
+Report `Recall@K` (any gold page retrieved) and `Full-Recall@K` (all gold
+pages retrieved). `Full-Recall@5` is the primary metric for `multi_hop` and
+`comparison` questions.
+
+### Reason
+
+They are identical for single-evidence questions and diverge sharply on
+multi-hop ones. A system that reliably finds one hop and never the second
+scores 1.0 on the first metric and 0.0 on the second. Reporting only the
+former would overstate exactly the capability the agentic loop is supposed to
+provide.
+
+---
+
+# DD-027 — The Judge Is the Generator, and This Is Disclosed
+
+**Status:** Accepted, with known limitation
+
+### Decision
+
+The LLM judge defaults to the generation model, because a second independent
+judge does not fit in the Colab memory budget. Every judged metric is reported
+beside a deterministic one, judge/deterministic disagreement is reported as a
+number, and the disagreements are manually inspected.
+
+### Reason
+
+Self-grading biases judged scores upward and unevenly. The bias cannot be
+removed under the local-only constraint, so it is measured and disclosed
+instead of ignored.
+
+### Alternative
+
+A separate judge model, where hardware allows. The change in conclusions
+between the two is the measured size of the effect.
+
+---
+
+# DD-028 — Confidence Intervals and Paired Tests Are Mandatory
+
+**Status:** Accepted
+
+### Decision
+
+Every headline figure carries a bootstrap 95% CI. Every system-vs-baseline
+claim uses a paired bootstrap over per-question differences. If the CI of the
+difference includes zero, the result is reported as "no significant
+difference", whatever the point estimate.
+
+### Reason
+
+EVALUATION_PROTOCOL section 26 already forbade overstating small differences
+but named no method, which made the rule unenforceable. With 75 questions the
+sampling error is roughly ±5 points — larger than most differences the
+ablation study will produce.
+
+---
+
+# DD-029 — Unanswerable Questions Count Toward Headline Accuracy
+
+**Status:** Accepted
+
+### Decision
+
+Unanswerable questions score 1 for abstaining and 0 for answering, and are
+included in the headline accuracy figure. Accuracy is always reported with its
+breakdown (all / answerable / abstention) and with the denominator for each.
+
+### Reason
+
+Excluding them would let a system with a serious hallucination problem post a
+good headline number, since the questions that expose the problem would not be
+counted.
+
+### Trade-off
+
+The headline figure mixes two scoring rules, which is why the breakdown is
+mandatory rather than optional.
