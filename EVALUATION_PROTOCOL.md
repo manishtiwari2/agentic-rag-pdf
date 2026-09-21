@@ -111,6 +111,45 @@ The evaluation set should remain unchanged during final tuning.
 
 This reduces the risk of optimizing directly against the final benchmark.
 
+## 5.1 The split, concretely
+
+```text
+development set   ~1/3 of questions   (~25 of 75)
+evaluation set    ~2/3 of questions   (~50 of 75)
+```
+
+Assignment rules:
+
+* The split is recorded in `questions.json` as a `split` field per question,
+  with values `dev` or `eval`. It is not computed at run time — a split that
+  can be recomputed can be recomputed differently, and then the held-out set
+  was never held out.
+* The split is **stratified by question type and by document**. A dev set
+  containing no multi-hop questions, or drawing only from one PDF, cannot
+  detect the failures it exists to catch.
+* Once fixed, questions do not move between splits. Moving a question after
+  seeing a result is how a held-out set stops being held out.
+
+## 5.2 What each set is for
+
+| | Development set | Evaluation set |
+| --- | --- | --- |
+| Prompt wording | tune freely | do not tune against |
+| Thresholds, top-k, chunk size | tune freely | do not tune against |
+| Debugging individual failures | yes | only after final numbers are recorded |
+| Reported headline results | no | yes |
+| Times it may be run | unlimited | ideally once, at the end |
+
+Running the evaluation set repeatedly during development does not corrupt it
+mechanically, but it corrupts it in practice: each look informs the next
+change, and the final number drifts upward without the system improving.
+
+If the evaluation set does get used during tuning, say so in the write-up. A
+disclosed leak is a caveat; an undisclosed one invalidates the result.
+
+Development-set numbers may be reported, but always labelled as such and never
+in the same table as evaluation-set results.
+
 ---
 
 # 6. Evaluation Modes
@@ -420,6 +459,57 @@ The judging prompt must be fixed for the experiment.
 
 The judge model and version must be recorded.
 
+## 19.1 The judge is the same model being graded
+
+This project's local-only constraint creates a problem the protocol must name
+rather than inherit silently.
+
+The only model available to judge is a small local one, and the only such
+model already loaded is the generator. Under the Colab memory budget
+(`MODEL_SELECTION.md` section 9.1) a second independent judge of comparable
+capability does not fit alongside the generator, the embedder and the
+reranker.
+
+So by default the judge and the system under test are the same weights. Models
+are known to score their own outputs more favourably than a third party
+would, which biases every judged metric **upward**, and biases it upward
+*unevenly* — the systems whose answers look most like the judge's own style
+benefit most.
+
+This is a real limitation, not a formality. Three mitigations, all required:
+
+1. **Never report a judged score alone.** Every judged metric is reported
+   beside a deterministic one measuring the same thing: correctness beside
+   token-overlap and numeric agreement, faithfulness beside the fraction of
+   the answer's numbers that appear in the retrieved evidence.
+2. **Report judge/deterministic disagreement as a number.** The rate at which
+   the two disagree is itself a result. A high rate means the judged figures
+   should not be trusted, and the write-up must say so.
+3. **Inspect the disagreements by hand.** Sampling at random wastes effort on
+   cases where both measures already agree. Reading the cases where they
+   conflict is where a scoring bug or a judge failure is actually found.
+
+Where a second GPU or a larger session is available, run the judge as a
+separate model and report both sets of scores. Any change in the conclusions
+between the two is the measured size of the self-preference effect.
+
+## 19.2 What the judge is not used for
+
+The judge does not decide:
+
+* **Abstention.** Detected deterministically from the answer text
+  (`BENCHMARK_SPEC.md` section 13.2). A model asked whether another model
+  refused will over-interpret hedging as refusal.
+* **Numeric agreement.** Compared exactly. Small models are unreliable at
+  precisely the comparison that matters most here — telling 86.7 from 87.6 —
+  and a judge that gets this wrong corrupts the metric the numerical question
+  category exists to measure.
+* **Retrieval metrics.** Computed from page overlap, with no model involved.
+
+The judge is used for what regular expressions genuinely cannot do: whether a
+paraphrase means the same thing as the reference answer, and whether a claim
+is supported by a passage that does not restate it word for word.
+
 ---
 
 # 20. Judge Output
@@ -462,11 +552,50 @@ Incorrect refusal when evidence exists → failure
 Calculate:
 
 ```text id="mmfl6m"
-abstention accuracy
-false-answer rate
+abstention accuracy      over unanswerable questions
+false-answer rate        over unanswerable questions
+over-abstention rate     over ANSWERABLE questions
 ```
 
+Note the third metric's denominator. The first two are computed over the
+unanswerable set only, so a system that refuses every question scores
+perfectly on both. `over-abstention rate` is the metric that catches it, and
+it can only be computed over the answerable set.
+
+See `BENCHMARK_SPEC.md` section 13 for the full outcome matrix.
+
 A confident unsupported answer should be treated as a significant failure.
+
+## 21.1 How unanswerable questions enter the headline accuracy
+
+An unanswerable question has `answer: null`, so there is no reference string
+to compare against and the usual correctness measures do not apply.
+
+The rule:
+
+```text
+unanswerable question:  correct = 1 if the system abstained, else 0
+answerable question:    correct = judged/deterministic correctness as usual
+```
+
+Unanswerable questions **are** included in the headline accuracy figure, and
+the composition of the set is reported alongside it. Excluding them would let
+a system with a serious hallucination problem post a good headline number,
+since the questions that expose the problem would not be counted.
+
+Because the headline figure therefore mixes two different scoring rules,
+always report it with its breakdown:
+
+```text
+accuracy (all)            n = 75
+accuracy (answerable)     n = 69
+abstention accuracy       n = 6
+```
+
+Six unanswerable questions out of 75 is a small denominator. A single
+additional false answer moves abstention accuracy by 17 percentage points, so
+that figure must be read with its confidence interval (section 26) and not
+quoted as a precise value.
 
 ---
 
@@ -548,6 +677,32 @@ for configurations where model/runtime nondeterminism is significant.
 
 Report mean and standard deviation when repeated runs are performed.
 
+## 25.1 What repetition actually measures here
+
+Section 12 mandates greedy decoding at `temperature = 0`, so repeated runs do
+**not** sample different answers. Repetition under this protocol measures only
+residual hardware nondeterminism: non-associative floating-point reductions in
+cuBLAS and in some attention kernels, which can flip a token when two logits
+are nearly tied, and which occasionally cascades into a different answer.
+
+That effect is real but small. It is not the dominant source of uncertainty in
+these results — **question sampling is**. With 75 questions, the sampling error
+on an accuracy figure is on the order of ±5 percentage points, which is far
+larger than run-to-run drift on fixed inputs.
+
+The practical consequence:
+
+* Repeating a greedy run three times and reporting a tight standard deviation
+  is misleading. It reports the stability of the hardware, then invites the
+  reader to interpret it as the reliability of the result.
+* Effort is better spent on confidence intervals over questions (section 26)
+  than on repeated identical runs.
+
+Repeat runs when: the configuration samples (`temperature > 0`), the run
+crashed partway, or a result is surprising enough to warrant checking that it
+reproduces at all. Otherwise one run plus interval estimates is the more
+honest use of the compute budget.
+
 ---
 
 # 26. Statistical Reporting
@@ -564,6 +719,66 @@ System B: 79.1%
 ```
 
 Do not describe this as a major improvement without supporting evidence.
+
+## 26.1 The method
+
+"Discuss the uncertainty" is not enforceable. The specific procedure:
+
+**Every headline figure carries a 95% confidence interval**, computed by
+percentile bootstrap over questions (resample the 75 per-question scores with
+replacement, 2,000 times, take the 2.5th and 97.5th percentiles of the
+resampled means).
+
+**Every system-vs-baseline claim uses a paired test.** All systems answer the
+same questions, so the comparison is paired and the per-question differences
+are the right unit:
+
+```text
+1. For each question i, compute d_i = score_system(i) - score_baseline(i)
+2. Bootstrap the mean of d over questions, 2,000 resamples
+3. Report: mean difference, its 95% CI, and the two-sided p-value
+```
+
+A paired test is substantially more sensitive than comparing two independent
+intervals, because it removes the variance caused by some questions simply
+being harder than others.
+
+**The reporting rule:**
+
+> If the 95% CI of the difference includes zero, the result is reported as
+> "no significant difference", regardless of the sign of the point estimate.
+
+Applied to the example above: with 75 questions, a 0.7-point difference has a
+CI comfortably spanning zero and must be written up as indistinguishable, not
+as a 0.7-point gain.
+
+## 26.2 Multiple comparisons
+
+The ablation study (section 24) compares seven or more arms against the same
+baseline. At a 5% threshold, roughly one in twenty such comparisons looks
+significant by chance alone, so a sweep of this size is expected to produce a
+spurious "significant" result even if every component is useless.
+
+This does not need a formal correction, but it does need honesty in the
+write-up:
+
+* State the number of comparisons performed.
+* Treat a single isolated significant result among many as a hypothesis, not a
+  finding — particularly when the component has no mechanism that would
+  explain the effect.
+* Give more weight to components that improve a metric they plausibly *should*
+  improve. A reranker improving Recall@5 is evidence; a reranker improving
+  abstention accuracy and nothing else is probably noise.
+
+## 26.3 Reporting failure honestly
+
+If the agentic pipeline does not beat the baselines, that is a publishable
+result and the write-up states it plainly. Section 18 of `BENCHMARK_SPEC.md`
+already forbids claiming value from complexity alone; this is the same rule
+applied to the final narrative.
+
+A negative result with a clean methodology is worth considerably more than a
+positive result obtained by adjusting the benchmark until the numbers improve.
 
 ---
 

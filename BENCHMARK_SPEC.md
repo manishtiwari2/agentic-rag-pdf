@@ -74,6 +74,66 @@ Documents must be legally usable for the project.
 
 The benchmark metadata should record the source and license where applicable.
 
+## 4.1 Sourcing, and why it is the blocking task
+
+No documents have been chosen yet. Nothing downstream can proceed without
+them: the questions, the ground truth, every metric and every experiment all
+depend on having the PDFs in hand. This is the critical-path item, not the
+retrieval code.
+
+Licensing rules out most of the obvious choices. Corporate annual reports,
+commercial technical manuals and most published books cannot be redistributed
+in the repository, even though they are exactly the document types section 3
+asks for.
+
+Categories that are safe to redistribute:
+
+| Category | Source | Typical license |
+| --- | --- | --- |
+| Research paper | arXiv | per-paper; many are CC-BY, some are arXiv's non-exclusive licence — check each |
+| Technical standard | NIST, IETF RFCs | US Government works: public domain |
+| Government report | GAO, national statistics offices | public domain in the US |
+| Financial report | central bank / public-agency annual reports | public domain in the US |
+| Manual / instructional | government agency handbooks | public domain in the US |
+| Long-form report | intergovernmental organisation reports | often CC-BY |
+
+Practical guidance:
+
+* Check the licence of **each individual paper**. "arXiv" is not a licence,
+  and the per-paper terms vary; a CC-BY paper may be redistributed, one under
+  arXiv's non-exclusive licence may not.
+* "US Government work" means produced *by* the agency. A contractor report
+  hosted on a government site may still be under copyright.
+* Where redistribution is not permitted, ship a **manifest** — URL plus SHA-256
+  checksum — and download at notebook run time instead of committing the PDF.
+  The checksum matters: a silently updated source document invalidates every
+  evidence page in the ground truth, and without a checksum that failure is
+  invisible.
+
+## 4.2 Document metadata
+
+Record per document, in `benchmark/documents_metadata.json`:
+
+```json
+{
+  "document_01.pdf": {
+    "title": "...",
+    "category": "research_paper",
+    "pages": 15,
+    "source_url": "https://...",
+    "license": "CC-BY-4.0",
+    "redistributable": true,
+    "sha256": "...",
+    "retrieved": "2026-09-20"
+  }
+}
+```
+
+`sha256` and `retrieved` are not bureaucracy. Ground truth is annotated
+against a specific rendering of a specific file; if the file changes, the
+page numbers in `questions.json` become wrong and the benchmark degrades
+silently rather than failing.
+
 ---
 
 # 5. Question Dataset
@@ -93,19 +153,55 @@ Each question should contain at minimum:
   "question": "...",
   "answer": "...",
   "evidence_pages": [3, 4],
-  "question_type": "factual"
+  "question_type": "factual",
+  "difficulty": "easy",
+  "split": "eval"
 }
 ```
+
+Field rules:
+
+| Field | Rule |
+| --- | --- |
+| `id` | unique across the whole file |
+| `document` | filename, matching a file in `benchmark/documents/` |
+| `answer` | `null` for `unanswerable`, a non-empty string otherwise |
+| `evidence_pages` | **1-based** page numbers; empty exactly when `answer` is `null` |
+| `question_type` | one of the ten categories in section 6 |
+| `difficulty` | `easy`, `medium` or `hard` |
+| `split` | `dev` or `eval`; fixed, stratified, never recomputed (see `EVALUATION_PROTOCOL.md` section 5.1) |
+
+`evidence_pages` being 1-based is worth stating explicitly because PDF
+libraries index from 0. An off-by-one here is invisible in review, depresses
+recall uniformly across every system, and looks exactly like a retrieval
+problem.
 
 Optional fields:
 
 ```text
-evidence_chunk_ids
-difficulty
-reasoning_steps
-alternative_answers
-notes
+evidence_chunk_ids     secondary annotation; page-level is authoritative
+reasoning_steps        for multi_hop: what must be combined
+alternative_answers    other phrasings a correct answer may take
+notes                  anything a reviewer needs to know
 ```
+
+## 5.1 Validation before use
+
+A malformed benchmark produces plausible-looking numbers, which is the worst
+failure mode available to an evaluation harness. The dataset must be checked
+before any run, and the run must refuse to start on failure:
+
+* no duplicate `id`
+* no placeholder text (`REPLACE_WITH_...`) left in any field
+* every answerable question has at least one `evidence_pages` entry
+* every unanswerable question has `answer: null` **and** empty `evidence_pages`
+* every `evidence_pages` value is >= 1 and <= that document's page count
+* every `document` names a file that exists
+* every `question_type` is in the section 6 taxonomy
+
+The current `benchmark/questions.json` is a 10-question template that fails
+several of these checks by design. It is a schema example, not a dataset, and
+it must not be mistaken for one.
 
 ---
 
@@ -261,18 +357,36 @@ Recommended starting point:
 Example distribution:
 
 ```text
-Factual          15
-Definition        8
-Explanation      10
-Comparison        8
+Factual          14
+Definition        7
+Explanation       9
+Comparison        7
 Numerical         8
 Table             6
 Multi-hop        10
+Summary           4
 Unanswerable      6
 Ambiguous         4
+                ---
+                 75
 ```
 
-The exact distribution may change based on available documents.
+This covers all ten categories listed in section 6 and in
+`benchmark/README.md` section 8. An earlier version of this table omitted
+`summary`, which left a category that the taxonomy allows, the question schema
+accepts, and `questions.json` already uses, but that the dataset plan never
+budgeted for.
+
+The exact distribution may change based on available documents. Two
+constraints should hold whatever it becomes:
+
+* Every category in section 6 gets a non-zero allocation, or is removed from
+  the taxonomy. A category with no questions cannot be reported on, and
+  leaving it in the taxonomy implies coverage that does not exist.
+* `multi_hop`, `comparison` and `unanswerable` keep their share. These three
+  carry most of the discriminative power between the baseline and agentic
+  systems (research questions RQ3 and RQ4); trimming them to make room makes
+  the benchmark easier and less informative at the same time.
 
 ---
 
@@ -295,9 +409,51 @@ Ground truth should be manually reviewed.
 
 # 10. Retrieval Metrics
 
+## Unit of relevance
+
+Ground-truth evidence is annotated and scored at **page** level, not chunk
+level. A retrieved chunk counts as relevant if any page it covers is in the
+question's `evidence_pages`.
+
+This is a deliberate choice, and the reason matters:
+
+* A chunk ID is a function of the chunking configuration. Scoring against
+  chunk IDs would mean the ground truth changes when the chunker changes,
+  which makes the structure-aware vs. fixed-size comparison in DD-009
+  meaningless — the two systems would be graded against different answer keys.
+* Page numbers are stable across every configuration, and they are the unit
+  the system cites, so retrieval metrics and citation metrics share a scale.
+
+`evidence_chunk_ids` stays in the schema as optional documentation, and
+chunk-level scoring may be reported as a secondary diagnostic. The page-level
+figures are the ones compared across systems.
+
+A chunk that spans a page break is credited for **every** page it covers. A
+chunk running across pages 7-8 is a hit for a question whose evidence is on
+either page.
+
+---
+
 ## Recall@K
 
 Measures whether relevant evidence appears within the top K retrieved chunks.
+
+Two definitions are reported, because they answer different questions and
+disagree sharply on multi-hop items:
+
+```text
+Recall@K        1.0 if ANY gold evidence page is in the top K
+Full-Recall@K   1.0 if EVERY gold evidence page is in the top K
+```
+
+For a single-evidence question the two are identical. For a question whose
+`evidence_pages` is `[7, 12]`, retrieving only page 7 scores 1.0 on Recall@5
+and 0.0 on Full-Recall@5.
+
+Reporting only the first would overstate multi-hop retrieval, since a system
+that reliably finds one hop and never the second would look complete.
+Reporting only the second would understate ordinary factual retrieval. Both
+are therefore required.
 
 Report:
 
@@ -306,13 +462,21 @@ Recall@1
 Recall@3
 Recall@5
 Recall@10
+Full-Recall@5
+Full-Recall@10
 ```
 
 Primary retrieval metric:
 
 ```text
-Recall@5
+Recall@5        overall
+Full-Recall@5   for multi_hop and comparison questions
 ```
+
+Recall is undefined for `unanswerable` questions, which have no gold evidence.
+Those questions are excluded from every retrieval metric rather than scored as
+0.0 — scoring them as failures would make a correctly-abstaining system look
+like a retrieval failure.
 
 ---
 
@@ -392,15 +556,39 @@ Where practical, manually inspect a sample of results.
 
 # 13. Abstention Metrics
 
-For unanswerable questions measure:
+Abstention is a two-sided problem and must be measured on both sides. A system
+that abstains on everything scores perfectly on the unanswerable set, so
+metrics restricted to that set cannot detect the failure.
+
+The four outcomes:
+
+| | System answered | System abstained |
+| --- | --- | --- |
+| **Document supports an answer** | correct behaviour | **over-abstention** |
+| **Document does not** | **false answer** | correct behaviour |
+
+Metrics:
 
 ```text
-Abstention accuracy
-False-answer rate
-Unsupported-answer rate
+Abstention accuracy    over UNANSWERABLE questions:  abstained / total
+False-answer rate      over UNANSWERABLE questions:  answered / total
+Over-abstention rate   over ANSWERABLE questions:    abstained / total
+Unsupported-answer rate  over ALL questions: answers whose claims are not
+                         supported by the retrieved evidence
 ```
 
-Important failure:
+`Over-abstention rate` was missing from earlier versions of this list even
+though `EVALUATION_PROTOCOL.md` section 21 already called incorrect refusal a
+failure. Without it the specification defined a metric set that a
+refuse-everything system would win.
+
+Note that `Unsupported-answer rate` is not restricted to unanswerable
+questions: a system can answer an answerable question with claims its
+retrieved evidence does not support, and that is the same failure.
+
+## 13.1 Severity
+
+These failures are not equally bad and should not be averaged into one number.
 
 ```text
 Document does not contain answer
@@ -408,7 +596,29 @@ Document does not contain answer
 System invents answer
 ```
 
-This should count as a serious error.
+A confident false answer is the most serious failure in this project. It is
+the one a user cannot detect without re-reading the source document, which
+defeats the purpose of the system.
+
+Over-abstention is a real failure and must be reported, but it is a *safe*
+failure: the user learns nothing, rather than learning something false.
+
+Report the two separately and never as a combined "abstention error rate".
+
+## 13.2 Detecting abstention
+
+Abstention is detected from the answer text, not from system self-report
+alone. The generator is instructed to emit one canonical refusal sentence, and
+the evaluator also matches a small fixed set of paraphrases.
+
+Two rules keep this honest:
+
+* The detector's patterns must be fixed before the run and recorded with the
+  results, for the same reason the judge prompt is fixed.
+* A long answer that mentions a gap in passing ("the document does not state
+  the exact date, but the experiment ran in March") is an **answer**, not an
+  abstention. A detector that classifies it as abstention will inflate
+  abstention accuracy and hide false answers.
 
 ---
 
@@ -566,12 +776,15 @@ generation parameters
 random seed where applicable
 ```
 
-Results should be saved under:
+Results should be saved under the layout defined in `EVALUATION_PROTOCOL.md`
+section 27, which is authoritative:
 
 ```text
 results/
 ├── baseline/
-├── experiments/
+├── hybrid/
+├── agentic/
+├── ablations/
 └── final/
 ```
 
