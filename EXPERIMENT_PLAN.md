@@ -52,10 +52,21 @@ for every question.
 **Exit:** a PDF parses to page-attributed chunks; chunk page numbers spot-checked
 against the source; a scanned PDF produces a clear error rather than garbage.
 
+**Status: met, 2026-09-21.** Two chunking strategies behind one interface, two
+PDF backends behind one protocol, page attribution verified mechanically across
+both (zero mis-attributed chunks), scanned/encrypted/blank PDFs each raising a
+distinct error with a remedy.
+
 ### Phase 2 — Dense baseline
 
 **Exit:** Baseline A answers the benchmark end to end and produces
 `results/baseline/`. Numbers may be poor. They must exist.
+
+**Status: code complete, exit criterion blocked on Phase 0.** The pipeline
+answers an arbitrary PDF end to end with deterministic page citations and
+abstention. `results/baseline/` is empty because there is no benchmark to run
+against yet — which is section 1 of this document being right about the critical
+path.
 
 ### Phase 3 — Metrics harness
 
@@ -137,10 +148,15 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
    to be better here.
 3. **`MAX_RETRIEVAL_ITERATIONS = 2`.** Chosen for latency, not measured. Phase
    5 should check whether iteration 2 ever changes an answer.
-4. **How the notebook obtains `src/`.** `PROJECT_SPEC.md` section 12 requires
-   both a notebook and a `src/` package but never says how Colab gets the
-   package — clone, pip install, or write the files from the notebook. This
-   needs a decision before Phase 2, because it determines whether the notebook
-   is self-contained.
-5. **Project license.** `README.md` section 20 defers it. It constrains which
-   models and documents can ship, so it should be decided early, not late.
+4. ~~**How the notebook obtains `src/`.**~~ **Decided 2026-09-21 (DD-034):**
+   the setup cell clones the repository at a pinned tag and adds it to
+   `sys.path`. The pinned ref is recorded with every run. The notebook is not
+   self-contained, which is accepted because it already needs network access
+   for the model weights.
+5. ~~**Project license.**~~ **Unblocked 2026-09-21 (DD-033):** the default PDF
+   backend moved from PyMuPDF (AGPL-3.0) to pdfplumber (MIT), so the whole
+   runtime dependency chain is now permissive and the project is free to choose
+   a permissive licence. The remaining sub-decision is MIT vs Apache-2.0;
+   Apache-2.0 is suggested, since it carries an explicit patent grant and
+   matches the licence of the default models. `README.md` section 20 still
+   needs updating once that is settled.

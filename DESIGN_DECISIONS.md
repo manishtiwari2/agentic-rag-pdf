@@ -719,3 +719,214 @@ counted.
 
 The headline figure mixes two scoring rules, which is why the breakdown is
 mandatory rather than optional.
+
+---
+
+# DD-030 — Chunk Sizes Are Measured in Characters
+
+**Status:** Accepted
+
+### Decision
+
+`chunk_size` and `chunk_overlap` are character counts, not token counts.
+Roughly four characters per token.
+
+### Reason
+
+A token-based size binds the chunker to one specific tokenizer. `ARCHITECTURE.md`
+section 4 requires the layers to be independently replaceable, and a chunker
+that must load the generation model's tokenizer to decide where a paragraph ends
+couples the two in a way that would have to be undone before any model
+comparison in `MODEL_SELECTION.md` section 12.
+
+### Trade-off
+
+The character budget corresponds to slightly different token counts for
+different tokenizers, so a context-window calculation needs the ~4x conversion
+rather than being exact. That is the cheaper error: it is visible and constant,
+where the coupling would be invisible and structural.
+
+### Validation
+
+`EXPERIMENT_PLAN.md` section 5.1 already requires a chunk-size sweep on the dev
+set. It sweeps characters.
+
+---
+
+# DD-031 — The Generator Is Never Shown a Page Number
+
+**Status:** Accepted
+
+### Decision
+
+Evidence blocks in the prompt carry a marker and text only. No page number, no
+chunk id, no section title, no document name. The model emits markers such as
+`[C1]`; `generation/citations.py` maps each marker back to the pages stored on
+the chunk.
+
+### Reason
+
+DD-018 says deterministic operations stay deterministic code, and mapping a
+marker to a page is a dictionary lookup. The stronger reason is structural: a
+model that has never seen a page number cannot copy one incorrectly. Instructing
+a 4B model not to write page numbers is a request it will mostly honour;
+omitting them from its input is a guarantee.
+
+Any page reference that does appear in generated text is therefore known to be
+fabricated, and is counted and reported rather than trusted.
+
+### Consequence
+
+Out-of-range markers are **dropped, not repaired**. If the model writes `[C7]`
+against a five-item list, no rule maps it to a real page without inventing
+support the model never claimed. Dropped markers are counted so the rate is
+visible.
+
+### Validation
+
+`tests/test_generation.py` asserts the rendered prompt contains no page
+information, and that out-of-range markers are dropped rather than resolved.
+
+---
+
+# DD-032 — The Fixed-Size Baseline Does Not Record Sections
+
+**Status:** Accepted
+
+### Decision
+
+`FixedSizeChunker` leaves `section` as `None`. Every other field DD-010
+requires — `document_id`, `page_number`, `pages`, `page_span`, `chunk_id` — is
+populated as normal.
+
+### Reason
+
+DD-009 claims structure-aware chunking beats fixed-size splitting, and the
+fixed-size chunker exists to test that claim. A baseline that consulted headings
+in order to label its chunks would already be partly structure-aware, and the
+comparison would understate the difference it was built to measure.
+
+### Trade-off
+
+Citations from the fixed-size configuration name a page but not a section. That
+is a real reduction in citation quality, and it is part of what the comparison
+is measuring rather than a defect to be patched.
+
+---
+
+# DD-033 — The Default PDF Backend Is pdfplumber, Not PyMuPDF
+
+**Status:** Accepted — resolved 2026-09-21
+
+### Finding
+
+PyMuPDF is AGPL-3.0 unless a commercial licence is purchased. It is the only
+copyleft dependency in the Phase 1–2 stack; `numpy`, `faiss-cpu` and `pytest`
+are BSD/MIT. `MODEL_SELECTION.md` section 11.3 lists the dependency audit as
+outstanding, and this is its first result.
+
+### Consequence
+
+The project cannot describe itself as permissively licensed while depending on
+PyMuPDF. Either the project accepts AGPL terms, or the parser is replaced.
+
+### Mitigation already in place
+
+All PDF-library use is confined to `src/ingestion/`, enforced by
+`tests/test_architecture.py`, which fails if any other layer imports a PDF
+library. Switching to `pypdf` (BSD-3-Clause) or `pdfplumber` (MIT) means adding
+one parser class behind the existing `PdfParser` protocol and changing one
+configuration value. Table detection and font-size metadata would need
+reimplementing, which would weaken heading classification.
+
+### Decision
+
+`pdfplumber` (MIT) is the default parser. PyMuPDF remains available behind the
+same `PdfParser` protocol as `ingestion.parser='pymupdf'`, for anyone who
+accepts AGPL terms and wants its speed.
+
+Chosen over `pypdf` (BSD-3-Clause) because pdfplumber preserves both
+capabilities the structure-aware chunker depends on: table detection, so tables
+still get their own chunk, and per-character font sizes, so heading
+classification still works. pypdf would have cost both.
+
+The full dependency chain is permissive: pdfminer.six (MIT), pypdfium2
+(BSD-3-Clause / Apache-2.0), Pillow (MIT-CMU). The project is therefore free to
+choose a permissive licence for itself.
+
+### What it cost
+
+pdfplumber reports words and lines rather than layout blocks, so
+`pdfplumber_parser.py` groups lines into blocks itself, splitting where vertical
+spacing or font size changes. That grouping is what lets the chunker tell a
+heading from a paragraph, so it is a deliberate component rather than a detail
+of the library.
+
+Shared post-processing — header stripping, hyphen joining, page assembly, the
+scanned and blank checks — moved into `parser_base.BaseParser`. It was inside
+the PyMuPDF class, where a backend swap would have meant reimplementing the part
+of ingestion that the page-attribution guarantees actually rest on.
+
+### Validation
+
+The ingestion test suite is parametrized over every installed backend, so the
+two implementations cannot drift apart. On the demo corpus both produce
+identical block structure, identical chunk counts and zero mis-attributed pages.
+`tests/test_architecture.py` fails if any layer outside `src/ingestion/` imports
+a PDF library.
+
+### Residual wart
+
+PyMuPDF remains a **test-only** dependency: `tests/pdf_fixtures.py` writes the
+synthetic PDFs, and pdfplumber cannot write PDFs. It is in the `dev` extra, not
+in the runtime dependencies, so it does not reach anyone who installs the
+package. Removing it would mean generating fixtures with reportlab and dropping
+the AES-256 encrypted fixture.
+
+### Reason this was decided now
+
+The choice was cheap today and would have been expensive after the benchmark had
+been run against one parser's output.
+
+
+---
+
+# DD-034 — The Notebook Obtains `src/` by Cloning at a Pinned Ref
+
+**Status:** Accepted — resolves `EXPERIMENT_PLAN.md` section 5.4
+
+### Decision
+
+The Colab notebook's setup cell clones this repository at a pinned tag or commit
+and puts it on `sys.path`:
+
+```python
+!git clone --depth 1 --branch <tag> <repo-url> /content/agentic-pdf-rag
+import sys; sys.path.insert(0, "/content/agentic-pdf-rag")
+```
+
+The pinned ref is recorded with every benchmark run, alongside the config
+fingerprint that `RAGConfig.fingerprint()` already produces.
+
+### Reason
+
+`PROJECT_SPEC.md` section 12 requires the notebook to be a reproducible entry
+point rather than the implementation. Three options were considered:
+
+* **Clone at a pinned ref** — one source of truth; the code stays readable and
+  editable inside the session, which matters while the project is still being
+  developed; pinning makes a run reproducible.
+* **`pip install git+...`** — cleaner import semantics, but reinstalls on every
+  fresh runtime and makes editing a file mid-session awkward.
+* **Write the files inline from notebook cells** — self-contained, but
+  duplicates four thousand lines into the notebook and guarantees drift.
+
+### Consequence
+
+The notebook is not self-contained: it needs network access to the repository.
+That is accepted, because it already needs network access to download model
+weights from Hugging Face, so no new failure mode is introduced.
+
+Unpinned cloning of the default branch is explicitly rejected. A benchmark run
+that cannot say which commit produced it is not reproducible, which
+`MODEL_SELECTION.md` section 15 requires.

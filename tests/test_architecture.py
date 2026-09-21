@@ -1,0 +1,244 @@
+"""Tests for the architectural constraints the specifications state as rules.
+
+A rule written only in prose is a rule that drifts. These check the two that
+would be expensive to discover late: the layer boundary that keeps the PDF
+parser swappable, and the configuration centralisation that keeps experiments
+controllable.
+"""
+
+from __future__ import annotations
+
+import ast
+import pathlib
+
+import pytest
+
+from src.config import (
+    MODEL_REGISTRY,
+    GenerationConfig,
+    RAGConfig,
+    embedding_profile,
+)
+from src.errors import ConfigurationError
+
+SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
+
+
+def _imports(path: pathlib.Path) -> set[str]:
+    """Every module name imported by a file, absolute and relative."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            # "from ..ingestion.parser import X" -> "ingestion.parser"
+            module = node.module or ""
+            found.add(module.lstrip("."))
+            found.update(f"{module.lstrip('.')}.{a.name}" for a in node.names)
+    return found
+
+
+def _modules(package: str) -> list[pathlib.Path]:
+    return sorted((SRC / package).glob("*.py"))
+
+
+class TestLayerBoundaries:
+    """ARCHITECTURE.md section 4: retrieval must not depend on the parser."""
+
+    @pytest.mark.parametrize(
+        "path", _modules("retrieval") + _modules("generation"), ids=lambda p: p.name
+    )
+    def test_downstream_layers_do_not_import_the_parser(self, path):
+        imported = _imports(path)
+        assert not any("parser" in name for name in imported), (
+            f"{path.name} imports the PDF parser; the retrieval and generation "
+            "layers must depend on the document model only, so the parser can "
+            "be replaced."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        _modules("retrieval") + _modules("generation") + _modules("chunking"),
+        ids=lambda p: p.name,
+    )
+    def test_downstream_layers_do_not_import_a_pdf_library(self, path):
+        imported = _imports(path)
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+            assert banned not in imported, (
+                f"{path.name} imports {banned}. PDF handling belongs in the "
+                "ingestion layer."
+            )
+
+    @pytest.mark.parametrize("path", _modules("ingestion"), ids=lambda p: p.name)
+    def test_ingestion_does_not_reach_downstream(self, path):
+        """The parser must not know about chunks, retrieval or generation."""
+        imported = _imports(path)
+        for banned in ("chunking", "retrieval", "generation", "pipeline"):
+            assert not any(name.startswith(banned) for name in imported), (
+                f"{path.name} imports {banned}; ingestion is the bottom layer."
+            )
+
+    def test_ingestion_does_not_call_a_model(self):
+        for path in _modules("ingestion"):
+            source = path.read_text(encoding="utf-8")
+            assert "transformers" not in source, (
+                f"{path.name} references transformers; ARCHITECTURE.md section 5 "
+                "says the ingestion layer must not call the LLM."
+            )
+
+
+class TestParserSwappability:
+    """DD-033: the PDF library must stay replaceable, and it was replaced."""
+
+    def test_pdf_libraries_are_confined_to_the_ingestion_layer(self):
+        offenders: list[str] = []
+        for path in SRC.rglob("*.py"):
+            if path.parent.name == "ingestion":
+                continue
+            source = path.read_text(encoding="utf-8")
+            for library in ("import pdfplumber", "import pymupdf", "import fitz"):
+                if library in source:
+                    offenders.append(f"{path.relative_to(SRC)} does `{library}`")
+        assert not offenders, "\n".join(offenders)
+
+    def test_default_parser_is_permissively_licensed(self):
+        from src.config import IngestionConfig
+
+        assert IngestionConfig().parser == "pdfplumber"
+
+    def test_every_backend_implements_the_protocol(self):
+        from src.config import IngestionConfig
+        from src.ingestion.parser import PARSERS, PdfParser, build_parser
+
+        for name in PARSERS:
+            parser = build_parser(IngestionConfig(parser=name))
+            assert isinstance(parser, PdfParser)
+            assert parser.name == name
+
+    def test_unknown_parser_is_rejected_with_the_available_names(self):
+        from src.config import IngestionConfig
+        from src.errors import PDFReadError
+        from src.ingestion.parser import build_parser
+
+        with pytest.raises(PDFReadError, match="pdfplumber"):
+            build_parser(IngestionConfig(parser="ghostscript"))
+
+
+class TestConfigurationCentralisation:
+    """DD-017: no hard-coded model names scattered through the code."""
+
+    def test_model_ids_appear_only_in_the_config_module(self):
+        offenders: list[str] = []
+        for path in SRC.rglob("*.py"):
+            if path.name == "config.py":
+                continue
+            source = path.read_text(encoding="utf-8")
+            for model_id in MODEL_REGISTRY:
+                if model_id in source:
+                    offenders.append(f"{path.relative_to(SRC)} hard-codes {model_id}")
+        assert not offenders, "\n".join(offenders)
+
+    def test_every_registry_entry_records_its_licence(self):
+        for info in MODEL_REGISTRY.values():
+            assert info.license
+            assert isinstance(info.commercial_use, bool)
+
+
+class TestLicensingGuard:
+    """DD-024, enforced rather than documented."""
+
+    def test_default_generator_is_apache_licensed(self):
+        config = RAGConfig.default()
+        info = MODEL_REGISTRY[config.generation.model_id]
+        assert info.license == "apache-2.0"
+        assert info.commercial_use
+
+    def test_low_memory_preset_is_also_apache_licensed(self):
+        info = MODEL_REGISTRY[RAGConfig.low_memory().generation.model_id]
+        assert info.commercial_use
+
+    def test_research_licensed_model_is_rejected_by_default(self):
+        config = RAGConfig(
+            generation=GenerationConfig(model_id="Qwen/Qwen2.5-3B-Instruct")
+        )
+        with pytest.raises(ConfigurationError, match="research"):
+            config.validate()
+
+    def test_research_licensed_model_can_be_benchmarked_explicitly(self):
+        config = RAGConfig(
+            generation=GenerationConfig(
+                model_id="Qwen/Qwen2.5-3B-Instruct",
+                allow_non_commercial_model=True,
+            )
+        )
+        assert config.validate() is config
+
+
+class TestMemoryBudget:
+    """MODEL_SELECTION.md 9.1, enforced before the T4 enforces it."""
+
+    def test_default_stack_fits_the_budget(self):
+        assert RAGConfig.default().estimate_vram_gb() <= 10.0
+
+    def test_low_memory_stack_is_smaller_still(self):
+        assert (
+            RAGConfig.low_memory().estimate_vram_gb()
+            < RAGConfig.default().estimate_vram_gb()
+        )
+
+    def test_oversized_stack_is_rejected_with_a_remedy(self):
+        config = RAGConfig(generation=GenerationConfig(quantization="none"))
+        # 8.0 GB bf16 generator + 1.2 GB embedder is within budget; the point of
+        # the check is that the estimate tracks quantization at all.
+        assert config.estimate_vram_gb() > RAGConfig.default().estimate_vram_gb()
+
+
+class TestConfigValidation:
+    def test_overlap_must_be_smaller_than_chunk_size(self):
+        from src.config import ChunkingConfig
+
+        config = RAGConfig(chunking=ChunkingConfig(chunk_size=200, chunk_overlap=200))
+        with pytest.raises(ConfigurationError, match="advance"):
+            config.validate()
+
+    def test_top_k_must_be_positive(self):
+        from src.config import RetrievalConfig
+
+        with pytest.raises(ConfigurationError, match="top_k"):
+            RAGConfig(retrieval=RetrievalConfig(top_k=0)).validate()
+
+    def test_fingerprint_changes_with_the_configuration(self):
+        from src.config import ChunkingConfig
+
+        base = RAGConfig.default()
+        changed = RAGConfig(chunking=ChunkingConfig(chunk_size=999))
+        assert base.fingerprint() != changed.fingerprint()
+
+    def test_fingerprint_is_stable_for_equal_configurations(self):
+        assert RAGConfig.default().fingerprint() == RAGConfig.default().fingerprint()
+
+
+class TestEmbeddingProfiles:
+    """The silent-failure table: wrong pooling or a stray prefix halves recall."""
+
+    def test_bge_m3_uses_cls_pooling_and_no_query_prefix(self):
+        profile = embedding_profile("BAAI/bge-m3")
+        assert profile.pooling == "cls"
+        assert profile.query_prefix == ""
+
+    def test_bge_v15_requires_the_query_instruction(self):
+        profile = embedding_profile("BAAI/bge-small-en-v1.5")
+        assert profile.pooling == "cls"
+        assert profile.query_prefix.startswith("Represent this sentence")
+        assert profile.document_prefix == ""  # queries only
+
+    def test_e5_uses_both_prefixes(self):
+        profile = embedding_profile("intfloat/e5-base-v2")
+        assert profile.query_prefix == "query: "
+        assert profile.document_prefix == "passage: "
+
+    def test_unknown_model_falls_back_without_a_prefix(self):
+        profile = embedding_profile("some-org/unknown-encoder")
+        assert profile.query_prefix == ""
+        assert profile.pooling == "mean"

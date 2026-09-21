@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-pdf-rag"
+version = "0.2.0"
+description = "Local agentic RAG for PDF question answering, Phases 1-2"
+requires-python = ">=3.10"
+dependencies = ["pdfplumber>=0.11", "numpy>=1.24"]
+
+[project.optional-dependencies]
+faiss = ["faiss-cpu>=1.8"]
+models = [
+    "torch>=2.1",
+    "transformers>=4.44",
+    "accelerate>=0.30",
+    "bitsandbytes>=0.43",
+    "sentencepiece>=0.2",
+]
+# pymupdf is AGPL-3.0 and test-only: it writes the fixture PDFs and serves
+# as the second parser backend. See DD-033 and requirements-dev.txt.
+dev = ["pytest>=8.0", "pymupdf>=1.24"]
+pymupdf = ["pymupdf>=1.24"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
