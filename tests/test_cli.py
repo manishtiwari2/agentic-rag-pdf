@@ -69,10 +69,10 @@ class TestAsk:
 
 
 class TestValidateBenchmark:
-    def test_the_template_dataset_is_rejected_with_a_nonzero_exit(self, capsys):
+    def test_the_shipped_dataset_exits_zero(self, capsys):
         code = main(["validate-benchmark"])
-        assert code == 1
-        assert "problem" in capsys.readouterr().out.lower()
+        assert code == 0
+        assert "OK" in capsys.readouterr().out
 
     def test_a_valid_dataset_exits_zero(self, tmp_path, capsys):
         from src.benchmark.schema import Question, save_questions
