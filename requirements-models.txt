@@ -1,0 +1,12 @@
+# Additional dependencies for running the actual open-weight models.
+#
+# Not needed for the test suite, which exercises the pipeline through the
+# dependency-free fallback components. Install these in Colab, where the GPU is.
+
+-r requirements.txt
+
+torch>=2.1             # BSD-3-Clause
+transformers>=4.44     # Apache-2.0
+accelerate>=0.30       # Apache-2.0  (device_map="auto")
+bitsandbytes>=0.43     # MIT         (4-bit NF4; required on a free-tier T4)
+sentencepiece>=0.2     # Apache-2.0  (tokenizer for the BGE models)
