@@ -68,6 +68,68 @@ class TestAsk:
         assert "ocr" in error.lower()
 
 
+class TestValidateBenchmark:
+    def test_the_template_dataset_is_rejected_with_a_nonzero_exit(self, capsys):
+        code = main(["validate-benchmark"])
+        assert code == 1
+        assert "problem" in capsys.readouterr().out.lower()
+
+    def test_a_valid_dataset_exits_zero(self, tmp_path, capsys):
+        from src.benchmark.schema import Question, save_questions
+
+        docs = tmp_path / "documents"
+        docs.mkdir()
+        (docs / "doc.pdf").write_bytes(pdfs.multipage_pdf(2))
+        questions_path = tmp_path / "questions.json"
+        save_questions(
+            questions_path,
+            [
+                Question(
+                    id="q1",
+                    document="doc.pdf",
+                    question="What is on page 1?",
+                    answer="Page 1 content.",
+                    evidence_pages=(1,),
+                    question_type="factual",
+                    difficulty="easy",
+                    split="dev",
+                )
+            ],
+        )
+        code = main(
+            [
+                "validate-benchmark",
+                "--questions",
+                str(questions_path),
+                "--documents-dir",
+                str(docs),
+                "--manifest",
+                str(tmp_path / "no_such_manifest.json"),
+            ]
+        )
+        assert code == 0
+        assert "OK" in capsys.readouterr().out
+
+
+class TestInspectPage:
+    def test_renders_a_page_and_prints_its_text(self, tmp_path, capsys):
+        code = main(
+            [
+                "inspect-page",
+                "--pdf",
+                _pdf(tmp_path, pdfs.multipage_pdf(2)),
+                "--page",
+                "1",
+                "--out",
+                str(tmp_path / "page.png"),
+            ]
+        )
+        assert code == 0
+        out = capsys.readouterr().out
+        assert pdfs.PAGE_MARKER.format(n=1) in out
+        assert (tmp_path / "page.png").exists()
+
+
 class TestInspect:
     def test_reports_chunking_statistics(self, tmp_path, capsys):
         code = main(["inspect", "--pdf", _pdf(tmp_path), "--offline", "--json"])
