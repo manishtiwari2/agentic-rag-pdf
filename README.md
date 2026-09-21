@@ -708,6 +708,9 @@ These questions should be answered using measured experiments rather than assump
 
 **Current status: Phases 1 and 2 implemented. No benchmark numbers yet.**
 
+A fuller record — verification evidence, enforced invariants, known limitations
+and the next step — is kept in [STATUS.md](STATUS.md).
+
 | Phase | State |
 | --- | --- |
 | 0 — Benchmark construction | **Not started.** `benchmark/documents/` is empty and `questions.json` still holds placeholders |
