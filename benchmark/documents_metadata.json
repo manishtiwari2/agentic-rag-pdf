@@ -1,0 +1,52 @@
+{
+  "doc1.pdf": {
+    "title": "GATE 2027 Computer Science and Information Technology - Syllabus/Practice Paper",
+    "category": "exam_paper",
+    "pages": 2,
+    "source_url": "",
+    "license": "unknown",
+    "redistributable": true,
+    "sha256": "81b23f40417bc1c2069782db7ad5ea0182175c9acb4766ebfdeefbe071a70bc0",
+    "retrieved": "2026-09-21"
+  },
+  "doc2.pdf": {
+    "title": "A look at advanced learners' use of mobile devices for English language study: Insights from interview data",
+    "category": "research_paper",
+    "pages": 11,
+    "source_url": "",
+    "license": "unknown",
+    "redistributable": true,
+    "sha256": "a9b78223f7f2e3fb06defcebe9585ed6ea867aa86b823f2ac0c59d911a1b859c",
+    "retrieved": "2026-09-21"
+  },
+  "doc3.pdf": {
+    "title": "BCS5031 - Git, Reviews and AI-Assisted Coding (Parts 4-10)",
+    "category": "instructional_manual",
+    "pages": 42,
+    "source_url": "",
+    "license": "unknown",
+    "redistributable": true,
+    "sha256": "0f7710e3c713abdc7071ad3f240582e35133417af84bd3db36e7b3d7601a3cdb",
+    "retrieved": "2026-09-21"
+  },
+  "doc4.pdf": {
+    "title": "Resume - Manish Kumar Tiwari",
+    "category": "personal_document",
+    "pages": 1,
+    "source_url": "",
+    "license": "owned by author",
+    "redistributable": true,
+    "sha256": "c8c214133990cff5041d0af1b6621c772dfe8fc99797e46d99748ecc300e8d33",
+    "retrieved": "2026-09-21"
+  },
+  "doc5.pdf": {
+    "title": "The Development History and Evolutionary Trends of Semiconductor",
+    "category": "research_paper",
+    "pages": 9,
+    "source_url": "",
+    "license": "CC-BY-4.0",
+    "redistributable": true,
+    "sha256": "f9b0a13cb9e8c8e816ca41580dc9ec335fc00d01b24d44bce26894cad6634b52",
+    "retrieved": "2026-09-21"
+  }
+}
