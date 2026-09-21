@@ -796,12 +796,15 @@ free-tier T4 budget or that makes a research-licensed model the default
 
 ## 20. License
 
-**Not yet chosen, but no longer blocked.** DD-033 moved the default PDF backend
-from PyMuPDF (AGPL-3.0) to pdfplumber (MIT), so the entire runtime dependency
-chain is permissive — pdfplumber MIT, pdfminer.six MIT, pypdfium2
-BSD-3-Clause/Apache-2.0, Pillow MIT-CMU, numpy BSD-3-Clause, faiss-cpu MIT. The
-project is free to choose a permissive licence for itself; Apache-2.0 is
-suggested, for its explicit patent grant and to match the default models.
+**Apache-2.0.** See [LICENSE](LICENSE); third-party and model licences are
+recorded in [NOTICE](NOTICE).
+
+Chosen for its explicit patent grant, and because it matches the licence of the
+default model stack. It was unblocked by DD-033, which moved the default PDF
+backend from PyMuPDF (AGPL-3.0) to pdfplumber (MIT); the whole runtime
+dependency chain is now permissive — pdfplumber MIT, pdfminer.six MIT,
+pypdfium2 BSD-3-Clause/Apache-2.0, Pillow MIT-CMU, numpy BSD-3-Clause,
+faiss-cpu MIT.
 
 Two licence facts worth stating plainly:
 
