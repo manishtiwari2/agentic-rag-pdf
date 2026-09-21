@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-21 (Phase 0 tooling added)
+Last updated: 2026-09-21 (Phase 0 dataset human-verified)
 
 A factual record of what exists, what it is verified to do, and what blocks the
 next step. `EXPERIMENT_PLAN.md` says what order to build in; this says how far
@@ -13,8 +13,8 @@ along that order the project actually is.
 | | |
 | --- | --- |
 | Phases complete | 1 (ingestion + indexing), 2 (dense baseline) — code |
-| Blocking phase | **0 (benchmark construction)** — tooling built, dataset itself not started |
-| Tests | 330 passing |
+| Blocking phase | **0 (benchmark construction)** — tooling built, 76-question dataset human-verified against the rendered PDFs |
+| Tests | 332 passing |
 | Source | 5,296 lines in `src/`, 2,544 lines in `tests/` |
 | Licence | Apache-2.0 (DD-035) |
 | Merged | PR #1 and PR #2, both in `main` |
@@ -28,7 +28,7 @@ Against the exit criteria in `EXPERIMENT_PLAN.md` section 2.
 
 | Phase | Exit criterion | State |
 | --- | --- | --- |
-| **0 — Benchmark** | 5–10 licensed PDFs, ~75 questions, every evidence page verified against the rendered PDF, dev/eval split assigned | **Tooling complete, dataset not started.** `python -m src.cli validate-benchmark` enforces every `BENCHMARK_SPEC.md` section 5.1 rule and correctly rejects the current file with 39 problems; `python -m src.cli inspect-page` renders a page to PNG and prints its extracted text for manual verification. `benchmark/documents/` still does not exist; `questions.json` is still the 10-question placeholder template — choosing documents, writing questions, and eyeballing evidence pages is the remaining work, and it is manual |
+| **0 — Benchmark** | 5–10 licensed PDFs, ~75 questions, every evidence page verified against the rendered PDF, dev/eval split assigned | **Met.** `benchmark/documents/` holds 5 PDFs (56 pages total), recorded in `benchmark/documents_metadata.json` with real page counts and SHA-256 checksums; only `doc5.pdf` has a confirmed open licence (CC-BY-4.0, stated in its own text), the other four are `license: "unknown"` per the project owner's explicit sign-off. `questions.json` holds 76 questions (all 10 taxonomy categories, 33 dev / 43 eval); `validate-benchmark` passes cleanly. **Every question and evidence page has now been checked by a human against the rendered PDF** (`inspect-page`, page by page): three evidence-page errors found in the original AI-authored draft (q023, q041, q058 — each citing a page adjacent to, but not containing, part of the supporting text) were corrected; no answer text or unanswerable-question determination needed correction |
 | **1 — Ingestion + indexing** | A PDF parses to page-attributed chunks; page numbers checked against the source; a scanned PDF errors clearly | **Met**, verified mechanically |
 | **2 — Dense baseline** | Baseline A answers the benchmark end to end, produces `results/baseline/` | **Code complete, exit criterion blocked on Phase 0.** Answers an arbitrary PDF end to end; `results/baseline/` is empty because there is nothing to run against |
 | **3 — Metrics harness** | Retrieval, answer, citation and abstention metrics; error taxonomy; per-question records | Not started, blocked on Phase 0 |
@@ -172,19 +172,42 @@ decided (4, 5) or correctly deferred pending a dev set (1, 2, 3).
 
 ---
 
-## 9. Next step
+## 9. Benchmark documents in place
 
-**Phase 0's dataset.** The tooling that makes the manual work checkable is
-now built: `src/benchmark/validate.py` enforces every rule in
-`BENCHMARK_SPEC.md` section 5.1 and refuses a run on any failure
-(`require_valid_benchmark`), `src/benchmark/manifest.py` checksum-verifies
-documents that cannot be committed, and `src/benchmark/inspect.py` renders an
-evidence page to PNG with its extracted text so a human can verify it without
-leaving the terminal.
+| File | Pages | Category | Licence |
+| --- | --- | --- | --- |
+| `doc1.pdf` | 2 | exam_paper (GATE 2027, CS/IT) | unknown |
+| `doc2.pdf` | 11 | research_paper (mobile devices in EFL learning) | unknown |
+| `doc3.pdf` | 42 | instructional_manual (Git/review/AI-assisted coding) | unknown |
+| `doc4.pdf` | 1 | personal_document (resume) | owned by author |
+| `doc5.pdf` | 9 | research_paper (semiconductor evolution) | CC-BY-4.0, confirmed in text |
 
-What is left is the hard part, and it is manual and cannot be delegated:
-choosing 5–10 redistributable PDFs, writing ~75 questions, and opening each
-PDF to confirm every evidence page by eye. `BENCHMARK_SPEC.md` section 4.1
-lists the categories that are safe to redistribute, and warns that "arXiv" is
-not a licence. `python -m src.cli validate-benchmark` should report clean
-before any of that ground truth is trusted.
+Recorded in `benchmark/documents_metadata.json` with a real page count and
+SHA-256 read through `PdfParser` for each file (`Manifest.build_entry`), not a
+hand-typed guess. Only `doc5.pdf`'s licence is independently confirmed from
+its own text; the rest are marked `"unknown"` and were added on the project
+owner's explicit authorization rather than a verified open licence per file.
+That is a recorded trade-off, not an oversight — `NOTICE` should be updated
+with the same information once real `source_url`/`license` values are filled
+in.
+
+## 10. Next step
+
+**Phase 0 is done.** `questions.json` holds 76 questions across all 10
+taxonomy categories against the 5 documents in section 9, passes
+`validate-benchmark` mechanically, and every question's `answer` and
+`evidence_pages` have been checked by a human against the rendered PDF with
+`python -m src.cli inspect-page --pdf benchmark/documents/docN.pdf --page M`,
+per `EXPERIMENT_PLAN.md` section 2. Three evidence-page errors were found and
+fixed in the process (see section 2); no other corrections were needed.
+
+The tooling that made that pass fast stays in place: `src/benchmark/validate.py`
+enforces every rule in `BENCHMARK_SPEC.md` section 5.1 and refuses a run on
+any failure (`require_valid_benchmark`), `src/benchmark/manifest.py`
+checksum-verifies documents that cannot be committed, and
+`src/benchmark/inspect.py` renders an evidence page to PNG with its extracted
+text so a human can verify it without leaving the terminal.
+
+**Next up per `EXPERIMENT_PLAN.md` section 1:** run Baseline A (Phase 2)
+against this now-trusted dataset to populate `results/baseline/`, then build
+the metrics harness (Phase 3) to score it.
