@@ -88,6 +88,87 @@ class TestLayerBoundaries:
             )
 
 
+class TestEvaluationLayerBoundaries:
+    """ARCHITECTURE.md section 3: the harness sits above the system it measures.
+
+    The dependency runs one way -- evaluation reads ``benchmark/schema.py`` and
+    drives a pipeline; neither knows the harness exists. That is what lets the
+    same harness score the hybrid and agentic systems in Phases 4 and 5 without
+    either of them importing it, and a cycle here would be discovered as an
+    import error in Phase 4 rather than as a rule now.
+    """
+
+    @pytest.mark.parametrize("path", _modules("benchmark"), ids=lambda p: p.name)
+    def test_the_dataset_layer_does_not_import_the_harness(self, path):
+        imported = _imports(path)
+        assert not any(name.startswith("evaluation") for name in imported), (
+            f"{path.name} imports the evaluation layer. The dependency runs the "
+            "other way: evaluation depends on the dataset schema, never the "
+            "reverse."
+        )
+
+    def test_no_layer_below_evaluation_imports_it(self):
+        offenders: list[str] = []
+        for path in SRC.rglob("*.py"):
+            if path.parent.name == "evaluation":
+                continue
+            for name in _imports(path):
+                if name.startswith("evaluation") or name.endswith(".evaluation"):
+                    offenders.append(f"{path.relative_to(SRC)} imports {name}")
+        # cli.py is the entry point and is allowed to wire the harness up; it
+        # does so inside the subcommand, so nothing imports it at module load.
+        offenders = [o for o in offenders if not o.startswith("cli.py")]
+        assert not offenders, "\n".join(offenders)
+
+    @pytest.mark.parametrize("path", _modules("evaluation"), ids=lambda p: p.name)
+    def test_the_harness_does_not_import_a_pdf_library(self, path):
+        imported = _imports(path)
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+            assert banned not in imported, (
+                f"{path.name} imports {banned}. PDF handling belongs in the "
+                "ingestion layer; the harness reaches it through the pipeline."
+            )
+
+    def test_the_harness_reuses_abstention_detection_rather_than_copying_it(self):
+        """BENCHMARK_SPEC.md 13.2 fixes the patterns and records the version.
+
+        A second detector in the evaluation layer would be a second set of
+        patterns to keep in step, and the one further from the generator would
+        drift. So the harness imports ``is_abstention`` and must not define
+        refusal patterns of its own.
+        """
+        import src.evaluation.benchmark as harness
+
+        assert harness.is_abstention.__module__ == "src.generation.abstention"
+
+        for path in _modules("evaluation"):
+            source = path.read_text(encoding="utf-8")
+            assert "could not find sufficient evidence" not in source.lower(), (
+                f"{path.name} hard-codes a refusal phrase. Abstention detection "
+                "lives in src/generation/abstention.py and is versioned there."
+            )
+
+    def test_the_scoring_rules_are_versioned(self):
+        """Two runs scored under different rules are not comparable, which is
+        why the abstention patterns carry a version and these must too."""
+        from src.evaluation.metrics import (
+            ERROR_TAXONOMY_VERSION,
+            SCORING_RULES_VERSION,
+        )
+
+        assert SCORING_RULES_VERSION
+        assert ERROR_TAXONOMY_VERSION
+
+    def test_the_deliberately_absent_components_are_still_absent(self):
+        """DD-013 / STATUS.md section 4. Phase 3 measures the baseline; it does
+        not quietly acquire the parts Phases 4 and 5 exist to add."""
+        for package in ("reranking", "agents"):
+            assert not (SRC / package).exists(), (
+                f"src/{package}/ exists. DD-013 requires a baseline that lacks "
+                "it before its value can be measured."
+            )
+
+
 class TestParserSwappability:
     """DD-033: the PDF library must stay replaceable, and it was replaced."""
 

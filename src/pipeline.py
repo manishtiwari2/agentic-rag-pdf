@@ -46,9 +46,40 @@ class RAGResult:
     def cited_pages(self) -> tuple[int, ...]:
         return tuple(sorted({page for c in self.citations for page in c.pages}))
 
-    def to_record(self) -> dict[str, object]:
-        """Per-question record for observability and, later, error analysis."""
-        return {
+    @property
+    def evidence_text(self) -> str:
+        """Everything the generator was shown, as one string.
+
+        What faithfulness is scored against: a claim is grounded only if it
+        appears in the passages the model actually received, which is the
+        evidence list rather than the wider retrieval.
+        """
+        return "\n\n".join(item.text for item in self.evidence)
+
+    @property
+    def evidence_pages(self) -> tuple[int, ...]:
+        return tuple(sorted({page for e in self.evidence for page in e.pages}))
+
+    def to_record(
+        self,
+        question_id: str | None = None,
+        system: str | None = None,
+        reference_answer: str | None = None,
+        metrics: dict[str, object] | None = None,
+        verification_status: str | None = None,
+        latency_s: float | None = None,
+    ) -> dict[str, object]:
+        """Per-question record for observability and error analysis.
+
+        Called bare it is the observability record the CLI prints. Called with
+        the benchmark's arguments it is the BENCHMARK_SPEC.md section 20 record
+        -- ``question_id, system, answer, reference_answer, retrieved_chunks,
+        citations, metrics, latency, verification_status`` -- which is why the
+        harness extends this method rather than keeping a serializer of its own:
+        two serializers for one result is two things to keep in step, and the
+        one further from the data drifts.
+        """
+        record: dict[str, object] = {
             "question": self.question,
             "answer": self.answer,
             "abstained": self.abstained,
@@ -58,6 +89,24 @@ class RAGResult:
             "evidence_markers": [e.marker for e in self.evidence],
             **self.metadata,
         }
+        if question_id is not None:
+            # Section 20 names `retrieved_chunks`; `retrieved` is the same list
+            # under the name the rest of the codebase uses, kept so a reader of
+            # either document finds what they are looking for.
+            record = {
+                "question_id": question_id,
+                "system": system or self.metadata.get("pipeline", ""),
+                "reference_answer": reference_answer,
+                **record,
+                "retrieved_chunks": record["retrieved"],
+                "evidence_pages": list(self.evidence_pages),
+                "verification_status": verification_status or "not_run",
+                "latency": latency_s
+                if latency_s is not None
+                else self.metadata.get("latency_s"),
+                "metrics": metrics or {},
+            }
+        return record
 
     def format(self) -> str:
         """Human-readable rendering for the notebook and the CLI."""
@@ -164,6 +213,26 @@ class DenseRAGPipeline:
                 **generated.metadata,
             },
         )
+
+    def retrieve(self, question: str, k: int | None = None) -> list[RetrievedChunk]:
+        """Rank chunks without generating an answer.
+
+        The benchmark harness uses this to score retrieval at a depth greater
+        than the generation context -- BENCHMARK_SPEC.md section 10 asks for
+        Recall@10 while the baseline generates from 5, and without a probe the
+        two figures would be the same number under two names.
+
+        It reads the index and returns; it touches no state and cannot change
+        what ``ask`` produces. ARCHITECTURE.md section 26 requires benchmark
+        instrumentation not to change answer behaviour, and a test asserts the
+        stronger property that a harness-run result equals a bare ``ask``.
+        """
+        if not self.is_indexed:
+            raise IndexNotBuiltError(
+                "No document has been indexed. Call pipeline.index(pdf_path) "
+                "before retrieving."
+            )
+        return self._retriever.retrieve(question, k or self.config.retrieval.top_k)
 
     def _maybe_generate(
         self, question: str, retrieved: list[RetrievedChunk]
