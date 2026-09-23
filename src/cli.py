@@ -8,6 +8,7 @@
     python -m src.cli run-benchmark --system agentic --offline     # agentic
     python -m src.cli run-benchmark --system agentic --no-verification --offline         --out results/ablations/verification_off                   # an ablation
     python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
+    python -m src.cli final-table                                  # results/final/
 
 ``--system`` selects the system through configuration (``retrieval.strategy``)
 rather than through a second code path, so every other flag means the same
@@ -393,7 +394,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Compare runs differing in a held-constant field (EVALUATION_PROTOCOL.md 10).",
     )
 
+    final_cmd = sub.add_parser(
+        "final-table",
+        help=(
+            "Regenerate results/final/ from stored results: the section 28 table, "
+            "the ablation verdicts (DD-058) and the error analysis."
+        ),
+    )
+    final_cmd.add_argument("--root", default=".", help="Repository root holding results/.")
+    final_cmd.add_argument("--out", default="results/final")
+
     args = parser.parse_args(argv)
+
+    if args.command == "final-table":
+        from .evaluation.report import write_report  # noqa: PLC0415
+
+        try:
+            paths = write_report(args.root, args.out)
+        except (OSError, RAGError, ValueError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        if hasattr(sys.stdout, "reconfigure"):
+            # A Windows console's code page cannot print every character in it.
+            sys.stdout.reconfigure(errors="replace")
+        print(paths["markdown"].read_text(encoding="utf-8"))
+        print("Wrote " + ", ".join(str(p) for p in paths.values()))
+        return 0
 
     if args.command == "compare-runs":
         from .evaluation.benchmark import compare_runs  # noqa: PLC0415
