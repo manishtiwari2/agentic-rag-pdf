@@ -64,6 +64,9 @@ def offline_config() -> RAGConfig:
         # Without this the offline fixture would inherit the model-backed
         # reranker, and a hybrid test would try to download weights.
         reranking=config.reranking,
+        # Likewise the rule-based agents: the default "llm" agents are refused
+        # on the scripted backend (DD-055).
+        agents=config.agents,
     )
 
 

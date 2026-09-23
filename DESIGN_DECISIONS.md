@@ -1724,3 +1724,405 @@ are fixed. multi_hop + comparison covers 7 of the 11 `hard` questions.
 A metric chosen after the result is not a test of the result. The floors are
 written down now so that a null is read as what the offline stack can and
 cannot show, not explained after the fact.
+
+---
+
+# DD-057 — The Seven Ablations Are Section 24's Six Components on the Agentic System, Plus the Existing Reranker-OFF Arm on Baseline B
+
+**Status:** Accepted — reconciles EXPERIMENT_PLAN.md section 2 with EVALUATION_PROTOCOL.md section 24
+
+### Decision
+
+The Phase 6 exit criterion names "the seven ablations in
+`EVALUATION_PROTOCOL.md` section 24". Section 24 lists six components, and
+section 26.2 says "seven or more arms". The specifications name no seventh
+component anywhere, so none is invented to reach the number. The seven are
+seven *arms*, meaning measured configurations:
+
+| # | Arm | Removed from | Reference | Directory |
+| --- | --- | --- | --- | --- |
+| 1 | Agent planner OFF | agentic | `results/agentic/` | `results/ablations/planner_off/` |
+| 2 | Hybrid retrieval OFF | agentic | `results/agentic/` | `results/ablations/hybrid_off/` |
+| 3 | Reranker OFF | agentic | `results/agentic/` | `results/ablations/reranker_off_agentic/` |
+| 4 | Retrieval refinement OFF | agentic | `results/agentic/` | `results/ablations/refinement_off/` |
+| 5 | Evidence controller OFF | agentic | `results/agentic/` | `results/ablations/evidence_controller_off/` |
+| 6 | Verification OFF | agentic | `results/agentic/` | `results/ablations/verification_off/` |
+| 7 | Reranker OFF | Baseline B | `results/hybrid/` | `results/ablations/reranker_off/` (Phase 4, exists) |
+
+Section 24 says "each major component should be removed independently". That
+means removing it from the full system, and arms 1-6 do exactly that.
+
+Arm 3 is needed even though arm 7 exists:
+* Arm 7 removes the reranker from Baseline B, where it answers RQ2 (DD-048).
+* Arm 3 asks whether the reranker still earns its place once the planner merges
+  several reranked rankings by RRF.
+
+Arm 7 is kept and counted for two reasons. It is a measured configuration under
+`results/ablations/`, and the reranker verdict uses both arms.
+
+Not counted as ablations:
+
+* **Agent loop OFF** (all four switches off). DD-050 and
+  `test_all_four_off_is_baseline_b` make it Baseline B, record for record. It is
+  a baseline, and Phase 5 already compared against it.
+* **Hybrid OFF at the baseline level.** That is Baseline A against
+  `reranker_off`, which is RQ1's comparison (STATUS.md section 9.2). It is not a
+  new arm.
+* **`--max-iterations 1`.** With the rule controller it behaves exactly like
+  refinement OFF. `can_retrieve_again` is false in both, so the controller
+  answers or abstains the same way, and only `stop_reason` differs. It belongs to
+  open question 3's sweep (DD-058), not to the ablations.
+* **The threshold sweep.** It tunes a value on `--split dev` and removes
+  nothing.
+
+### Reason
+
+A count that does not match its source list is a documentation defect. There
+are two ways to fix it: add a component, or read "seven" as arms.
+
+Adding a component would mean inventing an experiment to satisfy a number,
+which is the opposite of pre-declaration. Every arm above maps to a switch the
+code already has, and six of them map to a line of section 24.
+
+### Consequence
+
+`--no-hybrid` is added to the CLI. It sets `retrieval.retrievers = ("dense",)`
+and nothing else. `tests/test_ablations.py` checks that every arm differs from
+the reference in exactly one configuration field.
+
+In the agentic system, hybrid OFF still reranks the dense top 20. It is
+therefore not Baseline A.
+
+---
+
+# DD-058 — Phase 6's Metrics, Floors, Threshold Rule and "Earned Its Cost" Rule Were Named Before Any Run
+
+**Status:** Accepted — declared before any Phase 6 result existed. Recorded in
+`statistics.PRIMARY_METRICS` under the `ablation:*` and `threshold_selection`
+keys.
+
+### Ablation arms
+
+Each arm runs over all 76 questions, the same set as `results/agentic/`.
+
+Each arm is compared with `compare-runs` against the full agentic system,
+`results/agentic/`, as **arm − reference**. The one exception is arm 7, whose
+reference remains Baseline B (DD-048).
+
+A component **helps** on a metric when removing it makes that metric
+significantly worse: the 95% CI of arm − reference excludes zero in the
+harmful direction.
+
+| Arm | Metrics the component should plausibly move (n) | Why |
+| --- | --- | --- |
+| planner OFF | Full-Recall@5, multi-hop + comparison (15); accuracy, multi-hop + comparison (15) | decomposition exists to retrieve each hop |
+| hybrid OFF | Recall@5 (70); MRR@10 (70) | BM25 adds candidates the dense retriever misses |
+| reranker OFF (agentic) | MRR@10 (70); accuracy (all) (76) | it reorders the pool; accuracy is RQ2's answer metric |
+| refinement OFF | over-abstention rate (70); Full-Recall@5 (70) | a second round should turn a refusal into an answer from new evidence |
+| evidence controller OFF | abstention accuracy (6); over-abstention rate (70) | the only component that refuses before generation |
+| verification OFF | unsupported-answer rate (76); faithfulness (76) | RQ4 |
+| reranker OFF (Baseline B, exists) | accuracy (all); faithfulness (DD-048) | unchanged from Phase 4 |
+
+**Regression attribution.** Phase 5's two significant regressions against
+Baseline B were in faithfulness and citation any-correct. Both metrics are read
+on every arm against the reference.
+
+The hypothesis, stated now: **only the evidence-controller-OFF arm**
+significantly improves both, because the controller's refusals caused them
+(STATUS.md section 9.3). If no arm separates the cause, or more than one does,
+that is recorded as a follow-up. No unplanned run is added to settle it.
+
+**Cost** is read on every arm:
+* mean latency, as a paired contrast;
+* mean generation-model calls, also paired. `model_calls_mean` is added to
+  `statistics.METRICS` so it gets a paired contrast;
+* reranker passes (retrieval queries issued), reported descriptively.
+
+### "Earned its cost", per component
+
+Three things are read for each component:
+
+1. **Benefit:** removing it significantly worsens at least one of its own
+   metrics above.
+2. **Harm:** removing it significantly *improves* any of the four keep-or-drop
+   metrics: accuracy (all), faithfulness, citation any-correct, abstention
+   accuracy. A harm means the component causes a regression.
+3. **Cost:** the paired latency and model-call differences, reported whatever
+   their size.
+
+The verdict follows from them:
+
+* **Earned its cost:** benefit, and no harm.
+* **Did not earn its cost:** no benefit. A null buys nothing, so even a
+  negligible cost is unjustified (BENCHMARK_SPEC.md section 18). If the arm's
+  answers are identical to the reference's, the component is called **inert on
+  this stack**.
+* **Not shown (trade-off):** benefit and harm both. It is reported as the
+  trade-off it is, not as earned.
+
+Offline, cost cannot disqualify a component that shows benefit. Every agent is a
+rule, makes zero model calls and adds milliseconds. So the cost column is
+reported but is not decisive. It does not transfer to an LLM agent, which would
+add a model call per decision on a T4.
+
+For **hybrid retrieval** and **the reranker**, the agentic arm is section 24's
+test and decides the verdict. The Phase 4 baseline-level contrasts (RQ1, RQ2)
+are reported beside it, and any disagreement between the two is stated.
+
+A significant result on a metric *not* declared above is a hypothesis, not a
+benefit (EVALUATION_PROTOCOL.md 26.2).
+
+### Evidence-controller threshold (DD-052's 0.5)
+
+* **Values:** `agents.sufficiency_threshold` ∈ {0.2, 0.3, 0.4, 0.5, 0.6}, on
+  `--split dev` only (33 questions). Every other field is the reference
+  configuration.
+* **Selection rule:** the highest dev accuracy (all). Ties are broken in order:
+  1. higher dev citation any-correct;
+  2. lower dev over-abstention rate;
+  3. the value nearest 0.5, the untuned default, so nothing changes without
+     evidence;
+  4. if two values are equally near 0.5, the higher, because it abstains more.
+
+  Accuracy (all) is the criterion because DD-029 counts unanswerable questions
+  in it. It therefore penalises both over-abstention and false answers.
+* **Order of work:** the dev results are committed, and the chosen value
+  recorded in a DD, before the eval run.
+* **The eval run:** the chosen value is run **once** on `--split eval`
+  (43 questions), into `results/experiments/threshold/eval_<value>/`. It is
+  compared, on the eval split, against the reference and against Baseline B.
+  Both are restricted to eval from their stored all-question runs
+  (`compare-runs --split eval`).
+* **Keep-or-drop:** the rule is applied to the tuned arm against Baseline B,
+  exactly as DD-056 applied it to the reference.
+* If the rule selects 0.5, the eval run is still made once, and the report says
+  that tuning did not move the default.
+
+### `MAX_RETRIEVAL_ITERATIONS` (open question 3)
+
+* **Values:** `--max-iterations` ∈ {1, 2, 3}, on `--split dev`, at the reference
+  threshold of 0.5. That keeps this sweep independent of the threshold choice.
+* **Descriptive only.** Reported per value: questions refined, answers changed
+  by the extra round(s), mean iterations, accuracy and over-abstention.
+* The cap stays at 2 in every reported system. No second tuned value goes to
+  the eval set, so eval is looked at for one tuned parameter only.
+
+### Final table
+
+The headline table (EVALUATION_PROTOCOL.md 28) is on the **eval split**,
+43 questions. It has four rows: dense, hybrid, agentic and the tuned arm, each
+figure with a 95% CI. Section 5.2 forbids headline results from anything else.
+
+The stored all-question runs are restricted to eval by filtering their records,
+not by re-running them. The stack is deterministic, so a re-run would be another
+look at eval that adds no information.
+
+Two other tables are kept separate from the headline:
+* an all-76-question table, labelled, for continuity with STATUS.md sections
+  9.2-9.3;
+* the dev sweep numbers, in their own table only.
+
+Peak VRAM is `null` offline, and is written as null, never as 0.
+
+### Floors, stated in advance
+
+* **Offline stack throughout:** hashing embedder, scripted extractive generator,
+  term-overlap reranker, and rule-based planner, controller and verifier. No
+  finding is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
+* **Unanswerable questions:** 6 of 76, 3 in each split. One question moves
+  abstention accuracy by 17 points over all questions, and by 33 over one
+  split. The controller-OFF arm's abstention CI will almost certainly include
+  zero.
+* **Multi-hop + comparison:** 15 of 76, 6 dev and 9 eval. The planner's metrics
+  are bounded by this. The scripted generator also answers from a single block,
+  so it cannot combine hops (DD-056).
+* **Unsupported-answer rate is already 0.000** in every system. Removing the
+  verifier cannot show it lowering that rate, so the verifier's primary metric
+  is expected to be null by construction.
+* **Refinement ran on 4 of 76 questions** in Phase 5 (DD-053). Refinement OFF can
+  change at most those 4 records. That is far too few for a CI over 70 questions
+  to exclude zero unless all four move.
+* **Model calls:** rule agents make none. Arms differ in model calls only
+  through refusals (fewer generator calls) and regenerations (more).
+* **Latency** is milliseconds on a stack that loads no weights. A paired latency
+  contrast is a real measurement of the stand-ins and nothing more.
+
+### Multiple comparisons
+
+* **Planned Phase 6 comparisons:** 6 arm files plus 2 eval files, at 21
+  contrasts each, **168** in total.
+* **Pre-declared among them:**
+  * 23 distinct ablation contrasts: 12 per-arm and 12 attribution, with the
+    verifier's faithfulness counted in both lists;
+  * 4 keep-or-drop contrasts for the tuned arm against Baseline B.
+* **Earlier phases:** the 97 comparisons of Phases 4-5 are reported beside
+  these in the write-up.
+* **Not added:** eval-split pairwise contrasts among dense, hybrid and agentic.
+  Those comparisons were already made over all questions.
+
+### Disclosure
+
+Phase 5's diagnosis, which named the 0.5 threshold as the suspect, read failures
+from both splits. The two lost answers it cited, q065 and q069, are eval
+questions. So the decision *to tune this threshold* was informed by eval-set
+failures, even though the *value* is chosen on dev alone. Under section 5.2 this
+is a disclosed leak, and the write-up repeats it.
+
+---
+
+# DD-059 — The Sufficiency Threshold Is 0.3, Chosen on Dev by DD-058's Rule; the Iteration Cap Stays 2
+
+**Status:** Accepted. Recorded and committed before the eval run.
+
+### Dev sweep (`--split dev`, 33 questions; offline stand-in stack)
+
+`results/experiments/threshold/dev_<value>/`. Every other field is the reference
+configuration. These are dev-set numbers only (EVALUATION_PROTOCOL.md 5.2), and
+they must never share a table with eval results.
+
+| threshold | accuracy (all) | citation any-correct | over-abstention | abstention acc. (n=3) | faithfulness | controller refusals |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.2 | 0.212 | 0.567 | 0.100 | 0.333 | 0.879 | 4 |
+| **0.3** | **0.242** | **0.533** | **0.133** | 0.667 | 0.818 | 6 |
+| 0.4 | 0.242 | 0.533 | 0.167 | 0.667 | 0.788 | 7 |
+| 0.5 (reference) | 0.242 | 0.533 | 0.167 | 0.667 | 0.788 | 7 |
+| 0.6 | 0.242 | 0.467 | 0.233 | 0.667 | 0.727 | 9 |
+
+The rule, applied mechanically:
+
+1. **Accuracy (all):** 0.3, 0.4, 0.5 and 0.6 tie at 0.242.
+2. **Citation any-correct:** among those four, 0.3, 0.4 and 0.5 tie at 0.533.
+   0.6 drops out.
+3. **Over-abstention:** 0.3 has the lowest of the three, 0.133 against 0.167.
+
+**Chosen: 0.3.**
+
+On 33 questions, the decisive difference is one answerable question that is
+no longer refused. That is a tuning choice, not a finding. Its only test is
+the single eval run that follows.
+
+What the dev sweep does show is that the threshold trades coverage against
+refusals monotonically:
+* Controller refusals rise from 4 to 9 across the grid.
+* Over-abstention and faithfulness move with them.
+* At 0.2, the controller stops refusing an unanswerable question and dev
+  accuracy falls.
+
+### `MAX_RETRIEVAL_ITERATIONS` (open question 3), dev, threshold 0.5
+
+`results/experiments/max_iterations/dev_<n>/`
+
+| cap | accuracy (all) | over-abstention | mean iterations | questions refined | answers changed by refinement |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.242 | 0.200 | 1.000 | 0 | 0 |
+| 2 | 0.242 | 0.167 | 1.030 | 1 | 0 |
+| 3 | 0.242 | 0.167 | 1.030 | 1 | 0 |
+
+* **Cap 3 is identical to cap 2.** No dev question reaches a third round,
+  because the rule refiner runs out of new queries first (`no_new_query`).
+* **Cap 2 differs from cap 1 on one question.** The second round turned a
+  refusal into an answer. The answer is still wrong, so accuracy does not move.
+* `refinement_changed_answer` is 0. That field compares drafts, and at cap 1
+  this question produced no draft, only a refusal.
+
+**Closed for the offline stack:** the cap is inert above 2, and iteration 2
+changes one refusal in 33 into a (wrong) answer. As DD-058 declared, the cap
+stays at 2. The question stays open for an LLM controller and refiner, which
+could keep issuing new queries.
+
+---
+
+# DD-060 — Phase 6 Verdicts: No Component Earned Its Cost Offline, and the Controller's Refusals Are Two Rules, One of Them Fed by an Ingestion Defect
+
+**Status:** Accepted — Phase 6 findings, all from the offline stand-in stack
+
+### Decision
+
+DD-058's rule is applied mechanically by `src/evaluation/report.py`
+(`python -m src.cli final-table`, which writes `results/final/`). Each verdict
+comes from that component's agentic arm.
+
+| Component | Its declared metrics, arm − reference | Verdict |
+| --- | --- | --- |
+| hybrid retrieval | Recall@5 0.000 [−0.043, +0.043]; MRR@10 +0.003 [−0.010, +0.016] | did not earn its cost |
+| reranker | MRR@10 −0.011 [−0.067, +0.039]; accuracy +0.013 [0.000, +0.039] | did not earn its cost |
+| planner | Full-Recall@5 (multi) +0.067 [0.000, +0.200]; accuracy (multi) 0.000 | did not earn its cost |
+| refinement | over-abstention +0.014 [0.000, +0.043]; Full-Recall@5 0.000 | did not earn its cost |
+| evidence controller | abstention acc. −0.167 [−0.500, 0.000]; over-abstention −0.100 [−0.172, −0.029] | did not earn its cost; **removing it improves faithfulness and citation** |
+| verifier | unsupported rate 0.000 (floor); faithfulness +0.026 [0.000, +0.066] | did not earn its cost |
+
+Phase 4's baseline-level contrasts disagree with the agentic arms in one
+place:
+* **Hybrid retrieval.** Without the agent loop, hybrid retrieval significantly
+  improves ranking over dense: MRR@10 +0.074, and Full-Recall@5 is also
+  significant. Those were RQ1 *secondaries*, and its primary, Recall@5, was
+  n.s. Inside the agentic system, even the ranking gain disappears. The
+  planner's RRF merge over sub-queries evidently re-ranks as much as the
+  retriever pair does.
+* **Reranker.** Both levels agree: no answer gain.
+
+### Findings recorded with the verdicts
+
+1. **Pre-declared attribution confirmed.** Only controller OFF significantly
+   improves both faithfulness (+0.105 [+0.039, +0.171]) and citation
+   any-correct (+0.086 [+0.029, +0.157]). No other arm moves either one. Phase
+   5's regression is the controller's.
+2. **The controller has two refusal rules, and the threshold governs only one
+   of them.** Of its 13 refusals in `results/agentic/`:
+   * 8 are coverage-only;
+   * 2 are number-only (q005, q069);
+   * 3 fail both.
+
+   The eval run at threshold 0.3 still refuses 6 eval questions, 3 of them
+   number-only. No threshold can release those. This is why tuning 0.5 → 0.3
+   changed no eval answer.
+3. **A running-header rule deletes content.** `doc1.pdf` has two pages, and
+   both begin with "GATE 2027 IIT Madras | Organizing Institute". Header
+   detection strips that line from every chunk. The consequences:
+   * q001's answer ("IIT Madras") is unrecoverable by every system;
+   * "2027" is missing from every GATE chunk, which triggers the number rule
+     on q001, q002 and q005.
+
+   This is an ingestion defect, upstream of every system measured. It is
+   recorded rather than fixed here, because fixing it would change every
+   stored baseline.
+4. **q065, the first `verification` record, is a marker-parsing defect, not a
+   verifier-threshold problem.** The draft is the correct passage, copied
+   verbatim from block [C1]. That passage contains the paper's own
+   bibliography reference "shrinking[3]". `citations.py` accepts a bare `[3]`
+   as a marker, so the reference became `[C3]`. The verifier then checked the
+   preceding claims against block C3, a licence notice, found term support of
+   0.07-0.17 and missing numbers, and rejected a correct answer.
+5. **Open question 3 is closed for the offline stack** (DD-059). A cap of 3
+   is identical to a cap of 2, and a second round changes one refusal in 33
+   dev questions into a (wrong) answer.
+
+### Multiple comparisons
+
+Phase 6 made 8 comparison files of 21 contrasts each, **168 contrasts**:
+
+| Source | Contrasts | Significant |
+| --- | ---: | ---: |
+| 6 ablation arms | 126 | 5 |
+| 2 eval files for the tuned arm | 42 | 5 |
+
+The significant ablation contrasts are:
+* 4 in the controller arm: faithfulness, citation, over-abstention and model
+  calls;
+* 1 isolated nDCG@10 result in the planner arm. It is undeclared, so it is
+  treated as a hypothesis.
+
+The significant eval contrasts are:
+* the latency difference in both files, measured across sessions and not a
+  finding;
+* faithfulness, citation and over-abstention against Baseline B, which
+  replicate Phase 5 on the eval split.
+
+With Phases 4-5, the project has made **265** paired contrasts.
+
+### Reason
+
+EVALUATION_PROTOCOL.md 26.3: a null is a finding. Every component's null here
+is bounded by the floors DD-058 stated in advance, so these verdicts are about
+the rule-based and hashing stand-ins. They are not verdicts on the components
+as designed for the model stack.
