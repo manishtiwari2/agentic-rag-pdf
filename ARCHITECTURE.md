@@ -122,6 +122,11 @@ src/
 
 The exact file structure can change during implementation if a simpler organization is justified.
 
+As built, `src/agents/` also holds `refinement.py` (query construction for a
+further retrieval round), `state.py` (the explicit `AgentState`, section 17)
+and `text.py` (the shared tokenizer and strict JSON reader). The agent loop is
+`AgenticRAGPipeline` in `src/pipeline.py` (DD-050).
+
 ---
 
 # 4. Document Representation
