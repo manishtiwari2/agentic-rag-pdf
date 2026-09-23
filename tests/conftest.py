@@ -61,6 +61,9 @@ def offline_config() -> RAGConfig:
         embedding=config.embedding,
         retrieval=config.retrieval,
         generation=config.generation,
+        # Without this the offline fixture would inherit the model-backed
+        # reranker, and a hybrid test would try to download weights.
+        reranking=config.reranking,
     )
 
 

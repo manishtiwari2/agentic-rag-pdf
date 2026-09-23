@@ -62,6 +62,13 @@ class EmbeddingError(RetrievalError):
     """The embedding backend could not produce vectors."""
 
 
+# --- reranking -------------------------------------------------------------
+
+
+class RerankingError(RAGError):
+    """The reranker could not be loaded or could not score the candidates."""
+
+
 # --- generation ------------------------------------------------------------
 
 
