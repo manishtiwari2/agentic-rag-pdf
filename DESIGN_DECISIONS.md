@@ -1672,3 +1672,55 @@ verifier, just as DD-048's reranker finding is about the term-overlap
 stand-in. The LLM paths are exercised only against canned outputs. Their
 behaviour with a real model is unmeasured, and the parse-failure rate offline
 is undefined (zero LLM decisions).
+
+---
+
+# DD-056 — RQ3, RQ4 and the Keep-or-Drop Metrics Were Named Before the Agentic Run
+
+**Status:** Accepted — declared before `results/agentic/` existed
+
+### Decision
+
+Declared per EVALUATION_PROTOCOL.md 26.2, and recorded in
+`statistics.PRIMARY_METRICS`:
+
+| | Primary | Secondary | Cost |
+| --- | --- | --- | --- |
+| RQ3 (agentic retrieval on hard / multi-hop) | Full-Recall@5 (multi_hop + comparison), accuracy (multi_hop + comparison) — n = 15 | accuracy (all), Recall@5, MRR@10 | latency, model calls, iterations |
+| RQ4 (verification vs unsupported answers) | unsupported-answer rate | false-answer rate, faithfulness, citation precision, `verification` category count | — |
+
+**Keep-or-drop (EXPERIMENT_PLAN.md section 3).** The agentic system is kept
+only if at least one of accuracy (all), faithfulness, citation any-correct or
+abstention accuracy improves over **Baseline B** by a margin whose 95% CI
+excludes zero. Baseline B is the decisive comparison because the agentic
+system reuses B's retrieval, so agentic-vs-B isolates the agent loop.
+Agentic-vs-A is reported beside it. Otherwise the report says the added
+complexity did not pay for itself. The number of comparisons is reported.
+
+"Difficult" questions are not a separate subset. `difficulty` is not in the
+stored baseline records, so a difficulty subset could not be paired against
+`results/baseline/` or `results/hybrid/` without regenerating them, and those
+are fixed. multi_hop + comparison covers 7 of the 11 `hard` questions.
+
+### Floors, stated in advance
+
+* **RQ4 is expected to be unanswerable offline.** Both baselines'
+  unsupported-answer rate is already 0.000 on the scripted backend, which
+  copies its sentences verbatim out of the evidence it cites. A rate cannot
+  fall below zero, and the rule-based verifier is expected to pass essentially
+  every draft. An offline null on RQ4 says nothing about an LLM verifier.
+* **Abstention has 6 questions.** One question moves abstention accuracy by 17
+  points. Any offline movement there comes from the evidence controller (DD-052),
+  not the verifier. It can be attributed to the controller only by Phase 6's
+  controller-OFF arm, not by this run.
+* **RQ3's subset is 15 questions.** A CI on 15 paired binary differences is
+  wide; a real effect of a few questions may not be detectable.
+* The generator is the scripted extractive backend throughout. It answers from
+  the single best-matching block, so decomposition can change which blocks it
+  sees but cannot make it combine two hops into one answer.
+
+### Reason
+
+A metric chosen after the result is not a test of the result. The floors are
+written down now so that a null is read as what the offline stack can and
+cannot show, not explained after the fact.
