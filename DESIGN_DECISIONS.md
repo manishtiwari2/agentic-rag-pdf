@@ -2029,3 +2029,100 @@ refusals monotonically:
 changes one refusal in 33 into a (wrong) answer. As DD-058 declared, the cap
 stays at 2. The question stays open for an LLM controller and refiner, which
 could keep issuing new queries.
+
+---
+
+# DD-060 — Phase 6 Verdicts: No Component Earned Its Cost Offline, and the Controller's Refusals Are Two Rules, One of Them Fed by an Ingestion Defect
+
+**Status:** Accepted — Phase 6 findings, all from the offline stand-in stack
+
+### Decision
+
+DD-058's rule is applied mechanically by `src/evaluation/report.py`
+(`python -m src.cli final-table`, which writes `results/final/`). Each verdict
+comes from that component's agentic arm.
+
+| Component | Its declared metrics, arm − reference | Verdict |
+| --- | --- | --- |
+| hybrid retrieval | Recall@5 0.000 [−0.043, +0.043]; MRR@10 +0.003 [−0.010, +0.016] | did not earn its cost |
+| reranker | MRR@10 −0.011 [−0.067, +0.039]; accuracy +0.013 [0.000, +0.039] | did not earn its cost |
+| planner | Full-Recall@5 (multi) +0.067 [0.000, +0.200]; accuracy (multi) 0.000 | did not earn its cost |
+| refinement | over-abstention +0.014 [0.000, +0.043]; Full-Recall@5 0.000 | did not earn its cost |
+| evidence controller | abstention acc. −0.167 [−0.500, 0.000]; over-abstention −0.100 [−0.172, −0.029] | did not earn its cost; **removing it improves faithfulness and citation** |
+| verifier | unsupported rate 0.000 (floor); faithfulness +0.026 [0.000, +0.066] | did not earn its cost |
+
+Phase 4's baseline-level contrasts disagree with the agentic arms in one
+place:
+* **Hybrid retrieval.** Without the agent loop, hybrid retrieval significantly
+  improves ranking over dense: MRR@10 +0.074, and Full-Recall@5 is also
+  significant. Those were RQ1 *secondaries*, and its primary, Recall@5, was
+  n.s. Inside the agentic system, even the ranking gain disappears. The
+  planner's RRF merge over sub-queries evidently re-ranks as much as the
+  retriever pair does.
+* **Reranker.** Both levels agree: no answer gain.
+
+### Findings recorded with the verdicts
+
+1. **Pre-declared attribution confirmed.** Only controller OFF significantly
+   improves both faithfulness (+0.105 [+0.039, +0.171]) and citation
+   any-correct (+0.086 [+0.029, +0.157]). No other arm moves either one. Phase
+   5's regression is the controller's.
+2. **The controller has two refusal rules, and the threshold governs only one
+   of them.** Of its 13 refusals in `results/agentic/`:
+   * 8 are coverage-only;
+   * 2 are number-only (q005, q069);
+   * 3 fail both.
+
+   The eval run at threshold 0.3 still refuses 6 eval questions, 3 of them
+   number-only. No threshold can release those. This is why tuning 0.5 → 0.3
+   changed no eval answer.
+3. **A running-header rule deletes content.** `doc1.pdf` has two pages, and
+   both begin with "GATE 2027 IIT Madras | Organizing Institute". Header
+   detection strips that line from every chunk. The consequences:
+   * q001's answer ("IIT Madras") is unrecoverable by every system;
+   * "2027" is missing from every GATE chunk, which triggers the number rule
+     on q001, q002 and q005.
+
+   This is an ingestion defect, upstream of every system measured. It is
+   recorded rather than fixed here, because fixing it would change every
+   stored baseline.
+4. **q065, the first `verification` record, is a marker-parsing defect, not a
+   verifier-threshold problem.** The draft is the correct passage, copied
+   verbatim from block [C1]. That passage contains the paper's own
+   bibliography reference "shrinking[3]". `citations.py` accepts a bare `[3]`
+   as a marker, so the reference became `[C3]`. The verifier then checked the
+   preceding claims against block C3, a licence notice, found term support of
+   0.07-0.17 and missing numbers, and rejected a correct answer.
+5. **Open question 3 is closed for the offline stack** (DD-059). A cap of 3
+   is identical to a cap of 2, and a second round changes one refusal in 33
+   dev questions into a (wrong) answer.
+
+### Multiple comparisons
+
+Phase 6 made 8 comparison files of 21 contrasts each, **168 contrasts**:
+
+| Source | Contrasts | Significant |
+| --- | ---: | ---: |
+| 6 ablation arms | 126 | 5 |
+| 2 eval files for the tuned arm | 42 | 5 |
+
+The significant ablation contrasts are:
+* 4 in the controller arm: faithfulness, citation, over-abstention and model
+  calls;
+* 1 isolated nDCG@10 result in the planner arm. It is undeclared, so it is
+  treated as a hypothesis.
+
+The significant eval contrasts are:
+* the latency difference in both files, measured across sessions and not a
+  finding;
+* faithfulness, citation and over-abstention against Baseline B, which
+  replicate Phase 5 on the eval split.
+
+With Phases 4-5, the project has made **265** paired contrasts.
+
+### Reason
+
+EVALUATION_PROTOCOL.md 26.3: a null is a finding. Every component's null here
+is bounded by the floors DD-058 stated in advance, so these verdicts are about
+the rule-based and hashing stand-ins. They are not verdicts on the components
+as designed for the model stack.
