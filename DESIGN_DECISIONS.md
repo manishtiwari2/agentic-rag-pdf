@@ -1967,3 +1967,65 @@ from both splits. The two lost answers it cited, q065 and q069, are eval
 questions. So the decision *to tune this threshold* was informed by eval-set
 failures, even though the *value* is chosen on dev alone. Under section 5.2 this
 is a disclosed leak, and the write-up repeats it.
+
+---
+
+# DD-059 — The Sufficiency Threshold Is 0.3, Chosen on Dev by DD-058's Rule; the Iteration Cap Stays 2
+
+**Status:** Accepted. Recorded and committed before the eval run.
+
+### Dev sweep (`--split dev`, 33 questions; offline stand-in stack)
+
+`results/experiments/threshold/dev_<value>/`. Every other field is the reference
+configuration. These are dev-set numbers only (EVALUATION_PROTOCOL.md 5.2), and
+they must never share a table with eval results.
+
+| threshold | accuracy (all) | citation any-correct | over-abstention | abstention acc. (n=3) | faithfulness | controller refusals |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.2 | 0.212 | 0.567 | 0.100 | 0.333 | 0.879 | 4 |
+| **0.3** | **0.242** | **0.533** | **0.133** | 0.667 | 0.818 | 6 |
+| 0.4 | 0.242 | 0.533 | 0.167 | 0.667 | 0.788 | 7 |
+| 0.5 (reference) | 0.242 | 0.533 | 0.167 | 0.667 | 0.788 | 7 |
+| 0.6 | 0.242 | 0.467 | 0.233 | 0.667 | 0.727 | 9 |
+
+The rule, applied mechanically:
+
+1. **Accuracy (all):** 0.3, 0.4, 0.5 and 0.6 tie at 0.242.
+2. **Citation any-correct:** among those four, 0.3, 0.4 and 0.5 tie at 0.533.
+   0.6 drops out.
+3. **Over-abstention:** 0.3 has the lowest of the three, 0.133 against 0.167.
+
+**Chosen: 0.3.**
+
+On 33 questions, the decisive difference is one answerable question that is
+no longer refused. That is a tuning choice, not a finding. Its only test is
+the single eval run that follows.
+
+What the dev sweep does show is that the threshold trades coverage against
+refusals monotonically:
+* Controller refusals rise from 4 to 9 across the grid.
+* Over-abstention and faithfulness move with them.
+* At 0.2, the controller stops refusing an unanswerable question and dev
+  accuracy falls.
+
+### `MAX_RETRIEVAL_ITERATIONS` (open question 3), dev, threshold 0.5
+
+`results/experiments/max_iterations/dev_<n>/`
+
+| cap | accuracy (all) | over-abstention | mean iterations | questions refined | answers changed by refinement |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.242 | 0.200 | 1.000 | 0 | 0 |
+| 2 | 0.242 | 0.167 | 1.030 | 1 | 0 |
+| 3 | 0.242 | 0.167 | 1.030 | 1 | 0 |
+
+* **Cap 3 is identical to cap 2.** No dev question reaches a third round,
+  because the rule refiner runs out of new queries first (`no_new_query`).
+* **Cap 2 differs from cap 1 on one question.** The second round turned a
+  refusal into an answer. The answer is still wrong, so accuracy does not move.
+* `refinement_changed_answer` is 0. That field compares drafts, and at cap 1
+  this question produced no draft, only a refusal.
+
+**Closed for the offline stack:** the cap is inert above 2, and iteration 2
+changes one refusal in 33 into a (wrong) answer. As DD-058 declared, the cap
+stays at 2. The question stays open for an LLM controller and refiner, which
+could keep issuing new queries.
