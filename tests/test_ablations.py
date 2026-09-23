@@ -145,3 +145,81 @@ class TestSplitRestriction:
         ])
         assert code == 0
         assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# results/final/ (src/evaluation/report.py)
+# ---------------------------------------------------------------------------
+
+from src.evaluation import report  # noqa: E402
+
+FINAL = ROOT / "results" / "final"
+
+
+def _contrast(diff, low, high, higher_is_better=True):
+    return {"difference": diff, "ci_low": low, "ci_high": high, "higher_is_better": higher_is_better}
+
+
+class TestTheCostRule:
+    """DD-058, on synthetic contrasts, so the rule is checked independently of
+    what the offline runs happened to produce."""
+
+    def test_worse_without_reads_the_harmful_side(self):
+        assert report._worse_without(_contrast(-0.1, -0.2, -0.01))
+        assert not report._worse_without(_contrast(-0.1, -0.2, 0.0))  # touches zero
+        assert report._worse_without(_contrast(0.1, 0.01, 0.2, higher_is_better=False))
+        assert not report._worse_without(_contrast(None, None, None))
+
+    def test_better_without_is_the_mirror(self):
+        assert report._better_without(_contrast(0.1, 0.01, 0.2))
+        assert report._better_without(_contrast(-0.1, -0.2, -0.01, higher_is_better=False))
+        assert not report._better_without(_contrast(0.1, 0.0, 0.2))
+
+    def test_a_reversed_comparison_is_flipped_without_negative_zero(self):
+        stored = {"mean_difference": 0.0, "ci_low": 0.0, "ci_high": 0.1, "baseline_mean": 0.5,
+                  "system_mean": 0.5, "n": 10, "higher_is_better": True}
+        flipped = report._oriented(stored, -1)
+        assert (flipped["difference"], flipped["ci_low"], flipped["ci_high"]) == (0.0, -0.1, 0.0)
+        assert str(flipped["difference"]) == "0.0"
+
+
+@pytest.mark.skipif(not (ROOT / "results" / "ablations" / "planner_off").exists(),
+                    reason="Phase 6 results not present")
+class TestTheFinalReport:
+    @pytest.fixture(scope="class")
+    def eval_table(self):
+        return report.final_table(ROOT, split="eval")
+
+    def test_the_headline_is_the_eval_split(self, eval_table):
+        assert eval_table["split"] == "eval"
+        assert {row["n_questions"] for row in eval_table["rows"]} == {43}
+        assert len(eval_table["rows"]) == len(report.FINAL_SYSTEMS)
+
+    def test_peak_vram_is_null_offline_never_zero(self, eval_table):
+        for row in eval_table["rows"]:
+            assert row["peak_vram_gb"] is None
+
+    def test_the_baselines_report_no_iterations_rather_than_one(self, eval_table):
+        dense = eval_table["rows"][0]
+        assert dense["retrieval_iterations_mean"]["mean"] is None
+        assert dense["model_calls_mean"]["mean"] is None
+
+    def test_a_one_split_run_is_left_out_of_the_every_question_table(self):
+        table = report.final_table(ROOT, split=None)
+        assert [o["directory"] for o in table["omitted"]] == [report.FINAL_SYSTEMS[-1][1]]
+        assert {row["n_questions"] for row in table["rows"]} == {76}
+
+    def test_seven_arms_are_counted(self):
+        assert report.ablation_report(ROOT)["n_arms_counted"] == 7
+
+    def test_the_committed_report_is_what_the_stored_results_produce(self, tmp_path):
+        """results/final/ is generated, never hand-edited: regenerating it from
+        the stored runs reproduces the committed files exactly."""
+        if not (FINAL / "REPORT.md").exists():
+            pytest.skip("results/final/ not generated")
+        paths = report.write_report(ROOT, tmp_path)
+        for name in ("final_table.json", "ablations.json", "error_analysis.json", "REPORT.md"):
+            assert (tmp_path / name).read_text(encoding="utf-8") == (FINAL / name).read_text(
+                encoding="utf-8"
+            ), name
+        assert set(paths) == {"final_table", "ablations", "error_analysis", "markdown"}
