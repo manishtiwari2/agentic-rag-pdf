@@ -88,13 +88,15 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         license="apache-2.0",
         commercial_use=True,
         vram_gb=1.2,
-        note="Phase 4. Not used by the dense baseline.",
+        note="Phase 4 (Baseline B). Never loaded by the dense baseline.",
     ),
 }
 
 #: Dependency-free backends used when no weights are available.
 HASHING_EMBEDDER = "local/hashing-embedder"
 SCRIPTED_BACKEND = "local/scripted-extractive"
+#: Dependency-free reranker: joint query/passage term coverage (DD-048).
+OVERLAP_RERANKER = "local/term-overlap-reranker"
 
 
 @dataclass(frozen=True)
@@ -242,9 +244,31 @@ class EmbeddingConfig:
     hashing_dim: int = 1024
 
 
+#: Retrievers a hybrid system may fuse (ARCHITECTURE.md section 8).
+RETRIEVERS: tuple[str, ...] = ("dense", "lexical")
+
+
 @dataclass(frozen=True)
 class RetrievalConfig:
     top_k: int = 5
+    #: "dense" is Baseline A; "hybrid" is Baseline B (EVALUATION_PROTOCOL.md
+    #: section 8). The strategy decides which pipeline ``build_pipeline`` builds,
+    #: so the system under test is chosen by configuration alone (DD-017).
+    strategy: Literal["dense", "hybrid"] = "dense"
+    #: Which retrievers a hybrid system fuses, in tie-break priority order
+    #: (DD-045). ("dense",) or ("lexical",) are the ablation arms
+    #: EVALUATION_PROTOCOL.md section 24 and DD-007 ask for.
+    retrievers: tuple[str, ...] = ("dense", "lexical")
+    #: Depth each retriever ranks to before fusion (DD-046).
+    candidate_k: int = 20
+    #: DD-008. The only method so far; a field so a second one is a config
+    #: change rather than a code change (ARCHITECTURE.md section 9).
+    fusion: Literal["rrf"] = "rrf"
+    #: The RRF constant from Cormack et al. (2009); not tuned here (DD-045).
+    rrf_k: int = 60
+    #: Okapi BM25 parameters, at the conventional values (DD-049).
+    bm25_k1: float = 1.2
+    bm25_b: float = 0.75
     #: "auto" uses FAISS when importable and falls back to the numpy index.
     index: Literal["auto", "faiss", "numpy"] = "auto"
     #: Abstain without calling the generator when the best score falls below
@@ -252,6 +276,27 @@ class RetrievalConfig:
     #: untuned threshold, so by default the pipeline only short-circuits when
     #: retrieval returns nothing at all.
     min_score: float | None = None
+
+
+@dataclass(frozen=True)
+class RerankingConfig:
+    """Cross-encoder reranking (ARCHITECTURE.md section 10, DD-006).
+
+    Read only by the hybrid pipeline. ``enabled=False`` is the "Reranker OFF"
+    ablation of EVALUATION_PROTOCOL.md section 24: the fused pool is passed
+    through unchanged, at the same depth, so the two arms differ in the
+    reranker and nothing else.
+    """
+
+    enabled: bool = True
+    model_id: str = "BAAI/bge-reranker-v2-m3"
+    device: Literal["auto", "cuda", "cpu"] = "auto"
+    dtype: Literal["auto", "float16", "float32"] = "auto"
+    batch_size: int = 16
+    max_length: int = 512
+    #: Size of the fused pool handed to the reranker -- and, with the reranker
+    #: off, the depth of the ranking returned unchanged (DD-046).
+    candidates: int = 20
 
 
 @dataclass(frozen=True)
@@ -281,6 +326,7 @@ class RAGConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
+    reranking: RerankingConfig = field(default_factory=RerankingConfig)
 
     # -- presets ------------------------------------------------------------
 
@@ -305,10 +351,11 @@ class RAGConfig:
     def offline(cls) -> "RAGConfig":
         """No weights, no GPU, no downloads.
 
-        Uses the hashing embedder and the scripted extractive backend. Both are
-        real implementations rather than mocks: weaker than the model-backed
-        components, but they retrieve and answer for real, which is what makes
-        the pipeline testable on CPU.
+        Uses the hashing embedder, the scripted extractive backend and the
+        term-overlap reranker. All three are real implementations rather than
+        mocks: weaker than the model-backed components, but they retrieve,
+        rerank and answer for real, which is what makes the pipeline testable
+        on CPU.
         """
         return cls(
             embedding=EmbeddingConfig(model_id=HASHING_EMBEDDER, device="cpu"),
@@ -318,6 +365,7 @@ class RAGConfig:
                 quantization="none",
                 device="cpu",
             ),
+            reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu"),
         )
 
     # -- derived ------------------------------------------------------------
@@ -335,7 +383,20 @@ class RAGConfig:
         emb = MODEL_REGISTRY.get(self.embedding.model_id)
         if emb is not None:
             total += emb.vram_gb
+        if self.uses_reranker:
+            reranker = MODEL_REGISTRY.get(self.reranking.model_id)
+            if reranker is not None:
+                total += reranker.vram_gb
         return round(total, 2)
+
+    @property
+    def is_hybrid(self) -> bool:
+        return self.retrieval.strategy == "hybrid"
+
+    @property
+    def uses_reranker(self) -> bool:
+        """Only the hybrid system reranks; the dense baseline never loads one."""
+        return self.is_hybrid and self.reranking.enabled
 
     def fingerprint(self) -> str:
         """Stable hash of the whole configuration, recorded with every result."""
@@ -346,6 +407,8 @@ class RAGConfig:
         """Reproducibility record (MODEL_SELECTION.md section 15)."""
         gen = MODEL_REGISTRY.get(self.generation.model_id)
         emb = MODEL_REGISTRY.get(self.embedding.model_id)
+        rer = MODEL_REGISTRY.get(self.reranking.model_id)
+        hybrid = self.is_hybrid
         return {
             "config_fingerprint": self.fingerprint(),
             "generation_model": self.generation.model_id,
@@ -359,6 +422,19 @@ class RAGConfig:
             "chunk_size": self.chunking.chunk_size,
             "chunk_overlap": self.chunking.chunk_overlap,
             "top_k": self.retrieval.top_k,
+            # Fields the dense baseline has no value for are null rather than
+            # absent, so a reader comparing runs sees the component was absent.
+            "retrieval_strategy": self.retrieval.strategy,
+            "retrievers": list(self.retrieval.retrievers) if hybrid else ["dense"],
+            "fusion": self.retrieval.fusion if hybrid else None,
+            "rrf_k": self.retrieval.rrf_k if hybrid else None,
+            "candidate_k": self.retrieval.candidate_k if hybrid else None,
+            "reranker_enabled": self.uses_reranker,
+            "reranker_model": self.reranking.model_id if self.uses_reranker else None,
+            "reranker_license": (
+                (rer.license if rer else "unregistered") if self.uses_reranker else None
+            ),
+            "rerank_candidates": self.reranking.candidates if hybrid else None,
             "estimated_vram_gb": self.estimate_vram_gb(),
         }
 
@@ -379,8 +455,35 @@ class RAGConfig:
         if c.min_chunk_chars < 0:
             raise ConfigurationError("chunking.min_chunk_chars must not be negative.")
 
-        if self.retrieval.top_k <= 0:
+        r = self.retrieval
+        if r.top_k <= 0:
             raise ConfigurationError("retrieval.top_k must be positive.")
+        if not r.retrievers or any(name not in RETRIEVERS for name in r.retrievers):
+            raise ConfigurationError(
+                f"retrieval.retrievers must be a non-empty selection of "
+                f"{list(RETRIEVERS)}, got {list(r.retrievers)}."
+            )
+        if len(set(r.retrievers)) != len(r.retrievers):
+            raise ConfigurationError("retrieval.retrievers lists a retriever twice.")
+        if r.strategy == "hybrid":
+            if r.candidate_k < r.top_k:
+                raise ConfigurationError(
+                    f"retrieval.candidate_k ({r.candidate_k}) must be at least "
+                    f"top_k ({r.top_k}); fusion cannot return more than it was given."
+                )
+            if self.reranking.candidates < r.top_k:
+                raise ConfigurationError(
+                    f"reranking.candidates ({self.reranking.candidates}) must be at "
+                    f"least top_k ({r.top_k})."
+                )
+        if r.rrf_k <= 0:
+            raise ConfigurationError("retrieval.rrf_k must be positive.")
+        if r.bm25_k1 < 0 or not 0.0 <= r.bm25_b <= 1.0:
+            raise ConfigurationError(
+                "retrieval.bm25_k1 must be >= 0 and retrieval.bm25_b in [0, 1]."
+            )
+        if self.reranking.batch_size <= 0:
+            raise ConfigurationError("reranking.batch_size must be positive.")
 
         if self.generation.temperature < 0:
             raise ConfigurationError("generation.temperature must not be negative.")
@@ -417,6 +520,7 @@ class RAGConfig:
                 f"({T4_USABLE_VRAM_GB:.0f} GB usable, "
                 f"{REQUIRED_HEADROOM_GB:.0f} GB reserved for activations and KV "
                 "cache). Use generation.quantization='4bit', switch to "
-                "RAGConfig.low_memory(), or load the models sequentially."
+                "RAGConfig.low_memory(), disable the reranker "
+                "(reranking.enabled=False), or load the models sequentially."
             )
         return self
