@@ -112,6 +112,10 @@ class TestAgainstTheStoredBaseline:
     def test_baseline_a_against_itself_is_no_significant_difference(self, baseline):
         comparison = compare(baseline, baseline)
         for name, contrast in comparison["contrasts"].items():
+            if name == "model_calls_mean":
+                # Baseline A reports no model calls (DD-055): absent, not zero.
+                assert contrast["n"] == 0 and contrast["verdict"] == "not computable"
+                continue
             assert contrast["verdict"] == NO_SIGNIFICANT_DIFFERENCE, name
             assert contrast["ci_low"] <= 0.0 <= contrast["ci_high"], name
             assert contrast["mean_difference"] == 0.0, name

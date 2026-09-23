@@ -1,0 +1,2 @@
+system,accuracy_all,accuracy_answerable,faithfulness,citation_any_correct,citation_precision,recall_at_5,full_recall_at_5,mrr_at_10,abstention_accuracy,false_answer_rate,over_abstention_rate,unsupported_answer_rate,latency_median_s,latency_p95_s,peak_vram_gb,retrieval_iterations_mean,model_calls_mean
+agentic,0.18421052631578946,0.17142857142857143,0.8026315789473685,0.5571428571428572,0.6491228070175439,0.9428571428571428,0.8714285714285714,0.8272619047619048,0.3333333333333333,0.6666666666666666,0.18571428571428572,0.0,0.0096,0.024,,1.0395,0.8553
