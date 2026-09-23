@@ -1,0 +1,727 @@
+"""The benchmark run harness (EVALUATION_PROTOCOL.md sections 6, 23, 27).
+
+Benchmark mode, as section 6 defines it: no manual intervention, latency
+measured, metrics calculated, results stored. The harness indexes each document
+once and asks every question against it, because re-parsing a 42-page PDF per
+question would make the run dominated by the one cost that has nothing to do
+with what is being measured.
+
+Three properties this file is built around:
+
+* **It is system-agnostic.** It drives anything satisfying :class:`QueryableSystem`
+  -- an ``ask`` returning something shaped like a ``RAGResult``. Phases 4 and 5
+  point it at the hybrid and agentic pipelines without changing a line here, and
+  nothing below the evaluation layer imports it.
+* **It does not change answer behaviour** (ARCHITECTURE.md section 26). It calls
+  ``ask`` exactly as a user would and measures what comes back. The retrieval
+  probe used for Recall@10 is a separate read-only call.
+* **It checkpoints as it goes.** EXPERIMENT_PLAN.md section 4 lists an expiring
+  Colab session as a likely risk with "checkpoint per-question results as they
+  are produced, not at the end" as its mitigation, so the per-question file is
+  rewritten after every question rather than once at the end.
+
+Outputs are the four files EVALUATION_PROTOCOL.md section 27 names, in the
+directory it names them in.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import math
+import platform
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol, Sequence, runtime_checkable
+
+from ..benchmark.schema import (
+    DEFAULT_DOCUMENTS_DIR,
+    DEFAULT_QUESTIONS_PATH,
+    Question,
+    load_questions,
+)
+from ..benchmark.validate import validate_benchmark
+from ..config import RAGConfig
+from ..errors import BenchmarkValidationError, RAGError
+from ..generation.abstention import ABSTENTION_PATTERNS_VERSION, is_abstention
+from ..pipeline import DenseRAGPipeline, RAGResult
+from .metrics import (
+    ERROR_TAXONOMY_VERSION,
+    RECALL_KS,
+    SCORING_RULES_VERSION,
+    STAGE_CONTEXT_SELECTION,
+    STAGE_GENERATION,
+    STAGE_RETRIEVAL,
+    VERIFICATION_NOT_RUN,
+    AbstentionScore,
+    AnswerScore,
+    CitationScore,
+    QuestionScore,
+    RetrievalScore,
+    classify_error,
+    is_failure,
+    score_answer,
+    score_citations,
+    score_retrieval,
+    summarize,
+)
+
+CONFIG_FILENAME = "config.json"
+RESULTS_FILENAME = "results.json"
+PER_QUESTION_FILENAME = "per_question.json"
+SUMMARY_FILENAME = "summary.csv"
+
+#: EVALUATION_PROTOCOL.md section 11. Recorded in every run, and set before the
+#: run rather than assumed.
+SEED = 42
+
+#: EVALUATION_PROTOCOL.md section 4. Bump when questions, answers, evidence
+#: pages or documents change; results from two versions are not comparable.
+BENCHMARK_VERSION = "1.0"
+
+#: Depth the retrieval probe ranks to. BENCHMARK_SPEC.md section 10 asks for
+#: Recall@10 and MRR@10; the baseline generates from top_k=5.
+RETRIEVAL_METRIC_DEPTH = max(RECALL_KS)
+
+
+@runtime_checkable
+class QueryableSystem(Protocol):
+    """What the harness needs from a system under test.
+
+    Deliberately small. ``retrieve`` is optional: a system without it is scored
+    on the chunks its ``ask`` returned, with the shallower depth recorded rather
+    than hidden.
+    """
+
+    name: str
+
+    def index(self, pdf_path: Any) -> Any: ...
+
+    def ask(self, question: str, top_k: int | None = None) -> RAGResult: ...
+
+
+# ---------------------------------------------------------------------------
+# One question
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class QuestionRun:
+    """One question's result and its score, before either is written out."""
+
+    question: Question
+    score: QuestionScore
+    record: dict[str, Any]
+
+
+def _failed_run(question: Question, system: str, exc: BaseException, latency: float) -> QuestionRun:
+    """Record a question whose run raised, without aborting the benchmark.
+
+    ARCHITECTURE.md section 24 wants explicit failures; EVALUATION_PROTOCOL.md
+    section 23 has a category for them. A harness that dies on question 30 of 76
+    produces no result at all, which is strictly worse than a result with one
+    question marked as a runtime failure.
+    """
+    answerable = not question.is_unanswerable
+    score = QuestionScore(
+        question_id=question.id,
+        question_type=question.question_type,
+        split=question.split,
+        answerable=answerable,
+        retrieval=RetrievalScore(scored=False, excluded_reason="run_failed"),
+        answer=AnswerScore(
+            correct=0.0,
+            overlap=0.0,
+            numeric_agreement=False,
+            faithfulness_numeric=None,
+            faithfulness_token=0.0,
+            unsupported=False,
+        ),
+        citation=CitationScore(scored=False),
+        abstention=AbstentionScore(answerable=answerable, abstained=False),
+        verification_status=VERIFICATION_NOT_RUN,
+        error=f"{type(exc).__name__}: {exc}",
+    )
+    score = _finalize(score, stages=(), evidence_pages=())
+    record = {
+        "question_id": question.id,
+        "system": system,
+        "reference_answer": question.answer,
+        "question": question.question,
+        "answer": "",
+        "retrieved_chunks": [],
+        "citations": [],
+        "evidence_pages": [],
+        "verification_status": VERIFICATION_NOT_RUN,
+        "latency": round(latency, 4),
+        "metrics": score.to_record(),
+    }
+    return QuestionRun(question=question, score=score, record=record)
+
+
+def _finalize(
+    score: QuestionScore,
+    stages: Sequence[str],
+    evidence_pages: Sequence[int],
+    retrieved_pages: Sequence[int] | None = None,
+    reranking_lost_gold: bool = False,
+) -> QuestionScore:
+    """Attach the failure verdict and its single category."""
+    failed = is_failure(score)
+    category = (
+        classify_error(
+            score,
+            stages=stages,
+            reranking_lost_gold=reranking_lost_gold,
+            evidence_pages=evidence_pages,
+            retrieved_pages=retrieved_pages,
+        )
+        if failed
+        else None
+    )
+    return QuestionScore(
+        question_id=score.question_id,
+        question_type=score.question_type,
+        split=score.split,
+        answerable=score.answerable,
+        retrieval=score.retrieval,
+        answer=score.answer,
+        citation=score.citation,
+        abstention=score.abstention,
+        verification_status=score.verification_status,
+        error=score.error,
+        error_category=category,
+        failed=failed,
+    )
+
+
+def score_result(
+    question: Question,
+    result: RAGResult,
+    system: str,
+    retrieved_for_metrics: Sequence[Any] | None = None,
+    stages: Sequence[str] = (STAGE_RETRIEVAL, STAGE_CONTEXT_SELECTION, STAGE_GENERATION),
+    verification_status: str = VERIFICATION_NOT_RUN,
+    latency_s: float | None = None,
+) -> QuestionRun:
+    """Score one answered question and build its section 20 record.
+
+    Abstention is read from the answer text by ``is_abstention`` rather than
+    from ``result.abstained``. BENCHMARK_SPEC.md section 13.2 requires exactly
+    that: detecting abstention from the system's own flag would let a system be
+    graded on its self-report, and the two are cross-checked in the record so a
+    disagreement is visible rather than silently resolved in the system's
+    favour.
+    """
+    abstained = is_abstention(result.answer)
+    ranked = list(retrieved_for_metrics if retrieved_for_metrics is not None else result.retrieved)
+
+    retrieval = score_retrieval(question, ranked)
+    answer = score_answer(
+        question,
+        answer=result.answer,
+        abstained=abstained,
+        evidence_text=result.evidence_text,
+        has_citations=bool(result.citations),
+    )
+    citation = score_citations(
+        question,
+        answer=result.answer,
+        cited_pages=result.cited_pages,
+        resolved=len(result.citations),
+        dropped_markers=len(result.metadata.get("dropped_markers") or ()),
+        fabricated_page_mentions=len(
+            result.metadata.get("fabricated_page_mentions") or ()
+        ),
+    )
+    score = QuestionScore(
+        question_id=question.id,
+        question_type=question.question_type,
+        split=question.split,
+        answerable=not question.is_unanswerable,
+        retrieval=retrieval,
+        answer=answer,
+        citation=citation,
+        abstention=AbstentionScore(
+            answerable=not question.is_unanswerable, abstained=abstained
+        ),
+        verification_status=verification_status,
+    )
+    # Blame follows the answer path, not the deeper probe used for Recall@10.
+    answer_path_pages = sorted({p for r in result.retrieved for p in r.pages})
+    score = _finalize(
+        score,
+        stages=stages,
+        evidence_pages=result.evidence_pages,
+        retrieved_pages=answer_path_pages,
+    )
+
+    metrics = score.to_record()
+    metrics["self_reported_abstention"] = result.abstained
+    metrics["abstention_agrees_with_self_report"] = result.abstained == abstained
+    metrics["retrieval_metric_depth"] = len(ranked)
+
+    record = result.to_record(
+        question_id=question.id,
+        system=system,
+        reference_answer=question.answer,
+        metrics=metrics,
+        verification_status=verification_status,
+        latency_s=latency_s,
+    )
+    return QuestionRun(question=question, score=score, record=record)
+
+
+# ---------------------------------------------------------------------------
+# The run
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BenchmarkRun:
+    """Everything one benchmark produced."""
+
+    system: str
+    runs: list[QuestionRun] = field(default_factory=list)
+    latencies: list[float] = field(default_factory=list)
+    index_stats: list[dict[str, Any]] = field(default_factory=list)
+    config: dict[str, Any] = field(default_factory=dict)
+    started: float = 0.0
+    judge: Any = None
+
+    @property
+    def scores(self) -> list[QuestionScore]:
+        return [run.score for run in self.runs]
+
+    @property
+    def records(self) -> list[dict[str, Any]]:
+        return [run.record for run in self.runs]
+
+    def summary(self) -> dict[str, Any]:
+        result = summarize(self.scores)
+        result["system"] = self.system
+        result.update(latency_stats(self.latencies))
+        result["index_seconds_total"] = round(
+            sum(float(s.get("parse_s", 0)) + float(s.get("chunk_s", 0))
+                + float(s.get("embed_index_s", 0)) for s in self.index_stats),
+            3,
+        )
+        result["documents_indexed"] = len(self.index_stats)
+        # BENCHMARK_SPEC.md section 15 asks for peak GPU memory. Nothing here
+        # measures it when no CUDA device is present, and reporting 0.0 would
+        # claim a measurement that was not taken.
+        result["peak_vram_gb"] = _peak_vram_gb()
+        # EVALUATION_PROTOCOL.md 19.1: a judged figure never appears without
+        # the disagreement rate that says how far to trust it.
+        result.update(
+            self.judge.summary() if self.judge is not None else {"judge_enabled": False}
+        )
+        return result
+
+
+def latency_stats(latencies: Sequence[float]) -> dict[str, Any]:
+    """Mean, median and P95 (EVALUATION_PROTOCOL.md section 15).
+
+    "Avoid relying only on average latency" -- so the average is never the only
+    figure here.
+    """
+    if not latencies:
+        return {
+            "latency_mean_s": None,
+            "latency_median_s": None,
+            "latency_p95_s": None,
+            "latency_max_s": None,
+        }
+    ordered = sorted(latencies)
+    count = len(ordered)
+    middle = count // 2
+    median = (
+        ordered[middle]
+        if count % 2
+        else (ordered[middle - 1] + ordered[middle]) / 2
+    )
+    # Nearest-rank P95: with 76 questions an interpolated percentile invents a
+    # latency no query had.
+    p95_index = min(count - 1, max(0, math.ceil(0.95 * count) - 1))
+    return {
+        "latency_mean_s": round(sum(ordered) / count, 4),
+        "latency_median_s": round(median, 4),
+        "latency_p95_s": round(ordered[p95_index], 4),
+        "latency_max_s": round(ordered[-1], 4),
+    }
+
+
+def _peak_vram_gb() -> float | None:
+    """Peak CUDA memory, or None when there is no GPU to measure."""
+    try:  # pragma: no cover - environment dependent
+        import torch  # noqa: PLC0415
+
+        if not torch.cuda.is_available():
+            return None
+        return round(torch.cuda.max_memory_allocated() / (1024**3), 3)
+    except Exception:
+        return None
+
+
+def _seed_everything(seed: int = SEED) -> None:
+    """EVALUATION_PROTOCOL.md section 11, applied rather than documented."""
+    import random  # noqa: PLC0415
+
+    random.seed(seed)
+    try:  # pragma: no cover - optional dependency
+        import numpy  # noqa: PLC0415
+
+        numpy.random.seed(seed)
+    except Exception:
+        pass
+    try:  # pragma: no cover - optional dependency
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(seed)
+    except Exception:
+        pass
+
+
+def build_config_snapshot(
+    config: RAGConfig,
+    system: str,
+    questions_path: Path,
+    documents_dir: Path,
+    n_questions: int,
+    split: str | None,
+    judge: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The reproducibility record (EVALUATION_PROTOCOL.md sections 3, 4, 11, 13).
+
+    "No benchmark result should exist without a corresponding configuration."
+    Fields the dense baseline has no value for are written as ``null`` rather
+    than omitted, because a reader comparing this against a Phase 4 run needs to
+    see that the reranker was absent, not that the key was forgotten.
+    """
+    described = config.describe()
+    return {
+        "system": system,
+        "benchmark_version": BENCHMARK_VERSION,
+        "questions_path": str(questions_path),
+        "documents_dir": str(documents_dir),
+        "n_questions": n_questions,
+        "split": split,
+        "random_seed": SEED,
+        "scoring_rules_version": SCORING_RULES_VERSION,
+        "error_taxonomy_version": ERROR_TAXONOMY_VERSION,
+        "abstention_patterns_version": ABSTENTION_PATTERNS_VERSION,
+        # Section 3's minimum configuration, in its own order.
+        "generation_model": config.generation.model_id,
+        "generation_model_revision": None,
+        "quantization": config.generation.quantization,
+        "embedding_model": config.embedding.model_id,
+        "embedding_model_revision": None,
+        "reranker_model": None,
+        "reranker_enabled": False,
+        "chunking_strategy": config.chunking.strategy,
+        "chunk_size": config.chunking.chunk_size,
+        "chunk_overlap": config.chunking.chunk_overlap,
+        "retrieval_strategy": "dense",
+        "top_k": config.retrieval.top_k,
+        "rerank_k": None,
+        "retrieval_metric_depth": RETRIEVAL_METRIC_DEPTH,
+        "max_retrieval_iterations": None,
+        "temperature": config.generation.temperature,
+        "max_new_tokens": config.generation.max_new_tokens,
+        "judge": judge or {"enabled": False, "reason": "not requested"},
+        "config_fingerprint": config.fingerprint(),
+        "config": described,
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+        },
+    }
+
+
+def run_benchmark(
+    questions: Sequence[Question],
+    documents_dir: str | Path,
+    system_factory=None,
+    config: RAGConfig | None = None,
+    out_dir: str | Path | None = None,
+    judge: Any = None,
+    progress=None,
+) -> BenchmarkRun:
+    """Answer every question and score it.
+
+    Questions are grouped by document so each PDF is parsed, chunked and indexed
+    once. That is not only for speed: re-indexing per question would make the
+    reported index time meaningless and would let a per-question index
+    difference leak into the answers.
+    """
+    config = (config or RAGConfig.default()).validate()
+    documents_dir = Path(documents_dir)
+    _seed_everything()
+
+    factory = system_factory or (lambda: DenseRAGPipeline(config))
+    probe_system = factory()
+    run = BenchmarkRun(
+        system=getattr(probe_system, "name", "system"),
+        started=time.time(),
+        judge=judge,
+    )
+
+    def _checkpoint(question_run: QuestionRun) -> None:
+        """Persist what is finished before attempting the next question."""
+        if out_dir is not None:
+            write_checkpoint(out_dir, run.records)
+        if progress:
+            progress(question_run)
+
+    by_document: dict[str, list[Question]] = {}
+    for question in questions:
+        by_document.setdefault(question.document, []).append(question)
+
+    for document, group in by_document.items():
+        pdf_path = documents_dir / document
+        try:
+            system = factory()
+            system.index(pdf_path)
+            run.index_stats.append(dict(getattr(system, "index_stats", {})))
+        except (RAGError, OSError) as exc:
+            # One unreadable document must not cost the other 60 questions.
+            for question in group:
+                run.runs.append(_failed_run(question, run.system, exc, 0.0))
+                _checkpoint(run.runs[-1])
+            continue
+
+        for question in group:
+            started = time.perf_counter()
+            try:
+                result = system.ask(question.question)
+                latency = time.perf_counter() - started
+                ranked = _probe(system, question.question, result)
+                question_run = score_result(
+                    question,
+                    result,
+                    system=run.system,
+                    retrieved_for_metrics=ranked,
+                    latency_s=latency,
+                )
+                if judge is not None:
+                    judge.annotate(question, result, question_run.record)
+                run.latencies.append(latency)
+            except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                question_run = _failed_run(
+                    question, run.system, exc, time.perf_counter() - started
+                )
+            run.runs.append(question_run)
+            _checkpoint(question_run)
+
+    run.config = build_config_snapshot(
+        config,
+        system=run.system,
+        questions_path=Path(DEFAULT_QUESTIONS_PATH),
+        documents_dir=documents_dir,
+        n_questions=len(questions),
+        split=None,
+        judge=judge.describe() if judge is not None else None,
+    )
+    if out_dir is not None:
+        write_results(out_dir, run)
+    return run
+
+
+def _probe(system: Any, question: str, result: RAGResult) -> Sequence[Any]:
+    """Rank to the metric depth without touching the answer.
+
+    Falls back to the chunks ``ask`` returned for a system with no probe, in
+    which case the shallower depth shows up in the record's ``capped_ks``
+    rather than being passed off as a depth-10 figure.
+    """
+    retrieve = getattr(system, "retrieve", None)
+    if retrieve is None:
+        return result.retrieved
+    try:
+        return retrieve(question, RETRIEVAL_METRIC_DEPTH)
+    except RAGError:
+        return result.retrieved
+
+
+# ---------------------------------------------------------------------------
+# Storage (EVALUATION_PROTOCOL.md section 27)
+# ---------------------------------------------------------------------------
+
+#: BENCHMARK_SPEC.md section 20's summary table, in its order.
+SUMMARY_COLUMNS: tuple[str, ...] = (
+    "system",
+    "accuracy_all",
+    "accuracy_answerable",
+    "faithfulness",
+    "citation_any_correct",
+    "citation_precision",
+    "recall_at_5",
+    "full_recall_at_5",
+    "mrr_at_10",
+    "abstention_accuracy",
+    "false_answer_rate",
+    "over_abstention_rate",
+    "unsupported_answer_rate",
+    "latency_median_s",
+    "latency_p95_s",
+    "peak_vram_gb",
+)
+
+
+def write_results(out_dir: str | Path, run: BenchmarkRun) -> dict[str, Path]:
+    """Write the four files section 27 names, and return their paths."""
+    directory = Path(out_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    summary = run.summary()
+
+    paths = {
+        "config": directory / CONFIG_FILENAME,
+        "results": directory / RESULTS_FILENAME,
+        "per_question": directory / PER_QUESTION_FILENAME,
+        "summary": directory / SUMMARY_FILENAME,
+    }
+    _write_json(paths["config"], run.config)
+    _write_json(
+        paths["results"],
+        {
+            "summary": summary,
+            "by_question_type": summarize_by(run.scores, "question_type"),
+            "by_split": summarize_by(run.scores, "split"),
+            "failures": [
+                {
+                    "question_id": s.question_id,
+                    "question_type": s.question_type,
+                    "category": s.error_category,
+                    "error": s.error,
+                }
+                for s in run.scores
+                if s.failed
+            ],
+        },
+    )
+    _write_json(paths["per_question"], run.records)
+    _write_summary_csv(paths["summary"], summary)
+    return paths
+
+
+def write_checkpoint(out_dir: str | Path, records: Sequence[dict[str, Any]]) -> Path:
+    """Rewrite the per-question file mid-run (EXPERIMENT_PLAN.md section 4)."""
+    directory = Path(out_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / PER_QUESTION_FILENAME
+    _write_json(path, list(records))
+    return path
+
+
+def summarize_by(scores: Sequence[QuestionScore], key: str) -> dict[str, Any]:
+    """Break the summary down by question type or split.
+
+    BENCHMARK_SPEC.md section 21 makes this the point of the exercise: the
+    benchmark succeeds only if it reveals *where* the system works and fails,
+    which one aggregate number cannot do.
+    """
+    groups: dict[str, list[QuestionScore]] = {}
+    for score in scores:
+        groups.setdefault(str(getattr(score, key)), []).append(score)
+    return {name: summarize(group) for name, group in sorted(groups.items())}
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.write_text(
+        json.dumps(payload, indent=2, default=str) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _write_summary_csv(path: Path, summary: dict[str, Any]) -> None:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(SUMMARY_COLUMNS))
+        writer.writeheader()
+        writer.writerow({column: summary.get(column) for column in SUMMARY_COLUMNS})
+
+
+def load_results(out_dir: str | Path) -> dict[str, Any]:
+    """Read back everything :func:`write_results` wrote."""
+    directory = Path(out_dir)
+    with (directory / SUMMARY_FILENAME).open(encoding="utf-8", newline="") as handle:
+        summary_rows = list(csv.DictReader(handle))
+    return {
+        "config": json.loads((directory / CONFIG_FILENAME).read_text(encoding="utf-8")),
+        "results": json.loads(
+            (directory / RESULTS_FILENAME).read_text(encoding="utf-8")
+        ),
+        "per_question": json.loads(
+            (directory / PER_QUESTION_FILENAME).read_text(encoding="utf-8")
+        ),
+        "summary_csv": summary_rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def run_benchmark_cli(
+    questions_path: str | Path = DEFAULT_QUESTIONS_PATH,
+    documents_dir: str | Path = DEFAULT_DOCUMENTS_DIR,
+    out_dir: str | Path = "results/baseline",
+    config: RAGConfig | None = None,
+    split: str | None = None,
+    limit: int | None = None,
+    judge: Any = None,
+    skip_validation: bool = False,
+    progress=None,
+) -> BenchmarkRun:
+    """Load, validate, run, score and store, in that order.
+
+    Validation is not optional by default. A malformed dataset produces
+    plausible-looking numbers, which BENCHMARK_SPEC.md calls the worst failure
+    mode an evaluation harness has; ``require_valid_benchmark`` already exists
+    for exactly this and refusing to start beats explaining the numbers later.
+    """
+    questions_path = Path(questions_path)
+    documents_dir = Path(documents_dir)
+
+    if not skip_validation:
+        validation = validate_benchmark(questions_path, documents_dir)
+        if not validation.ok:
+            raise BenchmarkValidationError(
+                "Refusing to benchmark an invalid dataset. Fix these first, or "
+                "pass skip_validation=True if you know what you are measuring:"
+                f"\n{validation.report()}"
+            )
+
+    questions = load_questions(questions_path)
+    if split:
+        questions = [q for q in questions if q.split == split]
+    if limit:
+        questions = questions[:limit]
+    if not questions:
+        raise BenchmarkValidationError(
+            f"No questions selected from {questions_path} "
+            f"(split={split!r}, limit={limit!r})."
+        )
+
+    config = config or RAGConfig.default()
+    run = run_benchmark(
+        questions,
+        documents_dir=documents_dir,
+        config=config,
+        judge=judge,
+        progress=progress,
+    )
+    run.config = build_config_snapshot(
+        config,
+        system=run.system,
+        questions_path=questions_path,
+        documents_dir=documents_dir,
+        n_questions=len(questions),
+        split=split,
+        judge=judge.describe() if judge is not None else None,
+    )
+    write_results(out_dir, run)
+    return run
