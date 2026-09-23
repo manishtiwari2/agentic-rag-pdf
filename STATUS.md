@@ -14,7 +14,7 @@ along that order the project actually is.
 | --- | --- |
 | Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking), 5 (agentic), 6 (ablations + write-up, offline stack) |
 | Next step | **GPU model-stack re-run** (section 9.5) |
-| **Phase 6 result** | **On the offline stand-in stack, no component earned its cost** (DD-058 rule, DD-060). The evidence controller alone caused Phase 5's regression: removing it recovers faithfulness +0.105 [+0.039, +0.171] and citation +0.086 [+0.029, +0.157]. Threshold tuning on dev (0.5 → 0.3) changed no eval answer. Error analysis found an ingestion defect (a running-header rule deletes content) and a citation-parsing defect behind q065 (section 9.4) |
+| **Phase 6 result** | **On the offline stand-in stack, no component earned its cost** (DD-058 rule, DD-060). The evidence controller alone caused Phase 5's regression: removing it recovers faithfulness +0.105 [+0.039, +0.171] and citation +0.086 [+0.029, +0.157]. Threshold tuning on dev (0.5 → 0.3) changed no eval answer. Error analysis found a chunking defect (heading text moved into `chunk.section`, which no component reads) and a citation-parsing defect behind q065 (section 9.4) |
 | **Phase 5 result** | **The agentic pipeline is not kept: its added complexity did not pay for itself.** No keep-or-drop metric improves over Baseline B. Faithfulness −0.132 [−0.211, −0.053] and citation any-correct −0.143 [−0.229, −0.071] *regress*, because the rule-based evidence controller refused 11 answerable questions. RQ3 not shown, and RQ4 unanswerable offline (floor), as DD-056 declared in advance. Rule-based stand-ins for every agent decision (section 9.3) |
 | Tests | 582 collected: 580 passing, 2 failing. Both failures are in `tests/test_agentic.py` and were already on `main` (missing-number refinement; regeneration cap 2); see section 9.5 |
 | Source | 11,933 lines in `src/`, 5,565 lines in `tests/` |
@@ -224,7 +224,7 @@ Rules that exist only in prose drift. These are executable:
 | DD-057 | The seven ablations are section 24's six components on the agentic system, plus the existing reranker-OFF arm on Baseline B |
 | DD-058 | Phase 6's metrics, floors, threshold rule and "earned its cost" rule, declared before any run |
 | DD-059 | Sufficiency threshold 0.3, chosen on dev; the iteration cap stays 2 |
-| DD-060 | Phase 6 verdicts: no component earned its cost offline; the controller's refusals are two rules, one fed by an ingestion defect |
+| DD-060 | Phase 6 verdicts: no component earned its cost offline; the controller's refusals are two rules, one fed by a chunking defect |
 
 DD-036 to DD-043 are Phase 3's; DD-044 to DD-049 are Phase 4's; DD-050 to DD-056 Phase 5's; DD-057 to DD-060 Phase 6's. Of the five open questions in
 `EXPERIMENT_PLAN.md` section 5, 4 and 5 are decided, and 3 is closed for the
@@ -713,10 +713,11 @@ agentic reference, plus q065 and q069. What actually went wrong:
 * **context-selection** (q009, q022): the gold page is in the depth-10 probe
   but was dropped from the evidence the generator saw.
 * **abstention** (q001, q002, q005): answerable questions refused by the
-  controller. **The root cause is an ingestion defect.**
+  controller. **The root cause is a chunking defect.**
   * `doc1.pdf` is two pages, and both start with "GATE 2027 IIT Madras |
-    Organizing Institute". Running-header detection strips that line from
-    every chunk.
+    Organizing Institute". The structure chunker takes that line as a heading
+    and stores it in `chunk.section`, not `chunk.text`. Only citation labels
+    read `section`; retrieval, generation and every agent read `text`.
   * The context therefore never contains "2027", and the number rule refuses
     every GATE question that mentions the year.
   * q001's answer, "IIT Madras", is in the deleted line, so no system can
@@ -748,7 +749,8 @@ agentic reference, plus q065 and q069. What actually went wrong:
   rebuild the table.
 * **Follow-ups found by the error analysis.** None was fixed here, because each
   changes the system every stored result measured:
-  1. running-header detection deletes content on a 2-page PDF;
+  1. the structure chunker moves heading text into `chunk.section`, where no
+     retriever, generator or agent can see it;
   2. bare `[n]` bibliography references parsed as evidence markers;
   3. the controller's number rule refuses on a missing year or model number.
 * **Two pre-existing test failures on `main`**, both in `test_agentic.py`:
@@ -783,8 +785,13 @@ In this order:
    python -m src.cli final-table
    ```
 
-   The threshold sweep must be redone on `--split dev` for the LLM controller.
-   0.3 was chosen for the rule-based one.
+   There is no threshold to re-sweep: `agents.sufficiency_threshold` is read
+   only by the rule-based controller (`src/agents/evidence.py`). The LLM
+   controller decides sufficiency itself. The iteration-cap sweep *is* worth
+   redoing on `--split dev`.
+
+   Step-by-step instructions for all three remaining steps are in
+   `NEXT_STEPS.md`.
 
 2. **Decide the three ingestion, citation and controller follow-ups**
    (section 9.5) before the model-stack run. Each changes what every system
