@@ -97,6 +97,12 @@ HASHING_EMBEDDER = "local/hashing-embedder"
 SCRIPTED_BACKEND = "local/scripted-extractive"
 #: Dependency-free reranker: joint query/passage term coverage (DD-048).
 OVERLAP_RERANKER = "local/term-overlap-reranker"
+#: Rule-based stand-ins for the agentic system's model-backed decisions
+#: (DD-055). Deterministic code, labelled as such wherever a record names the
+#: component that decided, so no offline figure is read as a model's.
+RULE_PLANNER = "local/rule-based-planner"
+RULE_EVIDENCE_CONTROLLER = "local/rule-based-evidence-controller"
+RULE_VERIFIER = "local/rule-based-verifier"
 
 
 @dataclass(frozen=True)
@@ -252,9 +258,11 @@ RETRIEVERS: tuple[str, ...] = ("dense", "lexical")
 class RetrievalConfig:
     top_k: int = 5
     #: "dense" is Baseline A; "hybrid" is Baseline B (EVALUATION_PROTOCOL.md
-    #: section 8). The strategy decides which pipeline ``build_pipeline`` builds,
-    #: so the system under test is chosen by configuration alone (DD-017).
-    strategy: Literal["dense", "hybrid"] = "dense"
+    #: section 8); "agentic" is Baseline B's retrieval driven by the agent loop
+    #: of section 9 (DD-050). The strategy decides which pipeline
+    #: ``build_pipeline`` builds, so the system under test is chosen by
+    #: configuration alone (DD-017).
+    strategy: Literal["dense", "hybrid", "agentic"] = "dense"
     #: Which retrievers a hybrid system fuses, in tie-break priority order
     #: (DD-045). ("dense",) or ("lexical",) are the ablation arms
     #: EVALUATION_PROTOCOL.md section 24 and DD-007 ask for.
@@ -317,6 +325,57 @@ class GenerationConfig:
     allow_non_commercial_model: bool = False
 
 
+AgentBackend = Literal["llm", "rules"]
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    """The agentic system's components (ARCHITECTURE.md sections 11-17).
+
+    Read only by the agentic pipeline. Each component has its own switch, so
+    the ablations of EVALUATION_PROTOCOL.md section 24 -- planner OFF,
+    refinement OFF, evidence controller OFF, verification OFF -- are
+    configuration changes rather than code changes (DD-050). A component that
+    is switched off is not built at all.
+
+    ``"llm"`` components ask the generation model, so no second model is
+    loaded (ARCHITECTURE.md section 21); ``"rules"`` components are the
+    deterministic stand-ins ``RAGConfig.offline()`` uses (DD-055). Every value
+    below was set before any agentic result existed and is untuned
+    (EXPERIMENT_PLAN.md section 5).
+    """
+
+    planner_enabled: bool = True
+    planner: AgentBackend = "llm"
+    #: Most queries one question is decomposed into, the original included
+    #: (DD-051). A cap, because an LLM planner can return any number.
+    max_sub_queries: int = 3
+
+    evidence_controller_enabled: bool = True
+    evidence_controller: AgentBackend = "llm"
+    #: Share of a query's content terms the selected context must contain for
+    #: the rule-based controller to call it covered (DD-052).
+    sufficiency_threshold: float = 0.5
+
+    refinement_enabled: bool = True
+    #: MAX_RETRIEVAL_ITERATIONS (ARCHITECTURE.md section 13, DD-012): total
+    #: retrieval rounds, the first included. 1 means no refinement. Open
+    #: question 3 in EXPERIMENT_PLAN.md section 5: chosen for latency.
+    max_retrieval_iterations: int = 2
+    #: When a second round ran, also generate from the first round's context,
+    #: so the record says whether iteration 2 changed the answer (DD-053). A
+    #: diagnostic: never returned, and not counted as a system model call.
+    record_refinement_counterfactual: bool = True
+
+    verification_enabled: bool = True
+    verifier: AgentBackend = "llm"
+    #: Share of a claim's content terms its cited evidence must contain for the
+    #: rule-based verifier to call it supported (DD-054).
+    verifier_support_threshold: float = 0.5
+    #: Regenerations after a failed verification before abstaining (DD-054).
+    max_regenerations: int = 1
+
+
 @dataclass(frozen=True)
 class RAGConfig:
     """The single configuration object for the whole system."""
@@ -327,6 +386,7 @@ class RAGConfig:
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     reranking: RerankingConfig = field(default_factory=RerankingConfig)
+    agents: AgentConfig = field(default_factory=AgentConfig)
 
     # -- presets ------------------------------------------------------------
 
@@ -351,11 +411,11 @@ class RAGConfig:
     def offline(cls) -> "RAGConfig":
         """No weights, no GPU, no downloads.
 
-        Uses the hashing embedder, the scripted extractive backend and the
-        term-overlap reranker. All three are real implementations rather than
-        mocks: weaker than the model-backed components, but they retrieve,
-        rerank and answer for real, which is what makes the pipeline testable
-        on CPU.
+        Uses the hashing embedder, the scripted extractive backend, the
+        term-overlap reranker and the rule-based agents. All are real
+        implementations rather than mocks: weaker than the model-backed
+        components, but they retrieve, rerank, plan, assess, verify and answer
+        for real, which is what makes every pipeline testable on CPU.
         """
         return cls(
             embedding=EmbeddingConfig(model_id=HASHING_EMBEDDER, device="cpu"),
@@ -366,6 +426,9 @@ class RAGConfig:
                 device="cpu",
             ),
             reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu"),
+            agents=AgentConfig(
+                planner="rules", evidence_controller="rules", verifier="rules"
+            ),
         )
 
     # -- derived ------------------------------------------------------------
@@ -391,12 +454,34 @@ class RAGConfig:
 
     @property
     def is_hybrid(self) -> bool:
-        return self.retrieval.strategy == "hybrid"
+        """Does the system run hybrid retrieval? Baseline B and the agentic
+        system do: the agentic system reuses Baseline B's retrieval, fusion and
+        reranking unchanged (DD-050)."""
+        return self.retrieval.strategy in ("hybrid", "agentic")
+
+    @property
+    def is_agentic(self) -> bool:
+        return self.retrieval.strategy == "agentic"
 
     @property
     def uses_reranker(self) -> bool:
-        """Only the hybrid system reranks; the dense baseline never loads one."""
+        """Only hybrid retrieval reranks; the dense baseline never loads one."""
         return self.is_hybrid and self.reranking.enabled
+
+    @property
+    def max_retrieval_iterations(self) -> int | None:
+        """The retrieval-round cap actually in force, or None for a baseline.
+
+        Refinement is triggered only by the evidence controller, so with either
+        switched off the system runs exactly one round whatever the configured
+        cap says -- and the record says 1, not the unused cap.
+        """
+        if not self.is_agentic:
+            return None
+        a = self.agents
+        if not (a.refinement_enabled and a.evidence_controller_enabled):
+            return 1
+        return a.max_retrieval_iterations
 
     def fingerprint(self) -> str:
         """Stable hash of the whole configuration, recorded with every result."""
@@ -435,7 +520,42 @@ class RAGConfig:
                 (rer.license if rer else "unregistered") if self.uses_reranker else None
             ),
             "rerank_candidates": self.reranking.candidates if hybrid else None,
+            **self._describe_agents(),
             "estimated_vram_gb": self.estimate_vram_gb(),
+        }
+
+    def _describe_agents(self) -> dict[str, object]:
+        """The agent switches, or null for a system that has no agents -- the
+        reranker's precedent: absent, not forgotten."""
+        a = self.agents
+        agentic = self.is_agentic
+
+        def backend(enabled: bool, kind: str, rule: str) -> str | None:
+            if not (agentic and enabled):
+                return None
+            return self.generation.model_id if kind == "llm" else rule
+
+        return {
+            "planner_enabled": a.planner_enabled if agentic else None,
+            "planner": backend(a.planner_enabled, a.planner, RULE_PLANNER),
+            "max_sub_queries": a.max_sub_queries if agentic and a.planner_enabled else None,
+            "evidence_controller_enabled": a.evidence_controller_enabled if agentic else None,
+            "evidence_controller": backend(
+                a.evidence_controller_enabled, a.evidence_controller, RULE_EVIDENCE_CONTROLLER
+            ),
+            "sufficiency_threshold": (
+                a.sufficiency_threshold if agentic and a.evidence_controller_enabled else None
+            ),
+            "refinement_enabled": a.refinement_enabled if agentic else None,
+            "max_retrieval_iterations": self.max_retrieval_iterations,
+            "verification_enabled": a.verification_enabled if agentic else None,
+            "verifier": backend(a.verification_enabled, a.verifier, RULE_VERIFIER),
+            "verifier_support_threshold": (
+                a.verifier_support_threshold if agentic and a.verification_enabled else None
+            ),
+            "max_regenerations": (
+                a.max_regenerations if agentic and a.verification_enabled else None
+            ),
         }
 
     # -- validation ---------------------------------------------------------
@@ -485,6 +605,9 @@ class RAGConfig:
         if self.reranking.batch_size <= 0:
             raise ConfigurationError("reranking.batch_size must be positive.")
 
+        if self.is_agentic:
+            self._validate_agents()
+
         if self.generation.temperature < 0:
             raise ConfigurationError("generation.temperature must not be negative.")
         if self.generation.max_new_tokens <= 0:
@@ -524,3 +647,43 @@ class RAGConfig:
                 "(reranking.enabled=False), or load the models sequentially."
             )
         return self
+
+    def _validate_agents(self) -> None:
+        a = self.agents
+        if a.max_retrieval_iterations < 1:
+            raise ConfigurationError(
+                "agents.max_retrieval_iterations counts retrieval rounds, the "
+                "first included, so it must be at least 1 (1 = no refinement)."
+            )
+        if a.max_sub_queries < 1:
+            raise ConfigurationError(
+                "agents.max_sub_queries must be at least 1: the original "
+                "question is always the first query."
+            )
+        if a.max_regenerations < 0:
+            raise ConfigurationError("agents.max_regenerations must not be negative.")
+        for name in ("sufficiency_threshold", "verifier_support_threshold"):
+            value = getattr(a, name)
+            if not 0.0 <= value <= 1.0:
+                raise ConfigurationError(f"agents.{name} must be in [0, 1], got {value}.")
+        scripted = (
+            self.generation.backend == "scripted"
+            or self.generation.model_id == SCRIPTED_BACKEND
+        )
+        llm = [
+            name
+            for name, enabled, kind in (
+                ("planner", a.planner_enabled, a.planner),
+                ("evidence_controller", a.evidence_controller_enabled, a.evidence_controller),
+                ("verifier", a.verification_enabled, a.verifier),
+            )
+            if enabled and kind == "llm"
+        ]
+        if scripted and llm:
+            raise ConfigurationError(
+                f"agents.{', agents.'.join(llm)} = 'llm' needs a generation "
+                "model, but the generator is the scripted extractive backend, "
+                "which can only answer from evidence -- it cannot plan, assess "
+                "or verify. Set them to 'rules' (the rule-based stand-ins, "
+                "DD-055), or use RAGConfig.offline()."
+            )

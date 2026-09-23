@@ -171,6 +171,7 @@ def _finalize(
     evidence_pages: Sequence[int],
     retrieved_pages: Sequence[int] | None = None,
     reranking_lost_gold: bool = False,
+    verification_lost_answer: bool = False,
 ) -> QuestionScore:
     """Attach the failure verdict and its single category."""
     failed = is_failure(score)
@@ -181,6 +182,7 @@ def _finalize(
             reranking_lost_gold=reranking_lost_gold,
             evidence_pages=evidence_pages,
             retrieved_pages=retrieved_pages,
+            verification_lost_answer=verification_lost_answer,
         )
         if failed
         else None
@@ -216,7 +218,7 @@ def score_result(
     system: str,
     retrieved_for_metrics: Sequence[Any] | None = None,
     stages: Sequence[str] | None = None,
-    verification_status: str = VERIFICATION_NOT_RUN,
+    verification_status: str | None = None,
     latency_s: float | None = None,
 ) -> QuestionRun:
     """Score one answered question and build its section 20 record.
@@ -233,9 +235,21 @@ def score_result(
     ``metadata["pre_rerank_pages"]``. Both are read from the result rather
     than from knowledge of any particular system, which is what keeps this
     function system-agnostic (DD-038, DD-044).
+
+    The same holds for verification (DD-054): the status is the system's own
+    ``metadata["verification_status"]`` -- ``not_run`` for a system that
+    reports none -- and a system that verifies reports the draft it verified
+    as ``metadata["draft_answer"]``, which is scored here with the same rules
+    as the answer to tell a verifier that lost a correct answer from one that
+    caught a wrong one. Phase 3 hard-wired ``not_run``, which no verifying
+    system could have survived.
     """
     if stages is None:
         stages = tuple(result.metadata.get("stages") or DEFAULT_STAGES)
+    if verification_status is None:
+        verification_status = str(
+            result.metadata.get("verification_status") or VERIFICATION_NOT_RUN
+        )
     abstained = is_abstention(result.answer)
     ranked = list(retrieved_for_metrics if retrieved_for_metrics is not None else result.retrieved)
 
@@ -280,6 +294,7 @@ def score_result(
         reranking_lost_gold=reranking_lost_gold(
             question, answer_path_pages, result.metadata.get("pre_rerank_pages")
         ),
+        verification_lost_answer=verification_lost_answer(question, result, answer),
     )
 
     metrics = score.to_record()
@@ -314,6 +329,30 @@ def reranking_lost_gold(
         return False
     gold = set(question.evidence_pages)
     return bool(gold & set(pre_rerank_pages)) and not (gold & set(answer_path_pages))
+
+
+def verification_lost_answer(
+    question: Question, result: RAGResult, final: AnswerScore
+) -> bool:
+    """Did verification turn a correct draft into a wrong answer? (DD-054)
+
+    ``metadata["draft_answer"]`` is the answer a verifying system generated
+    before verification acted on it -- what "Verification OFF" returns. It is
+    scored with the same rule as the final answer; True when the draft is
+    correct and the final answer is not. A system that reports no draft cannot
+    have lost one.
+    """
+    draft = result.metadata.get("draft_answer")
+    if not isinstance(draft, str) or draft == result.answer:
+        return False
+    draft_score = score_answer(
+        question,
+        answer=draft,
+        abstained=is_abstention(draft),
+        evidence_text=result.evidence_text,
+        has_citations=True,
+    )
+    return draft_score.correct >= 1.0 and final.correct < 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +390,9 @@ class BenchmarkRun:
             3,
         )
         result["documents_indexed"] = len(self.index_stats)
+        # EVALUATION_PROTOCOL.md section 28's per-system costs, read from what
+        # each record reports -- not an agentic special case.
+        result.update(run_cost_stats(self.records))
         # BENCHMARK_SPEC.md section 15 asks for peak GPU memory. Nothing here
         # measures it when no CUDA device is present, and reporting 0.0 would
         # claim a measurement that was not taken.
@@ -361,6 +403,53 @@ class BenchmarkRun:
             self.judge.summary() if self.judge is not None else {"judge_enabled": False}
         )
         return result
+
+
+def run_cost_stats(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Retrieval iterations, model calls and parse failures, from the records.
+
+    Each figure is over the records that report it, with that count beside it,
+    and None when none do: Baselines A and B report no iterations or model
+    calls, and a 0 for them would be a measurement nobody took. Verification
+    statuses are counted for every system, since every record has one.
+    """
+
+    def reported(key: str) -> list[float]:
+        return [
+            float(r[key])
+            for r in records
+            if isinstance(r.get(key), (int, float)) and not isinstance(r.get(key), bool)
+        ]
+
+    def mean(values: list[float]) -> float | None:
+        return round(sum(values) / len(values), 4) if values else None
+
+    iterations = reported("retrieval_iterations")
+    calls = reported("model_calls")
+    decisions = sum(reported("llm_decisions"))
+    failures = sum(reported("llm_parse_failures"))
+    refined = [r for r in records if isinstance(r.get("refinement_changed_answer"), bool)]
+    statuses: dict[str, int] = {}
+    for record in records:
+        status = str(record.get("verification_status") or VERIFICATION_NOT_RUN)
+        statuses[status] = statuses.get(status, 0) + 1
+    return {
+        "retrieval_iterations_mean": mean(iterations),
+        "retrieval_iterations_max": max(iterations) if iterations else None,
+        "n_reporting_retrieval_iterations": len(iterations),
+        "model_calls_mean": mean(calls),
+        "model_calls_max": max(calls) if calls else None,
+        "n_reporting_model_calls": len(calls),
+        "diagnostic_model_calls_total": sum(reported("diagnostic_model_calls")) if calls else None,
+        "llm_decisions_total": int(decisions) if calls else None,
+        "llm_parse_failures_total": int(failures) if calls else None,
+        "llm_parse_failure_rate": round(failures / decisions, 4) if decisions else None,
+        "n_refined": len(refined) if calls else None,
+        "n_refinement_changed_answer": (
+            sum(1 for r in refined if r["refinement_changed_answer"]) if calls else None
+        ),
+        "verification_status_counts": dict(sorted(statuses.items())),
+    }
 
 
 def latency_stats(latencies: Sequence[float]) -> dict[str, Any]:
@@ -475,7 +564,15 @@ def build_config_snapshot(
         # fused pool passed through unchanged (DD-046).
         "rerank_k": described["rerank_candidates"],
         "retrieval_metric_depth": RETRIEVAL_METRIC_DEPTH,
-        "max_retrieval_iterations": None,
+        # The cap in force; null for a baseline, which has no loop (DD-050).
+        "max_retrieval_iterations": described["max_retrieval_iterations"],
+        "planner_enabled": described["planner_enabled"],
+        "planner": described["planner"],
+        "evidence_controller_enabled": described["evidence_controller_enabled"],
+        "evidence_controller": described["evidence_controller"],
+        "refinement_enabled": described["refinement_enabled"],
+        "verification_enabled": described["verification_enabled"],
+        "verifier": described["verifier"],
         "temperature": config.generation.temperature,
         "max_new_tokens": config.generation.max_new_tokens,
         "judge": judge or {"enabled": False, "reason": "not requested"},
@@ -615,6 +712,9 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     "latency_median_s",
     "latency_p95_s",
     "peak_vram_gb",
+    # EVALUATION_PROTOCOL.md section 28, for any system that reports them.
+    "retrieval_iterations_mean",
+    "model_calls_mean",
 )
 
 
