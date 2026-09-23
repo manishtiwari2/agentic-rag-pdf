@@ -147,6 +147,14 @@ def _latency(record: Mapping[str, Any]) -> float | None:
     return None if value is None else float(value)
 
 
+def _model_calls(record: Mapping[str, Any]) -> float | None:
+    # Baselines report no model calls (DD-055): absent, not zero.
+    value = record.get("model_calls")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 #: The headline figures, with the same denominators ``metrics.summarize`` uses.
 #: A test holds the means of these vectors to the summary's figures.
 METRICS: tuple[MetricSpec, ...] = (
@@ -192,6 +200,15 @@ METRICS: tuple[MetricSpec, ...] = (
         _latency,
         higher_is_better=False,
         note="mean seconds per question; a cost, not a quality figure",
+    ),
+    MetricSpec(
+        "model_calls_mean",
+        _model_calls,
+        higher_is_better=False,
+        note=(
+            "generation-model invocations per question (DD-055); a cost, not a "
+            "quality figure; only systems that report it"
+        ),
     ),
 )
 METRICS_BY_NAME: dict[str, MetricSpec] = {spec.name: spec for spec in METRICS}
@@ -244,6 +261,52 @@ PRIMARY_METRICS: dict[str, dict[str, list[str]]] = {
             "citation_any_correct",
             "abstention_accuracy",
         ],
+    },
+    # Declared before any Phase 6 run (DD-058). Each ablation arm is compared
+    # against the full agentic system (results/agentic/) as arm - reference; a
+    # component "helps" when removing it makes one of its own metrics
+    # significantly worse. "attribution" metrics are read on every arm to find
+    # the cause of Phase 5's regression.
+    "ablation:planner_off": {
+        "question": ["Does the planner's decomposition retrieve both hops?"],
+        "primary": ["full_recall_at_5_multi_hop_comparison", "accuracy_multi_hop_comparison"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:hybrid_off": {
+        "question": ["Inside the agentic system, does hybrid retrieval beat dense alone?"],
+        "primary": ["recall_at_5", "mrr_at_10"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:reranker_off_agentic": {
+        "question": ["Inside the agentic system, does reranking improve ranking and answers?"],
+        "primary": ["mrr_at_10", "accuracy_all"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:refinement_off": {
+        "question": ["Does a second retrieval round recover evidence the first missed?"],
+        "primary": ["over_abstention_rate", "full_recall_at_5"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:evidence_controller_off": {
+        "question": ["Does the evidence controller refuse unanswerable questions?"],
+        "primary": ["abstention_accuracy", "over_abstention_rate"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:verification_off": {
+        "question": ["Does verification reduce unsupported answers?"],
+        "primary": ["unsupported_answer_rate", "faithfulness"],
+        "cost": ["latency_s", "model_calls_mean"],
+    },
+    "ablation:attribution": {
+        "question": ["Which component caused Phase 5's faithfulness and citation regression?"],
+        "primary": ["faithfulness", "citation_any_correct"],
+    },
+    # Dev only (DD-058): the threshold is chosen on accuracy (all), ties broken
+    # by citation any-correct, then over-abstention, then nearness to 0.5.
+    "threshold_selection": {
+        "question": ["Which agents.sufficiency_threshold, chosen on --split dev?"],
+        "primary": ["accuracy_all"],
+        "secondary": ["citation_any_correct", "over_abstention_rate"],
     },
 }
 
@@ -429,6 +492,7 @@ VARIED: tuple[str, ...] = (
     "planner",
     "evidence_controller_enabled",
     "evidence_controller",
+    "sufficiency_threshold",
     "refinement_enabled",
     "verification_enabled",
     "verifier",

@@ -79,14 +79,25 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
                 "baseline has no reranker to switch off."
             )
         reranking = replace(reranking, enabled=False)
+    if getattr(args, "no_hybrid", False):
+        if system not in ("hybrid", "agentic"):
+            raise ConfigurationError(
+                "--no-hybrid applies to --system hybrid or agentic; the dense "
+                "baseline already retrieves with the dense retriever alone."
+            )
+        # The "Hybrid retrieval OFF" ablation: this one field, nothing else.
+        retrieval = replace(retrieval, retrievers=("dense",))
 
     agents: AgentConfig = config.agents
     requested = [flag for flag in AGENT_SWITCHES if getattr(args, flag, False)]
     iterations = getattr(args, "max_iterations", None)
-    if (requested or iterations is not None) and system != "agentic":
+    threshold = getattr(args, "sufficiency_threshold", None)
+    if (requested or iterations is not None or threshold is not None) and system != "agentic":
         flags = [f"--{f.replace('_', '-')}" for f in requested]
         if iterations is not None:
             flags.append("--max-iterations")
+        if threshold is not None:
+            flags.append("--sufficiency-threshold")
         raise ConfigurationError(
             f"{', '.join(flags)} apply to --system agentic; the {system} "
             "baseline has no agent components to switch off."
@@ -95,6 +106,8 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
         agents = replace(agents, **{AGENT_SWITCHES[flag]: False})
     if iterations is not None:
         agents = replace(agents, max_retrieval_iterations=iterations)
+    if threshold is not None:
+        agents = replace(agents, sufficiency_threshold=threshold)
 
     return replace(
         config, chunking=chunking, retrieval=retrieval, reranking=reranking, agents=agents
@@ -117,6 +130,14 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Hybrid/agentic: the 'Reranker OFF' ablation (EVALUATION_PROTOCOL.md 24).",
     )
+    parser.add_argument(
+        "--no-hybrid",
+        action="store_true",
+        help=(
+            "Hybrid/agentic: the 'Hybrid retrieval OFF' ablation "
+            "(EVALUATION_PROTOCOL.md 24): retrieval.retrievers = ('dense',)."
+        ),
+    )
     for flag, label in (
         ("--no-planner", "Agent planner OFF"),
         ("--no-evidence-controller", "Evidence controller OFF"),
@@ -132,6 +153,15 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
         "--max-iterations",
         type=int,
         help="Agentic only: MAX_RETRIEVAL_ITERATIONS (default 2; open question 3).",
+    )
+    parser.add_argument(
+        "--sufficiency-threshold",
+        type=float,
+        help=(
+            "Agentic only: agents.sufficiency_threshold, the rule-based evidence "
+            "controller's coverage threshold (default 0.5, DD-052). Tune on "
+            "--split dev only."
+        ),
     )
 
 
@@ -350,6 +380,14 @@ def main(argv: list[str] | None = None) -> int:
     compare_cmd.add_argument("--system", default="results/hybrid")
     compare_cmd.add_argument("--out", help="Default: <system>/comparison.json")
     compare_cmd.add_argument(
+        "--split",
+        choices=["dev", "eval"],
+        help=(
+            "Compare only this split's questions. A run over every question is "
+            "filtered to it; a run over the other split is refused."
+        ),
+    )
+    compare_cmd.add_argument(
         "--allow-confounded",
         action="store_true",
         help="Compare runs differing in a held-constant field (EVALUATION_PROTOCOL.md 10).",
@@ -367,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.system,
                 out_path=args.out,
                 allow_confounded=args.allow_confounded,
+                split=args.split,
             )
         except (ComparisonError, OSError, RAGError) as exc:
             print(f"{type(exc).__name__}: {exc}", file=sys.stderr)

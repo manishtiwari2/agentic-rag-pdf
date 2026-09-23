@@ -570,6 +570,7 @@ def build_config_snapshot(
         "planner": described["planner"],
         "evidence_controller_enabled": described["evidence_controller_enabled"],
         "evidence_controller": described["evidence_controller"],
+        "sufficiency_threshold": described["sufficiency_threshold"],
         "refinement_enabled": described["refinement_enabled"],
         "verification_enabled": described["verification_enabled"],
         "verifier": described["verifier"],
@@ -813,24 +814,61 @@ def load_results(out_dir: str | Path) -> dict[str, Any]:
 COMPARISON_FILENAME = "comparison.json"
 
 
+def restrict_to_split(loaded: dict[str, Any], split: str) -> dict[str, Any]:
+    """One split's records of a stored run, without re-running it.
+
+    A run over every question contains each split's records unchanged -- the
+    stack is deterministic and each question is answered independently -- so
+    filtering is the same measurement as a run with ``--split``, minus another
+    look at the evaluation set. A run over the *other* split cannot be
+    restricted and is refused. The copy's config records the split it now
+    holds and the filtering, so the comparison's section 10 check still sees
+    one split on both sides.
+    """
+    config = dict(loaded.get("config") or {})
+    stored = config.get("split")
+    if stored not in (None, split):
+        raise statistics.ComparisonError(
+            f"This run holds only the {stored!r} split; it cannot be restricted "
+            f"to {split!r}."
+        )
+    records = [
+        r for r in loaded.get("per_question") or [] if (r.get("metrics") or {}).get("split") == split
+    ]
+    if not records:
+        raise statistics.ComparisonError(f"No {split!r} records in this run.")
+    config["split"] = split
+    config["restricted_from_split"] = stored
+    config["n_questions"] = len(records)
+    return {**loaded, "config": config, "per_question": records}
+
+
 def compare_runs(
     baseline_dir: str | Path,
     system_dir: str | Path,
     out_path: str | Path | None = None,
     allow_confounded: bool = False,
+    split: str | None = None,
 ) -> dict[str, Any]:
     """Paired comparison of two stored runs (DD-028), written as JSON.
 
     Reads both result sets as written, so a stored baseline is compared without
     being re-run or rewritten. Defaults to ``<system_dir>/comparison.json``.
+    With ``split``, both runs are first restricted to that split's questions
+    (:func:`restrict_to_split`).
     """
+    baseline, system = load_results(baseline_dir), load_results(system_dir)
+    if split:
+        baseline, system = restrict_to_split(baseline, split), restrict_to_split(system, split)
     comparison = statistics.compare(
-        load_results(baseline_dir),
-        load_results(system_dir),
+        baseline,
+        system,
         baseline_label=str(baseline_dir),
         system_label=str(system_dir),
         allow_confounded=allow_confounded,
     )
+    if split:
+        comparison["split"] = split
     path = Path(out_path) if out_path else Path(system_dir) / COMPARISON_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(path, comparison)
