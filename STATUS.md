@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-23 (Phase 5 agentic pipeline; measured against both baselines)
+Last updated: 2026-09-23 (Phase 6 ablations, final table, error analysis and verdicts)
 
 A factual record of what exists, what it is verified to do, and what blocks the
 next step. `EXPERIMENT_PLAN.md` says what order to build in; this says how far
@@ -12,11 +12,12 @@ along that order the project actually is.
 
 | | |
 | --- | --- |
-| Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking), 5 (agentic) |
-| Next phase | **6 (ablations + write-up)** |
+| Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking), 5 (agentic), 6 (ablations + write-up, offline stack) |
+| Next step | **GPU model-stack re-run** (section 9.5) |
+| **Phase 6 result** | **On the offline stand-in stack, no component earned its cost** (DD-058 rule, DD-060). The evidence controller alone caused Phase 5's regression: removing it recovers faithfulness +0.105 [+0.039, +0.171] and citation +0.086 [+0.029, +0.157]. Threshold tuning on dev (0.5 → 0.3) changed no eval answer. Error analysis found an ingestion defect (a running-header rule deletes content) and a citation-parsing defect behind q065 (section 9.4) |
 | **Phase 5 result** | **The agentic pipeline is not kept: its added complexity did not pay for itself.** No keep-or-drop metric improves over Baseline B. Faithfulness −0.132 [−0.211, −0.053] and citation any-correct −0.143 [−0.229, −0.071] *regress*, because the rule-based evidence controller refused 11 answerable questions. RQ3 not shown, and RQ4 unanswerable offline (floor), as DD-056 declared in advance. Rule-based stand-ins for every agent decision (section 9.3) |
-| Tests | 508 passing |
-| Source | 9,010 lines in `src/`, 4,652 lines in `tests/` |
+| Tests | 582 collected: 580 passing, 2 failing. Both failures are in `tests/test_agentic.py` and were already on `main` (missing-number refinement; regeneration cap 2); see section 9.5 |
+| Source | 11,933 lines in `src/`, 5,565 lines in `tests/` |
 | Licence | Apache-2.0 (DD-035) |
 | Merged | PR #1–#7 in `main`; Phase 4 is on `feat/phase-4-hybrid-reranking` |
 | **Phase 4 result** | **Baseline B vs A, paired bootstrap over 76 questions: no significant difference on either pre-declared primary metric.** Recall@5 +0.057, 95% CI [−0.014, +0.143]; accuracy (all) +0.026, CI [−0.039, +0.092]. Significant on ranking-quality secondaries: MRR@10 +0.091 [+0.019, +0.167], Full-Recall@5 +0.100 [+0.029, +0.186]. Fallback stack on both sides, including a term-overlap stand-in for the reranker (section 9.2) |
@@ -36,7 +37,7 @@ Against the exit criteria in `EXPERIMENT_PLAN.md` section 2.
 | **3 — Metrics harness** | Retrieval, answer, citation and abstention metrics; error taxonomy; per-question records | **Met.** `src/evaluation/metrics.py` computes Recall@1/3/5/10, Full-Recall@5/10, MRR@10 and nDCG@10 at page level (DD-025), with `unanswerable` questions excluded rather than scored 0.0; deterministic correctness, faithfulness, citation precision/completeness; the four abstention rates over their three distinct denominators. The nine-category error taxonomy (DD-038) assigns exactly one category to every failing record, 65 of 76 here. `src/evaluation/benchmark.py` drives any system through its public `ask`, checkpoints per question, and writes the four files `EVALUATION_PROTOCOL.md` section 27 names. The LLM judge is built, optional and off by default (DD-041) |
 | **4 — Hybrid + reranking** | Baseline B vs A with a paired test (DD-028) | **Met.** `HybridRAGPipeline` (BM25 + dense, RRF, reranker) shares every other layer with Baseline A and is chosen by `retrieval.strategy`. `results/hybrid/` holds the four section 27 files from a real 76-question run, plus `comparison.json`: the paired bootstrap against `results/baseline/` (2,000 resamples, 19 metrics). The "Reranker OFF" arm is in `results/ablations/reranker_off/`, so the hybrid and reranker effects are measured separately. Findings are in section 9.2; neither primary metric differs significantly |
 | **5 — Agentic** | Planner, evidence controller, refinement, verifier; bounded loops; full trace | **Met.** `AgenticRAGPipeline` (`--system agentic`) drives Baseline B's retrieval through a bounded loop of the four components in `src/agents/`, each switchable by one config field. Every per-question record carries the full `agent_trace` with its caps. `results/agentic/` has the four section 27 files plus paired comparisons against A (`comparison.json`) and B (`comparison_vs_hybrid.json`). Findings are in section 9.3: not kept |
-| **6 — Ablations + write-up** | Seven ablations, comparison table, error analysis | Not started |
+| **6 — Ablations + write-up** | Seven ablations, comparison table, error analysis, a verdict per component | **Met, on the offline stand-in stack.** The seven arms (DD-057) are in `results/ablations/`, and the metrics and rules were pre-declared in DD-058, committed before any run. The dev threshold and iteration sweeps plus one eval run are in `results/experiments/` (DD-059). The section 28 table, ablation verdicts and error analysis are generated into `results/final/` by `final-table`. Findings and verdicts are in section 9.4 and DD-060 |
 
 `EXPERIMENT_PLAN.md` section 1 argued the benchmark, not the retrieval code,
 was the critical path. It was: the dataset took the longest and everything
@@ -213,18 +214,22 @@ Rules that exist only in prose drift. These are executable:
 | DD-041 | The judge is optional, off by default, and a skip is never a zero |
 | DD-042 | Citation completeness is sentence-level marker coverage |
 | DD-043 | Abstention is scored from the answer text, with the self-report recorded beside it |
-
 | DD-044 | A gold page is lost "by the reranker" only if Reranker-OFF would have kept it; fixes DD-038 rule 2, which made `reranking` unreachable |
 | DD-045 | RRF with k = 60, exact `Fraction` arithmetic, and a fixed tie-break over ranks only |
 | DD-046 | Each retriever ranks to 20 and the reranker sees the fused top 20, the same pool with it on or off |
 | DD-047 | The paired test's p-value is the one its percentile interval implies; 2,000 resamples, unchanged |
 | DD-048 | The offline reranker is term coverage; primary metrics per RQ named before the run |
 | DD-049 | BM25 with whole numbers, no stemming, and no zero-score hits |
+| DD-050–DD-056 | Phase 5: the agentic loop, its four rule-based components, and the pre-declared RQ3/RQ4/keep-or-drop metrics |
+| DD-057 | The seven ablations are section 24's six components on the agentic system, plus the existing reranker-OFF arm on Baseline B |
+| DD-058 | Phase 6's metrics, floors, threshold rule and "earned its cost" rule, declared before any run |
+| DD-059 | Sufficiency threshold 0.3, chosen on dev; the iteration cap stays 2 |
+| DD-060 | Phase 6 verdicts: no component earned its cost offline; the controller's refusals are two rules, one fed by an ingestion defect |
 
-DD-036 to DD-043 are Phase 3's; DD-044 to DD-049 are Phase 4's. All five open questions in
-`EXPERIMENT_PLAN.md` section 5 are either decided (4, 5) or correctly deferred
-(1, 2, 3) — and 1, 2 and 3 are now answerable for the first time, because the
-dev set has a harness to be swept with.
+DD-036 to DD-043 are Phase 3's; DD-044 to DD-049 are Phase 4's; DD-050 to DD-056 Phase 5's; DD-057 to DD-060 Phase 6's. Of the five open questions in
+`EXPERIMENT_PLAN.md` section 5, 4 and 5 are decided, and 3 is closed for the
+offline stack (DD-059). 1 (chunk size) and 2 (fusion) remain open: no Phase 6
+arm varies them, and no unplanned sweep was added.
 
 ---
 
@@ -512,47 +517,278 @@ The untuned 0.5 coverage threshold (DD-052) is the obvious suspect. Tuning it be
 
 ---
 
+## 9.4 Ablations, final comparison table and verdicts (Phase 6)
+
+> **Offline stand-in stack, as in 9.1-9.3.** Hashing embedder, scripted
+> extractive generator, term-overlap reranker, and rule-based planner, evidence
+> controller and verifier. No figure in this section is about Qwen3-4B, bge-m3
+> or bge-reranker-v2-m3.
+
+Everything below was pre-declared before any Phase 6 run:
+* DD-057 reconciles "seven" with section 24's six components;
+* DD-058 fixes each arm's metrics, the floors, the threshold rule and the
+  "earned its cost" rule.
+
+The tables are generated from stored results by `python -m src.cli
+final-table`, which writes `results/final/` (`REPORT.md` plus three JSON files).
+`tests/test_ablations.py` fails if the committed `results/final/` differs from a
+fresh regeneration.
+
+### Final comparison table (EVALUATION_PROTOCOL.md 28), eval split, 43 questions
+
+> Offline stand-in stack. Values with 95% bootstrap CIs. The stored all-question
+> runs are restricted to eval by filtering their records, not by re-running them
+> (DD-058). The tuned arm was run once, on eval only.
+
+| System | Recall@5 | MRR@10 | Accuracy | Faithfulness | Citation any-correct | Abstention acc. (n=3) | P95 latency (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense RAG | 0.850 [0.725, 0.950] | 0.733 [0.611, 0.848] | 0.116 [0.023, 0.209] | 0.930 [0.837, 1.000] | 0.600 [0.450, 0.750] | 0.000 [0, 0] | 0.009 [0.007, 0.011] |
+| Hybrid RAG | 0.950 [0.875, 1.000] | 0.851 [0.759, 0.933] | 0.186 [0.070, 0.302] | 0.930 [0.837, 1.000] | 0.650 [0.500, 0.775] | 0.000 [0, 0] | 0.011 [0.009, 0.011] |
+| Agentic RAG (0.5) | 0.950 [0.875, 1.000] | 0.849 [0.755, 0.933] | 0.140 [0.047, 0.256] | 0.814 [0.698, 0.930] | 0.525 [0.375, 0.675] | 0.000 [0, 0] | 0.026 [0.024, 0.027] |
+| Agentic RAG (0.3, tuned on dev) | 0.950 [0.875, 1.000] | 0.849 [0.755, 0.933] | 0.140 [0.047, 0.256] | 0.814 [0.698, 0.930] | 0.525 [0.375, 0.675] | 0.000 [0, 0] | 0.105 [0.026, 0.155] |
+
+| System | Avg retrieval iterations | Avg model calls | Peak VRAM |
+| --- | ---: | ---: | --- |
+| Dense / Hybrid | null (not reported, DD-055) | null | null: no GPU, not measured |
+| Agentic (0.5) | 1.070 [1.000, 1.163] | 0.907 [0.767, 1.023] | null: no GPU, not measured |
+| Agentic (0.3) | 1.070 [1.000, 1.163] | 0.907 [0.767, 1.023] | null: no GPU, not measured |
+
+How to read it:
+* **None of the three eval unanswerable questions is refused by any system.**
+  The agentic system's only abstention gain on all 76 questions, q057, is a dev
+  question.
+* **Latencies are milliseconds, from different sessions.** The tuned arm's
+  higher P95 is a later session on a loaded machine, not a cost of the
+  threshold: its answers are identical to the reference's.
+* **All-76-question table.** `results/final/REPORT.md` has it, labelled as not a
+  headline. Its figures match sections 9.1-9.3.
+
+### Ablations (arm − reference, all 76 questions)
+
+> Offline stand-in stack. The reference is `results/agentic/`, except arm 7,
+> whose reference is `results/hybrid/`. **Bold** = 95% CI excludes zero.
+
+| Arm | Declared metrics | Faithfulness / citation (attribution) | Model calls added by component | Answers changed | Verdict (DD-058) |
+| --- | --- | --- | ---: | ---: | --- |
+| 1 planner OFF | FR@5 multi +0.067 [0, +0.200]; acc. multi 0.000 | 0.000; +0.029 [0, +0.071] | +0.013 | 4 | did not earn its cost |
+| 2 hybrid OFF | Recall@5 0.000 [−0.043, +0.043]; MRR@10 +0.003 [−0.010, +0.016] | −0.013; −0.014 | +0.013 | 7 | did not earn its cost |
+| 3 reranker OFF (agentic) | MRR@10 −0.011 [−0.067, +0.039]; acc. +0.013 [0, +0.039] | +0.015; −0.014 | 0.000 | 31 | did not earn its cost |
+| 4 refinement OFF | over-abst. +0.014 [0, +0.043]; FR@5 0.000 | −0.013; 0.000 | +0.026 | 1 | did not earn its cost |
+| 5 evidence controller OFF | abst. acc. −0.167 [−0.500, 0]; **over-abst. −0.100 [−0.172, −0.029]** | **+0.105 [+0.039, +0.171]; +0.086 [+0.029, +0.157]** | **−0.171** | 8 | did not earn its cost: removing it *improves* faithfulness and citation |
+| 6 verification OFF | unsupported 0.000 (floor); faithfulness +0.026 [0, +0.066] | +0.026; +0.029 | +0.039 | 3 | did not earn its cost |
+| 7 reranker OFF (Baseline B, Phase 4) | acc. −0.013 [−0.053, +0.026]; faithfulness 0.000 | 0.000; −0.043 [−0.100, 0] | n/a | 31 | corroborates arm 3 |
+
+Notes on the table:
+* **Latency added by any component** is at most +0.002 s, and none is
+  significant.
+* **Model calls.** The evidence controller *saves* 0.171 generator calls per
+  question, because each refusal skips generation.
+* **Iteration cap.** `--max-iterations 1` is behaviourally identical to arm 4
+  (DD-057). It is part of the dev sweep, not an arm.
+
+### Verdicts, one per component
+
+On the offline stack, **no component earned its cost.** Every null below is
+bounded by a floor DD-058 stated before the run.
+
+* **Hybrid retrieval: did not earn its cost inside the agentic system.**
+  * Recall@5 and MRR@10 are unchanged with it off.
+  * At the baseline level (Phase 4, RQ1) it *did* significantly improve ranking
+    over dense (MRR@10 +0.074), though not its primary metric, Recall@5.
+  * Inside the agentic loop that ranking gain disappears. The planner's RRF
+    merge over sub-queries does comparable re-ranking.
+* **Reranker (term-overlap stand-in): did not earn its cost.** There is no
+  significant ranking or answer effect either inside the agentic system
+  (arm 3) or on Baseline B (arm 7).
+* **Planner: did not earn its cost.**
+  * Multi-hop metrics: 0 of 15 answers changed, and Full-Recall@5 is 0.067
+    *higher* without it (n.s.).
+  * The scripted generator answers from one block, so decomposition cannot
+    combine hops (DD-056 floor).
+  * One undeclared contrast is significant: nDCG@10 +0.010 without the
+    planner. It is isolated, so it is treated as a hypothesis.
+* **Refinement: did not earn its cost.** Removing it changed 1 answer in 76, a
+  wrong answer becoming a refusal. That is the DD-058 floor: refinement ran on
+  4 questions.
+* **Evidence controller: did not earn its cost, and is the cause of the Phase 5
+  regression.**
+  * The pre-declared attribution holds: only this arm recovers faithfulness
+    and citation.
+  * Its intended benefit, refusing unanswerable questions, is one question
+    (q057), and the CI includes zero.
+  * It refuses 11 answerable questions.
+* **Verifier: did not earn its cost.**
+  * Its primary metric sits at the 0.000 floor.
+  * Its only action that changed correctness was rejecting a correct answer
+    (q065), caused by a parsing defect (below).
+
+**Multiple comparisons.**
+* Phase 6 made 168 paired contrasts, 8 files of 21. The 6 arms account for 126
+  contrasts, 5 of them significant. The 2 eval files account for 42, also 5
+  significant.
+* Of the ablation contrasts, 4 significant ones are in the controller arm, on
+  metrics the controller plausibly moves. The fifth is the planner's isolated
+  nDCG result.
+* With Phases 4-5, the project has made 265 contrasts, and this report counts
+  them all.
+
+### Evidence-controller threshold and iteration cap (DD-059)
+
+Dev sweep (33 questions, dev-only numbers):
+
+| threshold | 0.2 | **0.3** | 0.4 | 0.5 | 0.6 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| accuracy (all) | 0.212 | **0.242** | 0.242 | 0.242 | 0.242 |
+| citation any-correct | 0.567 | **0.533** | 0.533 | 0.533 | 0.467 |
+| over-abstention | 0.100 | **0.133** | 0.167 | 0.167 | 0.233 |
+
+* **Choice.** The pre-declared rule chose 0.3: accuracy tied, citation broke
+  the tie with 0.6, and over-abstention broke the tie among the rest. The dev
+  results and the choice were committed before eval was touched.
+* **Eval, one run.** Threshold 0.3 gives answers identical to 0.5 on all 43
+  eval questions. Against Baseline B on eval, it still significantly regresses
+  faithfulness (−0.116 [−0.209, −0.023]), citation any-correct
+  (−0.125 [−0.225, −0.025]) and over-abstention. **Not kept**, under the same
+  rule DD-056 applied.
+* **Why tuning could not help.** Of the reference's 13 controller refusals, 5
+  come from the second rule, "every question number must appear in the
+  context". No threshold touches that rule, and 3 of the 6 eval refusals at 0.3
+  are number-only.
+* **Iteration cap.** A cap of 3 is identical to 2 on dev. A cap of 2 differs
+  from 1 on one question, a refusal becoming a wrong answer. Open question 3 is
+  closed for the offline stack.
+* **Disclosure (section 5.2).** Phase 5's diagnosis, which prompted this tuning,
+  cited eval failures (q065, q069). The *value* was chosen on dev alone.
+
+### Error analysis (sections 23, 30)
+
+> Offline stand-in stack. All categories for all 11 runs are in
+> `results/final/error_analysis.json`.
+
+| Category | Dense | Hybrid | Agentic | Controller OFF |
+| --- | ---: | ---: | ---: | ---: |
+| retrieval | 8 | 4 | 4 | 4 |
+| reranking | 0 | 0 | 1 | 0 |
+| context-selection | 1 | 2 | 2 | 2 |
+| abstention | 9 | 9 | 16 | 10 |
+| citation | 1 | 1 | 1 | 1 |
+| verification | 0 | 0 | 1 | 1 |
+| generation | 46 | 47 | 39 | 46 |
+| **failures / 76** | 65 | 63 | 64 | 64 |
+
+**Question types that stay hard** (accuracy, best of dense / hybrid / agentic):
+
+| Type (n) | Best accuracy |
+| --- | ---: |
+| ambiguous (5) | 0.000 |
+| summary (3) | 0.000 |
+| definition (8) | 0.125 |
+| explanation (8) | 0.125 |
+| multi_hop (7) | 0.143 |
+| table (7) | 0.143 |
+| numerical (11) | 0.273 |
+| factual (13) | 0.308 |
+| unanswerable (6) | 0.333 |
+| comparison (8) | 0.500 |
+
+**58 of 76 questions are answered correctly by none of the three systems.**
+
+**Manual inspection.** The sample is the first failures per category in the
+agentic reference, plus q065 and q069. What actually went wrong:
+
+* **generation** (q003, q004, q006): the gold page is retrieved, and the
+  scripted backend copies the best-matching table row or sentence. Examples:
+  * q003: the Digital Logic line with Boolean algebra, not the circuit-design
+    clause the question asks about;
+  * q004: the Databases heading, not the B/B+ tree example.
+
+  Whole-block extraction against short reference answers fails the 0.6 token
+  overlap. This is the fallback generator's ceiling, not a retrieval problem.
+* **retrieval** (q020, q023, q028): the gold page is never in the top 5.
+  * q020 and q028 retrieve a table-of-contents or header block that shares the
+    question's words ("Table 1", `git pull` in a contents list). Hashing and
+    BM25 both reward term overlap with navigation text.
+  * q023 is a multi-hop question whose two gold pages (6, 8) both lose to
+    pages repeating "mobile devices".
+* **context-selection** (q009, q022): the gold page is in the depth-10 probe
+  but was dropped from the evidence the generator saw.
+* **abstention** (q001, q002, q005): answerable questions refused by the
+  controller. **The root cause is an ingestion defect.**
+  * `doc1.pdf` is two pages, and both start with "GATE 2027 IIT Madras |
+    Organizing Institute". Running-header detection strips that line from
+    every chunk.
+  * The context therefore never contains "2027", and the number rule refuses
+    every GATE question that mentions the year.
+  * q001's answer, "IIT Madras", is in the deleted line, so no system can
+    answer q001.
+* **verification** (q065): the verifier rejected a **correct** draft. The draft
+  is a verbatim passage from block C1. That passage carries the paper's own
+  reference number, "shrinking[3]". `src/generation/citations.py` accepts a bare
+  `[3]` as a marker, so the reference became `[C3]`. The verifier then checked
+  the preceding claims against C3, a licence notice, and failed them. The
+  verifier thresholds are not the cause.
+* **reranking** (q073): the pre-rerank context held gold page 5. After the
+  planner's sub-queries and the reranker, the final context is pages 1 and 9.
+  The answer is copied from a reference-list entry matching "FinFET". The
+  DD-044 rule files this as `reranking`.
+* **q069** (controller refusal, eval): the question asks about the "iPhone 6".
+  The context never contains the token "6" on its own, so the number rule
+  refuses.
+
+---
+
+## 9.5 What remains
+
+* **The GPU model-stack run.** Every number in 9.1-9.4 is from the offline
+  stand-ins. Re-run baselines, agentic, the seven arms and the eval-split tuned
+  arm with Qwen3-4B + bge-m3 + bge-reranker-v2-m3 and LLM agents, then
+  `final-table`. RQ2, RQ3 and RQ4 stay open until then. That run also fills in
+  peak VRAM, the model-call cost of LLM agents and the LLM parse-failure rate.
+* **The notebook** (DD-002, DD-034), which should call `final-table` rather than
+  rebuild the table.
+* **Follow-ups found by the error analysis.** None was fixed here, because each
+  changes the system every stored result measured:
+  1. running-header detection deletes content on a 2-page PDF;
+  2. bare `[n]` bibliography references parsed as evidence markers;
+  3. the controller's number rule refuses on a missing year or model number.
+* **Two pre-existing test failures on `main`**, both in `test_agentic.py`:
+  * missing-number refinement returns no query;
+  * a regeneration cap of 2 verifies one time too few.
+
+  They are not caused by Phase 6. Separately, the `offline_config` fixture
+  bug, which broke several other agentic tests, is fixed here.
+* **The LLM judge** has still never been run (out of scope).
+
 ## 10. Next step
 
-**Phases 0 to 4 are done.** Both baselines run against the verified dataset
-end to end. The harness scores both through the same code, and
-`src/evaluation/statistics.py` puts a CI on every figure and a paired test on
-every comparison.
+**Phases 0 to 6 are done on the offline stand-in stack** (section 9.4). The
+experiment is fully specified, and every table regenerates from stored results
+with `python -m src.cli final-table`. What remains is section 9.5: the GPU
+model-stack run, the notebook, and three follow-ups found by the error analysis.
 
 In this order:
 
-1. **Re-run all three arms against the model stack, on a GPU.** Every number in
-   sections 9.1 and 9.2 comes from the fallback components. RQ2 in particular
-   is unanswered until `bge-reranker-v2-m3` is the reranker being measured:
+1. **Re-run everything against the model stack, on a GPU.** Every figure in
+   sections 9.1-9.4 comes from the stand-ins. All runs must be re-run together,
+   because `compare-runs` refuses to mix stacks (EVALUATION_PROTOCOL.md 10):
 
    ```bash
-   python -m src.cli run-benchmark --out results/baseline
+   python -m src.cli run-benchmark --system dense --out results/baseline
    python -m src.cli run-benchmark --system hybrid
    python -m src.cli run-benchmark --system hybrid --no-rerank --out results/ablations/reranker_off
-   python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
+   python -m src.cli run-benchmark --system agentic
+   python -m src.cli run-benchmark --system agentic --no-planner --out results/ablations/planner_off
+   # ... likewise --no-hybrid, --no-rerank, --no-refinement,
+   # --no-evidence-controller and --no-verification (DD-057)
+   python -m src.cli final-table
    ```
 
-   All three must be re-run together. `compare-runs` refuses to compare a
-   model-stack Baseline B with the fallback Baseline A, because the embedder and
-   generator would differ (EVALUATION_PROTOCOL.md section 10).
+   The threshold sweep must be redone on `--split dev` for the LLM controller.
+   0.3 was chosen for the rule-based one.
 
-2. **Phase 6: ablations and write-up.** Phase 5 is done (section 9.3). The
-   ablation arms are configuration flags: `--no-planner`,
-   `--no-evidence-controller`, `--no-refinement`, `--no-verification` and
-   `--max-iterations`. The first question is whether the controller alone
-   explains the regression. Sweep `agents.sufficiency_threshold` on
-   `--split dev` only.
+2. **Decide the three ingestion, citation and controller follow-ups**
+   (section 9.5) before the model-stack run. Each changes what every system
+   sees, so a fix belongs before the numbers that are meant to last, not after.
 
-3. *(Done.)* **Phase 5: the agentic pipeline.** Phase 4's result sharpens what it has to
-   do. Retrieval is not the bottleneck on this stack. Better ranking moved 6 of
-   76 answers, and `generation` and `abstention` are 56 of the 63 failures. The
-   planner and refinement loop improve retrieval; the verifier and evidence
-   controller target answer grounding and abstention. The latter are the ones
-   aimed at the measured failure. The taxonomy's `verification` category stays
-   reserved for them.
-
-`EXPERIMENT_PLAN.md` section 5's open questions 1, 2 and 3 (chunk size and
-overlap, RRF vs. weighted fusion, `MAX_RETRIEVAL_ITERATIONS`) are answerable for
-the first time: they were deferred pending a dev set, and the dev split now has
-a harness to be swept with. Sweep on `--split dev` only; the eval split exists
-to not be tuned against.
+3. **The notebook** (DD-002), calling `final-table` rather than rebuilding the
+   table by hand.
