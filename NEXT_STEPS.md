@@ -200,7 +200,7 @@ from google.colab import drive
 drive.mount('/content/drive')                 # results must survive a disconnect
 
 REF = "v0.7-gpu-run"                          # the pinned tag from checkpoint 1
-!git clone --depth 1 --branch {REF} https://github.com/manishtiwari2/agentic-pdf-rag /content/agentic-pdf-rag
+!git clone --depth 1 --branch {REF} https://github.com/manishtiwari2/agentic-rag-pdf /content/agentic-pdf-rag
 %cd /content/agentic-pdf-rag
 !pip install -q -r requirements-models.txt
 
