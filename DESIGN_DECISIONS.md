@@ -2032,7 +2032,7 @@ could keep issuing new queries.
 
 ---
 
-# DD-060 — Phase 6 Verdicts: No Component Earned Its Cost Offline, and the Controller's Refusals Are Two Rules, One of Them Fed by an Ingestion Defect
+# DD-060 — Phase 6 Verdicts: No Component Earned Its Cost Offline, and the Controller's Refusals Are Two Rules, One of Them Fed by a Chunking Defect
 
 **Status:** Accepted — Phase 6 findings, all from the offline stand-in stack
 
@@ -2076,16 +2076,26 @@ place:
    The eval run at threshold 0.3 still refuses 6 eval questions, 3 of them
    number-only. No threshold can release those. This is why tuning 0.5 → 0.3
    changed no eval answer.
-3. **A running-header rule deletes content.** `doc1.pdf` has two pages, and
-   both begin with "GATE 2027 IIT Madras | Organizing Institute". Header
-   detection strips that line from every chunk. The consequences:
+3. **The structure chunker hides heading text from every component that
+   decides.** `doc1.pdf` has two pages, and both begin with "GATE 2027 IIT
+   Madras | Organizing Institute". Parsing keeps the line: the page text
+   contains it, and running-header removal does not fire on a 2-page document
+   (`header_footer_min_pages = 3`). The structure chunker then takes the line as
+   a heading and stores it in `chunk.section` instead of `chunk.text`. `section`
+   is used only to label citations. The embedder, BM25, reranker, generator,
+   controller and verifier all read `chunk.text`, so none of them ever sees the
+   line. The consequences:
    * q001's answer ("IIT Madras") is unrecoverable by every system;
    * "2027" is missing from every GATE chunk, which triggers the number rule
      on q001, q002 and q005.
 
-   This is an ingestion defect, upstream of every system measured. It is
-   recorded rather than fixed here, because fixing it would change every
-   stored baseline.
+   This is a chunking defect, upstream of every system measured. It is recorded
+   rather than fixed here, because fixing it would change every stored
+   baseline.
+
+   *Correction, made before this branch was merged:* the first draft of this
+   DD blamed running-header removal. Tracing the line through
+   `PdfParser` and the chunker showed it is the heading-to-`section` move.
 4. **q065, the first `verification` record, is a marker-parsing defect, not a
    verifier-threshold problem.** The draft is the correct passage, copied
    verbatim from block [C1]. That passage contains the paper's own
