@@ -1,0 +1,72 @@
+{
+  "system": "baseline_hybrid",
+  "benchmark_version": "1.0",
+  "questions_path": "benchmark\\questions.json",
+  "documents_dir": "benchmark\\documents",
+  "n_questions": 76,
+  "split": null,
+  "random_seed": 42,
+  "scoring_rules_version": "2026-09-23.1",
+  "error_taxonomy_version": "2026-09-23.1",
+  "abstention_patterns_version": "2026-09-21.1",
+  "generation_model": "local/scripted-extractive",
+  "generation_model_revision": null,
+  "quantization": "none",
+  "embedding_model": "local/hashing-embedder",
+  "embedding_model_revision": null,
+  "reranker_model": null,
+  "reranker_enabled": false,
+  "chunking_strategy": "structure",
+  "chunk_size": 1200,
+  "chunk_overlap": 150,
+  "retrieval_strategy": "hybrid",
+  "retrievers": [
+    "dense",
+    "lexical"
+  ],
+  "fusion": "rrf",
+  "rrf_k": 60,
+  "candidate_k": 20,
+  "top_k": 5,
+  "rerank_k": 20,
+  "retrieval_metric_depth": 10,
+  "max_retrieval_iterations": null,
+  "temperature": 0.0,
+  "max_new_tokens": 384,
+  "judge": {
+    "enabled": false,
+    "reason": "not requested"
+  },
+  "config_fingerprint": "0627119505b93242",
+  "config": {
+    "config_fingerprint": "0627119505b93242",
+    "generation_model": "local/scripted-extractive",
+    "generation_license": "unregistered",
+    "quantization": "none",
+    "temperature": 0.0,
+    "embedding_model": "local/hashing-embedder",
+    "embedding_license": "unregistered",
+    "embedding_pooling": "mean",
+    "chunk_strategy": "structure",
+    "chunk_size": 1200,
+    "chunk_overlap": 150,
+    "top_k": 5,
+    "retrieval_strategy": "hybrid",
+    "retrievers": [
+      "dense",
+      "lexical"
+    ],
+    "fusion": "rrf",
+    "rrf_k": 60,
+    "candidate_k": 20,
+    "reranker_enabled": false,
+    "reranker_model": null,
+    "reranker_license": null,
+    "rerank_candidates": 20,
+    "estimated_vram_gb": 0.0
+  },
+  "environment": {
+    "python": "3.13.0",
+    "platform": "Windows-11-10.0.26200-SP0"
+  }
+}

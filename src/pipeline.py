@@ -1,12 +1,25 @@
-"""Baseline A: dense retrieve-then-generate (ARCHITECTURE.md section 19).
+"""The two retrieve-then-generate baselines (ARCHITECTURE.md section 19).
+
+Baseline A, dense (``DenseRAGPipeline``):
 
     parse -> chunk -> embed -> index -> retrieve top-k -> build context -> generate
 
-There is no planner, no lexical retrieval, no fusion, no reranker and no
-retrieval loop. That is the point. DD-013 requires this baseline to exist before
-the agentic system, because "the agentic pipeline is better" is not a claim that
-can be checked without a system that lacks every part of it. Adding any of those
-components here would leave Phases 4 and 5 with nothing to be measured against.
+Baseline B, hybrid (``HybridRAGPipeline``, EVALUATION_PROTOCOL.md section 8):
+
+    parse -> chunk -> dense + lexical retrieval -> RRF fusion -> rerank
+          -> top-k -> build context -> generate
+
+Neither has a planner, an evidence controller, a retrieval loop or a verifier.
+That is the point. DD-013 requires both baselines to exist before the agentic
+system, because "the agentic pipeline is better" is not a claim that can be
+checked without systems that lack every part of it -- and Baseline A lacks the
+lexical retriever, the fusion and the reranker too, so Baseline B can be
+measured against it.
+
+The two share everything except how they rank: the same parser, chunker,
+generator, evidence assembly, citation resolution and abstention. EVALUATION_
+PROTOCOL.md section 10 asks for exactly that -- change only the component under
+test -- and sharing the code rather than copying it is what guarantees it.
 
 The pipeline owns the wiring and nothing else: each stage is implemented in its
 own layer and could be swapped through configuration alone.
@@ -17,17 +30,29 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
+from typing import Any, Sequence
 
 from .chunking.base import Chunk, build_chunker
 from .config import RAGConfig
-from .errors import IndexNotBuiltError
+from .errors import ConfigurationError, IndexNotBuiltError
 from .generation.citations import Citation
 from .generation.evidence import EvidenceItem
 from .generation.generator import GeneratedAnswer, GroundedGenerator
 from .ingestion.document import Document
 from .ingestion.parser import build_parser
+from .reranking.reranker import Reranker, build_reranker, rerank
 from .retrieval.embeddings import build_embedder
+from .retrieval.hybrid import HybridRetriever
+from .retrieval.lexical import LexicalRetriever
 from .retrieval.retriever import DenseRetriever, RetrievedChunk
+
+#: The stages each system declares in its per-question metadata. The error
+#: taxonomy's reserved ``reranking`` category can fire only for a system that
+#: declares it ran a reranker (DD-038).
+STAGE_RETRIEVAL = "retrieval"
+STAGE_RERANKING = "reranking"
+STAGE_CONTEXT_SELECTION = "context-selection"
+STAGE_GENERATION = "generation"
 
 
 @dataclass(frozen=True)
@@ -120,22 +145,43 @@ class RAGResult:
         return "\n".join(lines)
 
 
-class DenseRAGPipeline:
-    """Baseline A, end to end."""
+class _RetrieveThenGenerate:
+    """Everything the two baselines share: index, ask, and the probe.
 
-    name = "baseline_dense"
+    Subclasses supply ``_rank`` -- the only stage that differs -- and the
+    retriever it ranks with. ``ask`` merges whatever trace ``_rank`` returns
+    into the result's metadata, so a stage a system adds is recorded without a
+    change here, and a system that adds none (Baseline A) produces exactly the
+    metadata it always did.
+    """
+
+    name = "retrieve_then_generate"
+    strategy = ""
 
     def __init__(self, config: RAGConfig | None = None) -> None:
         self.config = (config or RAGConfig.default()).validate()
+        if self.config.retrieval.strategy != self.strategy:
+            raise ConfigurationError(
+                f"{type(self).__name__} runs retrieval.strategy="
+                f"{self.strategy!r}, but the configuration says "
+                f"{self.config.retrieval.strategy!r}. Use build_pipeline(config) "
+                "to get the system the configuration describes."
+            )
         self._parser = build_parser(self.config.ingestion)
         self._chunker = build_chunker(self.config.chunking)
-        self._retriever = DenseRetriever(
-            build_embedder(self.config.embedding), self.config.retrieval
-        )
+        self._retriever = self._build_retriever()
         self._generator = GroundedGenerator(self.config.generation)
         self.document: Document | None = None
         self.chunks: tuple[Chunk, ...] = ()
         self.index_stats: dict[str, object] = {}
+
+    def _build_retriever(self) -> Any:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    def _rank(
+        self, question: str, k: int
+    ) -> tuple[list[RetrievedChunk], dict[str, object]]:  # pragma: no cover - abstract
+        raise NotImplementedError
 
     # -- indexing -----------------------------------------------------------
 
@@ -183,7 +229,7 @@ class DenseRAGPipeline:
 
         started = time.perf_counter()
         k = top_k or self.config.retrieval.top_k
-        retrieved = self._retriever.retrieve(question, k)
+        retrieved, trace = self._rank(question, k)
         retrieved_at = time.perf_counter()
 
         generated = self._maybe_generate(question, retrieved)
@@ -210,6 +256,7 @@ class DenseRAGPipeline:
                 "generation_s": round(generated.latency_s, 3),
                 "latency_s": round(time.perf_counter() - started, 3),
                 "config_fingerprint": self.config.fingerprint(),
+                **trace,
                 **generated.metadata,
             },
         )
@@ -232,7 +279,8 @@ class DenseRAGPipeline:
                 "No document has been indexed. Call pipeline.index(pdf_path) "
                 "before retrieving."
             )
-        return self._retriever.retrieve(question, k or self.config.retrieval.top_k)
+        ranked, _ = self._rank(question, k or self.config.retrieval.top_k)
+        return ranked
 
     def _maybe_generate(
         self, question: str, retrieved: list[RetrievedChunk]
@@ -248,3 +296,119 @@ class DenseRAGPipeline:
         if minimum is not None and retrieved and retrieved[0].score < minimum:
             retrieved = []
         return self._generator.generate(question, retrieved)
+
+
+class DenseRAGPipeline(_RetrieveThenGenerate):
+    """Baseline A, end to end."""
+
+    name = "baseline_dense"
+    strategy = "dense"
+
+    def _build_retriever(self) -> DenseRetriever:
+        return DenseRetriever(build_embedder(self.config.embedding), self.config.retrieval)
+
+    def _rank(
+        self, question: str, k: int
+    ) -> tuple[list[RetrievedChunk], dict[str, object]]:
+        # No trace: Baseline A's per-question metadata is exactly what it was
+        # when results/baseline/ was produced, which a test holds it to.
+        return self._retriever.retrieve(question, k), {}
+
+
+class HybridRAGPipeline(_RetrieveThenGenerate):
+    """Baseline B: hybrid retrieval, RRF fusion, optional reranking.
+
+    ``reranking.enabled = False`` is the "Reranker OFF" ablation of
+    EVALUATION_PROTOCOL.md section 24. With it off, no reranker is built and
+    the fused pool is returned unchanged at the same depth -- not re-sorted by
+    some neutral score, which would be a different system that looks like the
+    same one.
+    """
+
+    name = "baseline_hybrid"
+    strategy = "hybrid"
+
+    def __init__(
+        self, config: RAGConfig | None = None, reranker: Reranker | None = None
+    ) -> None:
+        super().__init__(config)
+        self.reranker: Reranker | None = None
+        if self.config.uses_reranker:
+            self.reranker = reranker or build_reranker(self.config.reranking)
+
+    def _build_retriever(self) -> HybridRetriever:
+        available = {
+            "dense": lambda: DenseRetriever(
+                build_embedder(self.config.embedding), self.config.retrieval
+            ),
+            "lexical": lambda: LexicalRetriever(self.config.retrieval),
+        }
+        return HybridRetriever(
+            {name: available[name]() for name in self.config.retrieval.retrievers},
+            self.config.retrieval,
+            pool_size=self.config.reranking.candidates,
+        )
+
+    @property
+    def stages(self) -> tuple[str, ...]:
+        if self.reranker is not None:
+            return (STAGE_RETRIEVAL, STAGE_RERANKING, STAGE_CONTEXT_SELECTION, STAGE_GENERATION)
+        return (STAGE_RETRIEVAL, STAGE_CONTEXT_SELECTION, STAGE_GENERATION)
+
+    def _rank(
+        self, question: str, k: int
+    ) -> tuple[list[RetrievedChunk], dict[str, object]]:
+        """Fuse, optionally rerank, cut to ``k``.
+
+        The pool is fixed by configuration, so the ranking does not depend on
+        ``k``: ``ask``'s top 5 is the first five of the harness's depth-10 probe.
+        The trace records what the reranker was handed, so the harness can tell
+        a gold page the reranker pushed out (``reranking``) from one retrieval
+        never surfaced (``retrieval``) -- DD-044.
+        """
+        candidates = self._retriever.candidates(question)
+        pool = list(candidates.fused)
+        rerank_started = time.perf_counter()
+        ranked = rerank(self.reranker, question, pool) if self.reranker else pool
+        rerank_s = time.perf_counter() - rerank_started
+
+        pre_rerank_top = pool[:k]
+        trace: dict[str, object] = {
+            "stages": list(self.stages),
+            "retrievers": list(candidates.by_retriever),
+            "fusion": self.config.retrieval.fusion,
+            "candidate_pool": len(pool),
+            **{
+                f"{name}_chunk_ids": [r.chunk_id for r in ranking[:k]]
+                for name, ranking in candidates.by_retriever.items()
+            },
+            "pre_rerank_chunk_ids": [r.chunk_id for r in pre_rerank_top],
+            "pre_rerank_pages": _pages(pre_rerank_top),
+            "reranker": self.reranker.model_id if self.reranker else None,
+            "rerank_s": round(rerank_s, 3),
+        }
+        return ranked[:k], trace
+
+
+def _pages(items: Sequence[RetrievedChunk]) -> list[int]:
+    return sorted({page for item in items for page in item.pages})
+
+
+#: The systems a configuration can describe, keyed by ``retrieval.strategy``.
+SYSTEMS: dict[str, type[_RetrieveThenGenerate]] = {
+    DenseRAGPipeline.strategy: DenseRAGPipeline,
+    HybridRAGPipeline.strategy: HybridRAGPipeline,
+}
+
+
+def build_pipeline(config: RAGConfig | None = None) -> _RetrieveThenGenerate:
+    """The system ``config`` describes -- Baseline A or B -- chosen by configuration alone."""
+    config = config or RAGConfig.default()
+    try:
+        system = SYSTEMS[config.retrieval.strategy]
+    except KeyError:
+        raise ConfigurationError(
+            f"Unknown retrieval.strategy {config.retrieval.strategy!r}; "
+            f"expected one of {sorted(SYSTEMS)}."
+        ) from None
+    return system(config)

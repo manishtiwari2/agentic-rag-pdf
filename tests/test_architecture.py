@@ -47,7 +47,9 @@ class TestLayerBoundaries:
     """ARCHITECTURE.md section 4: retrieval must not depend on the parser."""
 
     @pytest.mark.parametrize(
-        "path", _modules("retrieval") + _modules("generation"), ids=lambda p: p.name
+        "path",
+        _modules("retrieval") + _modules("reranking") + _modules("generation"),
+        ids=lambda p: p.name,
     )
     def test_downstream_layers_do_not_import_the_parser(self, path):
         imported = _imports(path)
@@ -59,7 +61,10 @@ class TestLayerBoundaries:
 
     @pytest.mark.parametrize(
         "path",
-        _modules("retrieval") + _modules("generation") + _modules("chunking"),
+        _modules("retrieval")
+        + _modules("reranking")
+        + _modules("generation")
+        + _modules("chunking"),
         ids=lambda p: p.name,
     )
     def test_downstream_layers_do_not_import_a_pdf_library(self, path):
@@ -160,13 +165,40 @@ class TestEvaluationLayerBoundaries:
         assert ERROR_TAXONOMY_VERSION
 
     def test_the_deliberately_absent_components_are_still_absent(self):
-        """DD-013 / STATUS.md section 4. Phase 3 measures the baseline; it does
-        not quietly acquire the parts Phases 4 and 5 exist to add."""
-        for package in ("reranking", "agents"):
-            assert not (SRC / package).exists(), (
-                f"src/{package}/ exists. DD-013 requires a baseline that lacks "
-                "it before its value can be measured."
-            )
+        """DD-013 / STATUS.md section 4. Phase 4 adds lexical retrieval, fusion
+        and reranking; it does not quietly acquire the agentic parts Phase 5
+        exists to add and measure."""
+        assert not (SRC / "agents").exists(), (
+            "src/agents/ exists. DD-013 requires baselines that lack the "
+            "planner, evidence controller, refinement and verifier before their "
+            "value can be measured."
+        )
+
+    def test_baseline_a_still_lacks_every_phase_4_component(self):
+        """DD-013 still binds Baseline A: Phase 4 is measured *against* a dense
+        system, so the dense system must not have acquired lexical retrieval,
+        fusion or a reranker along the way."""
+        from src.pipeline import DenseRAGPipeline
+        from src.retrieval.retriever import DenseRetriever
+
+        pipeline = DenseRAGPipeline(RAGConfig.offline())
+        assert type(pipeline._retriever) is DenseRetriever
+        assert not hasattr(pipeline, "reranker")
+
+    def test_statistics_do_not_import_the_run_harness(self):
+        """The dependency runs benchmark.py -> statistics.py, never back, so a
+        stored run can be analysed without the machinery that produced it."""
+        imported = _imports(SRC / "evaluation" / "statistics.py")
+        assert not any(name.endswith("benchmark") for name in imported), imported
+
+    def test_the_pipeline_and_the_taxonomy_name_the_same_stages(self):
+        """The pipeline declares stages; the taxonomy keys reserved categories
+        on them. Two spellings of 'reranking' would silently disable one."""
+        from src import pipeline
+        from src.evaluation import metrics
+
+        for name in ("RETRIEVAL", "RERANKING", "CONTEXT_SELECTION", "GENERATION"):
+            assert getattr(pipeline, f"STAGE_{name}") == getattr(metrics, f"STAGE_{name}")
 
 
 class TestParserSwappability:
@@ -274,6 +306,37 @@ class TestMemoryBudget:
         # the check is that the estimate tracks quantization at all.
         assert config.estimate_vram_gb() > RAGConfig.default().estimate_vram_gb()
 
+    def test_the_reranker_counts_only_when_the_hybrid_system_uses_it(self):
+        from src.config import RerankingConfig, RetrievalConfig
+
+        dense = RAGConfig.default()
+        hybrid = RAGConfig(retrieval=RetrievalConfig(strategy="hybrid"))
+        hybrid_off = RAGConfig(
+            retrieval=RetrievalConfig(strategy="hybrid"),
+            reranking=RerankingConfig(enabled=False),
+        )
+        reranker = MODEL_REGISTRY["BAAI/bge-reranker-v2-m3"].vram_gb
+        assert hybrid.estimate_vram_gb() == pytest.approx(dense.estimate_vram_gb() + reranker)
+        assert hybrid_off.estimate_vram_gb() == dense.estimate_vram_gb()
+        assert hybrid.validate() is hybrid
+
+    def test_a_bf16_generator_plus_both_retrieval_models_is_rejected(self):
+        """MODEL_SELECTION.md 9.1: '...a 4B generator in bf16 plus both
+        retrieval models leaves too little headroom to be safe on a T4'."""
+        from src.config import RetrievalConfig
+
+        config = RAGConfig(
+            generation=GenerationConfig(quantization="none"),
+            retrieval=RetrievalConfig(strategy="hybrid"),
+        )
+        with pytest.raises(ConfigurationError, match="reranker"):
+            config.validate()
+
+    def test_the_reranker_is_apache_licensed(self):
+        info = MODEL_REGISTRY[RAGConfig().reranking.model_id]
+        assert info.role == "reranking"
+        assert info.license == "apache-2.0"
+
 
 class TestConfigValidation:
     def test_overlap_must_be_smaller_than_chunk_size(self):
@@ -288,6 +351,28 @@ class TestConfigValidation:
 
         with pytest.raises(ConfigurationError, match="top_k"):
             RAGConfig(retrieval=RetrievalConfig(top_k=0)).validate()
+
+    @pytest.mark.parametrize(
+        "retrieval, reranking, match",
+        [
+            ({"retrievers": ()}, {}, "retrievers"),
+            ({"retrievers": ("dense", "sparse")}, {}, "retrievers"),
+            ({"retrievers": ("dense", "dense")}, {}, "twice"),
+            ({"strategy": "hybrid", "candidate_k": 3}, {}, "candidate_k"),
+            ({"strategy": "hybrid"}, {"candidates": 3}, "candidates"),
+            ({"rrf_k": 0}, {}, "rrf_k"),
+            ({"bm25_b": 1.5}, {}, "bm25"),
+        ],
+    )
+    def test_hybrid_settings_are_validated(self, retrieval, reranking, match):
+        from src.config import RerankingConfig, RetrievalConfig
+
+        config = RAGConfig(
+            retrieval=RetrievalConfig(**retrieval),
+            reranking=RerankingConfig(**reranking),
+        )
+        with pytest.raises(ConfigurationError, match=match):
+            config.validate()
 
     def test_fingerprint_changes_with_the_configuration(self):
         from src.config import ChunkingConfig
