@@ -1,0 +1,503 @@
+{
+  "eval": {
+    "split": "eval",
+    "note": "Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.",
+    "method": {
+      "procedure": "percentile bootstrap over questions (EVALUATION_PROTOCOL.md 26.1)",
+      "resamples": 2000,
+      "seed": 42,
+      "ci_level": 0.95,
+      "ci": "2.5th and 97.5th percentiles of the resampled means",
+      "p_value": "two-sided: min(1, 2 * min((#means<=0 + 1), (#means>=0 + 1)) / (resamples + 1)) over the paired bootstrap distribution (DD-047)",
+      "reporting_rule": "if the 95% CI of the difference includes zero, the result is 'no significant difference', regardless of the point estimate",
+      "source": "per_question.json records as stored"
+    },
+    "rows": [
+      {
+        "label": "Dense RAG (Baseline A)",
+        "system": "baseline_dense",
+        "split": "eval",
+        "restricted_from_split": null,
+        "n_questions": 43,
+        "metrics": {
+          "recall_at_5": {
+            "n": 40,
+            "mean": 0.85,
+            "ci_low": 0.725,
+            "ci_high": 0.95
+          },
+          "mrr_at_10": {
+            "n": 40,
+            "mean": 0.732946,
+            "ci_low": 0.611275,
+            "ci_high": 0.847922
+          },
+          "accuracy_all": {
+            "n": 43,
+            "mean": 0.116279,
+            "ci_low": 0.023256,
+            "ci_high": 0.209302
+          },
+          "faithfulness": {
+            "n": 43,
+            "mean": 0.930233,
+            "ci_low": 0.837209,
+            "ci_high": 1.0
+          },
+          "citation_any_correct": {
+            "n": 40,
+            "mean": 0.6,
+            "ci_low": 0.45,
+            "ci_high": 0.75
+          },
+          "abstention_accuracy": {
+            "n": 3,
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          }
+        },
+        "latency_p95_s": {
+          "n": 43,
+          "value": 0.008947,
+          "ci_low": 0.00703,
+          "ci_high": 0.010868
+        },
+        "retrieval_iterations_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "model_calls_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": null,
+        "directory": "results/baseline"
+      },
+      {
+        "label": "Hybrid RAG (Baseline B)",
+        "system": "baseline_hybrid",
+        "split": "eval",
+        "restricted_from_split": null,
+        "n_questions": 43,
+        "metrics": {
+          "recall_at_5": {
+            "n": 40,
+            "mean": 0.95,
+            "ci_low": 0.875,
+            "ci_high": 1.0
+          },
+          "mrr_at_10": {
+            "n": 40,
+            "mean": 0.850833,
+            "ci_low": 0.759167,
+            "ci_high": 0.933333
+          },
+          "accuracy_all": {
+            "n": 43,
+            "mean": 0.186047,
+            "ci_low": 0.069767,
+            "ci_high": 0.302326
+          },
+          "faithfulness": {
+            "n": 43,
+            "mean": 0.930233,
+            "ci_low": 0.837209,
+            "ci_high": 1.0
+          },
+          "citation_any_correct": {
+            "n": 40,
+            "mean": 0.65,
+            "ci_low": 0.5,
+            "ci_high": 0.775
+          },
+          "abstention_accuracy": {
+            "n": 3,
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          }
+        },
+        "latency_p95_s": {
+          "n": 43,
+          "value": 0.01089,
+          "ci_low": 0.009445,
+          "ci_high": 0.011475
+        },
+        "retrieval_iterations_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "model_calls_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": null,
+        "directory": "results/hybrid"
+      },
+      {
+        "label": "Agentic RAG (threshold 0.5)",
+        "system": "agentic",
+        "split": "eval",
+        "restricted_from_split": null,
+        "n_questions": 43,
+        "metrics": {
+          "recall_at_5": {
+            "n": 40,
+            "mean": 0.95,
+            "ci_low": 0.875,
+            "ci_high": 1.0
+          },
+          "mrr_at_10": {
+            "n": 40,
+            "mean": 0.84875,
+            "ci_low": 0.754979,
+            "ci_high": 0.933333
+          },
+          "accuracy_all": {
+            "n": 43,
+            "mean": 0.139535,
+            "ci_low": 0.046512,
+            "ci_high": 0.255814
+          },
+          "faithfulness": {
+            "n": 43,
+            "mean": 0.813953,
+            "ci_low": 0.697674,
+            "ci_high": 0.930233
+          },
+          "citation_any_correct": {
+            "n": 40,
+            "mean": 0.525,
+            "ci_low": 0.375,
+            "ci_high": 0.675
+          },
+          "abstention_accuracy": {
+            "n": 3,
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          }
+        },
+        "latency_p95_s": {
+          "n": 43,
+          "value": 0.026191,
+          "ci_low": 0.024164,
+          "ci_high": 0.026998
+        },
+        "retrieval_iterations_mean": {
+          "n": 43,
+          "mean": 1.069767,
+          "ci_low": 1.0,
+          "ci_high": 1.162791
+        },
+        "model_calls_mean": {
+          "n": 43,
+          "mean": 0.906977,
+          "ci_low": 0.767442,
+          "ci_high": 1.023256
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": 0.5,
+        "directory": "results/agentic"
+      },
+      {
+        "label": "Agentic RAG (threshold 0.3, tuned on dev)",
+        "system": "agentic",
+        "split": "eval",
+        "restricted_from_split": "eval",
+        "n_questions": 43,
+        "metrics": {
+          "recall_at_5": {
+            "n": 40,
+            "mean": 0.95,
+            "ci_low": 0.875,
+            "ci_high": 1.0
+          },
+          "mrr_at_10": {
+            "n": 40,
+            "mean": 0.84875,
+            "ci_low": 0.754979,
+            "ci_high": 0.933333
+          },
+          "accuracy_all": {
+            "n": 43,
+            "mean": 0.139535,
+            "ci_low": 0.046512,
+            "ci_high": 0.255814
+          },
+          "faithfulness": {
+            "n": 43,
+            "mean": 0.813953,
+            "ci_low": 0.697674,
+            "ci_high": 0.930233
+          },
+          "citation_any_correct": {
+            "n": 40,
+            "mean": 0.525,
+            "ci_low": 0.375,
+            "ci_high": 0.675
+          },
+          "abstention_accuracy": {
+            "n": 3,
+            "mean": 0.0,
+            "ci_low": 0.0,
+            "ci_high": 0.0
+          }
+        },
+        "latency_p95_s": {
+          "n": 43,
+          "value": 0.105272,
+          "ci_low": 0.02613,
+          "ci_high": 0.154896
+        },
+        "retrieval_iterations_mean": {
+          "n": 43,
+          "mean": 1.069767,
+          "ci_low": 1.0,
+          "ci_high": 1.162791
+        },
+        "model_calls_mean": {
+          "n": 43,
+          "mean": 0.906977,
+          "ci_low": 0.767442,
+          "ci_high": 1.023256
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": 0.3,
+        "directory": "results/experiments/threshold/eval_0.3"
+      }
+    ],
+    "omitted": []
+  },
+  "all": {
+    "split": "all",
+    "note": "Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.",
+    "method": {
+      "procedure": "percentile bootstrap over questions (EVALUATION_PROTOCOL.md 26.1)",
+      "resamples": 2000,
+      "seed": 42,
+      "ci_level": 0.95,
+      "ci": "2.5th and 97.5th percentiles of the resampled means",
+      "p_value": "two-sided: min(1, 2 * min((#means<=0 + 1), (#means>=0 + 1)) / (resamples + 1)) over the paired bootstrap distribution (DD-047)",
+      "reporting_rule": "if the 95% CI of the difference includes zero, the result is 'no significant difference', regardless of the point estimate",
+      "source": "per_question.json records as stored"
+    },
+    "rows": [
+      {
+        "label": "Dense RAG (Baseline A)",
+        "system": "baseline_dense",
+        "split": null,
+        "restricted_from_split": null,
+        "n_questions": 76,
+        "metrics": {
+          "recall_at_5": {
+            "n": 70,
+            "mean": 0.885714,
+            "ci_low": 0.814286,
+            "ci_high": 0.957143
+          },
+          "mrr_at_10": {
+            "n": 70,
+            "mean": 0.73589,
+            "ci_low": 0.652058,
+            "ci_high": 0.815954
+          },
+          "accuracy_all": {
+            "n": 76,
+            "mean": 0.171053,
+            "ci_low": 0.092105,
+            "ci_high": 0.263158
+          },
+          "faithfulness": {
+            "n": 76,
+            "mean": 0.934211,
+            "ci_low": 0.868421,
+            "ci_high": 0.986842
+          },
+          "citation_any_correct": {
+            "n": 70,
+            "mean": 0.642857,
+            "ci_low": 0.528571,
+            "ci_high": 0.742857
+          },
+          "abstention_accuracy": {
+            "n": 6,
+            "mean": 0.166667,
+            "ci_low": 0.0,
+            "ci_high": 0.5
+          }
+        },
+        "latency_p95_s": {
+          "n": 76,
+          "value": 0.010032,
+          "ci_low": 0.007386,
+          "ci_high": 0.010868
+        },
+        "retrieval_iterations_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "model_calls_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": null,
+        "directory": "results/baseline"
+      },
+      {
+        "label": "Hybrid RAG (Baseline B)",
+        "system": "baseline_hybrid",
+        "split": null,
+        "restricted_from_split": null,
+        "n_questions": 76,
+        "metrics": {
+          "recall_at_5": {
+            "n": 70,
+            "mean": 0.942857,
+            "ci_low": 0.885714,
+            "ci_high": 0.985714
+          },
+          "mrr_at_10": {
+            "n": 70,
+            "mean": 0.827262,
+            "ci_low": 0.755946,
+            "ci_high": 0.895833
+          },
+          "accuracy_all": {
+            "n": 76,
+            "mean": 0.197368,
+            "ci_low": 0.105263,
+            "ci_high": 0.289474
+          },
+          "faithfulness": {
+            "n": 76,
+            "mean": 0.934211,
+            "ci_low": 0.868421,
+            "ci_high": 0.986842
+          },
+          "citation_any_correct": {
+            "n": 70,
+            "mean": 0.671429,
+            "ci_low": 0.557143,
+            "ci_high": 0.771429
+          },
+          "abstention_accuracy": {
+            "n": 6,
+            "mean": 0.166667,
+            "ci_low": 0.0,
+            "ci_high": 0.5
+          }
+        },
+        "latency_p95_s": {
+          "n": 76,
+          "value": 0.010519,
+          "ci_low": 0.009539,
+          "ci_high": 0.011051
+        },
+        "retrieval_iterations_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "model_calls_mean": {
+          "n": 0,
+          "mean": null,
+          "ci_low": null,
+          "ci_high": null
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": null,
+        "directory": "results/hybrid"
+      },
+      {
+        "label": "Agentic RAG (threshold 0.5)",
+        "system": "agentic",
+        "split": null,
+        "restricted_from_split": null,
+        "n_questions": 76,
+        "metrics": {
+          "recall_at_5": {
+            "n": 70,
+            "mean": 0.928571,
+            "ci_low": 0.871429,
+            "ci_high": 0.971786
+          },
+          "mrr_at_10": {
+            "n": 70,
+            "mean": 0.813968,
+            "ci_low": 0.740548,
+            "ci_high": 0.883821
+          },
+          "accuracy_all": {
+            "n": 76,
+            "mean": 0.184211,
+            "ci_low": 0.105263,
+            "ci_high": 0.276316
+          },
+          "faithfulness": {
+            "n": 76,
+            "mean": 0.802632,
+            "ci_low": 0.710526,
+            "ci_high": 0.894737
+          },
+          "citation_any_correct": {
+            "n": 70,
+            "mean": 0.528571,
+            "ci_low": 0.414286,
+            "ci_high": 0.642857
+          },
+          "abstention_accuracy": {
+            "n": 6,
+            "mean": 0.333333,
+            "ci_low": 0.0,
+            "ci_high": 0.666667
+          }
+        },
+        "latency_p95_s": {
+          "n": 76,
+          "value": 0.026191,
+          "ci_low": 0.024447,
+          "ci_high": 0.026947
+        },
+        "retrieval_iterations_mean": {
+          "n": 76,
+          "mean": 1.052632,
+          "ci_low": 1.013158,
+          "ci_high": 1.105263
+        },
+        "model_calls_mean": {
+          "n": 76,
+          "mean": 0.868421,
+          "ci_low": 0.763158,
+          "ci_high": 0.960526
+        },
+        "peak_vram_gb": null,
+        "sufficiency_threshold": 0.5,
+        "directory": "results/agentic"
+      }
+    ],
+    "omitted": [
+      {
+        "label": "Agentic RAG (threshold 0.3, tuned on dev)",
+        "directory": "results/experiments/threshold/eval_0.3"
+      }
+    ]
+  }
+}

@@ -368,6 +368,40 @@ def bootstrap_ci(
     }
 
 
+def nearest_rank(values: Sequence[float], quantile: float) -> float | None:
+    """Nearest-rank percentile, the harness's P95 rule (``latency_stats``):
+    with a few dozen questions an interpolated percentile invents a value no
+    question had."""
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    index = min(len(ordered) - 1, max(0, int(np.ceil(quantile * len(ordered))) - 1))
+    return float(ordered[index])
+
+
+def bootstrap_quantile_ci(
+    values: Sequence[float],
+    quantile: float = 0.95,
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+    level: float = CI_LEVEL,
+) -> dict[str, Any]:
+    """Percentile bootstrap CI of a nearest-rank quantile (P95 latency)."""
+    data = np.asarray(list(values), dtype=float)
+    if data.size == 0:
+        return {"n": 0, "value": None, "ci_low": None, "ci_high": None}
+    rng = np.random.default_rng(seed)
+    samples = np.sort(data[rng.integers(0, data.size, size=(resamples, data.size))], axis=1)
+    index = min(data.size - 1, max(0, int(np.ceil(quantile * data.size)) - 1))
+    low, high = _percentiles(samples[:, index], level)
+    return {
+        "n": int(data.size),
+        "value": _round(nearest_rank(data.tolist(), quantile)),
+        "ci_low": _round(low),
+        "ci_high": _round(high),
+    }
+
+
 def paired_bootstrap(
     baseline: Mapping[str, float],
     system: Mapping[str, float],
