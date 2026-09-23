@@ -164,15 +164,56 @@ class TestEvaluationLayerBoundaries:
         assert SCORING_RULES_VERSION
         assert ERROR_TAXONOMY_VERSION
 
-    def test_the_deliberately_absent_components_are_still_absent(self):
-        """DD-013 / STATUS.md section 4. Phase 4 adds lexical retrieval, fusion
-        and reranking; it does not quietly acquire the agentic parts Phase 5
-        exists to add and measure."""
-        assert not (SRC / "agents").exists(), (
-            "src/agents/ exists. DD-013 requires baselines that lack the "
-            "planner, evidence controller, refinement and verifier before their "
-            "value can be measured."
+    def test_both_baselines_still_lack_every_agentic_component(self, tmp_path):
+        """DD-013, now that src/agents/ exists. Phase 5 is measured *against*
+        Baselines A and B, so neither may have acquired a planner, an evidence
+        controller, refinement or a verifier along the way -- not as an
+        attribute, not through an overridden ``ask``, and not in what a
+        result declares it ran."""
+        import dataclasses
+
+        from src.pipeline import (
+            STAGE_EVIDENCE_ASSESSMENT,
+            STAGE_PLANNING,
+            STAGE_REFINEMENT,
+            STAGE_VERIFICATION,
+            DenseRAGPipeline,
+            HybridRAGPipeline,
+            _RetrieveThenGenerate,
         )
+
+        from . import pdf_fixtures
+
+        pdf = tmp_path / "structured.pdf"
+        pdf.write_bytes(pdf_fixtures.structured_pdf())
+        offline = RAGConfig.offline()
+        hybrid = dataclasses.replace(
+            offline, retrieval=dataclasses.replace(offline.retrieval, strategy="hybrid")
+        )
+        agentic_stages = {
+            STAGE_PLANNING, STAGE_EVIDENCE_ASSESSMENT, STAGE_REFINEMENT, STAGE_VERIFICATION,
+        }
+        for system, config in ((DenseRAGPipeline, offline), (HybridRAGPipeline, hybrid)):
+            assert system.ask is _RetrieveThenGenerate.ask, system.__name__
+            assert system.retrieve is _RetrieveThenGenerate.retrieve, system.__name__
+            pipeline = system(config)
+            for component in ("planner", "evidence_controller", "refiner", "verifier"):
+                assert not hasattr(pipeline, component), (system.__name__, component)
+            pipeline.index(pdf)
+            metadata = pipeline.ask("How are chunks embedded?").metadata
+            assert "agent_trace" not in metadata
+            assert "verification_status" not in metadata
+            assert not agentic_stages & set(metadata.get("stages") or ())
+
+    def test_the_agents_layer_stays_below_the_pipeline(self):
+        """src/agents/ decides; the pipeline wires. An agent importing the
+        pipeline, the parser or the harness would invert that."""
+        for path in _modules("agents"):
+            imported = _imports(path)
+            for banned in ("pipeline", "parser", "evaluation", "ingestion"):
+                assert not any(banned in name for name in imported), (path.name, banned)
+            for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+                assert banned not in imported, (path.name, banned)
 
     def test_baseline_a_still_lacks_every_phase_4_component(self):
         """DD-013 still binds Baseline A: Phase 4 is measured *against* a dense
@@ -197,8 +238,18 @@ class TestEvaluationLayerBoundaries:
         from src import pipeline
         from src.evaluation import metrics
 
-        for name in ("RETRIEVAL", "RERANKING", "CONTEXT_SELECTION", "GENERATION"):
+        for name in (
+            "RETRIEVAL", "RERANKING", "CONTEXT_SELECTION", "GENERATION",
+            "PLANNING", "EVIDENCE_ASSESSMENT", "REFINEMENT", "VERIFICATION",
+        ):
             assert getattr(pipeline, f"STAGE_{name}") == getattr(metrics, f"STAGE_{name}")
+
+    def test_the_verifier_and_the_harness_name_the_same_statuses(self):
+        from src.agents import verifier
+        from src.evaluation import metrics
+
+        for name in ("PASSED", "FAILED", "UNAVAILABLE", "NOT_RUN"):
+            assert getattr(verifier, f"STATUS_{name}") == getattr(metrics, f"VERIFICATION_{name}")
 
 
 class TestParserSwappability:
@@ -331,6 +382,16 @@ class TestMemoryBudget:
         )
         with pytest.raises(ConfigurationError, match="reranker"):
             config.validate()
+
+    def test_the_agents_load_no_model_of_their_own(self):
+        """ARCHITECTURE.md section 21: the LLM agents ask the generator's model,
+        so the agentic stack costs exactly what Baseline B's does."""
+        from src.config import RetrievalConfig
+
+        hybrid = RAGConfig(retrieval=RetrievalConfig(strategy="hybrid"))
+        agentic = RAGConfig(retrieval=RetrievalConfig(strategy="agentic"))
+        assert agentic.estimate_vram_gb() == hybrid.estimate_vram_gb()
+        assert agentic.validate() is agentic
 
     def test_the_reranker_is_apache_licensed(self):
         info = MODEL_REGISTRY[RAGConfig().reranking.model_id]

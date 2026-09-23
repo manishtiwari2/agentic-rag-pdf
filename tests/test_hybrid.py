@@ -54,6 +54,7 @@ from src.retrieval.retriever import DenseRetriever, RetrievedChunk
 BENCHMARK = pathlib.Path("benchmark/questions.json")
 DOCUMENTS = pathlib.Path("benchmark/documents")
 BASELINE = pathlib.Path("results/baseline")
+HYBRID = pathlib.Path("results/hybrid")
 
 
 def chunk(index: int, text: str = "body text", pages: tuple[int, ...] | None = None) -> Chunk:
@@ -726,6 +727,31 @@ def hybrid_run(tmp_path_factory):
         questions_path=BENCHMARK, documents_dir=DOCUMENTS, out_dir=out, config=config
     )
     return run, out
+
+
+class TestBaselineBIsUnchanged:
+    """Phase 5 changed the pipeline's hybrid ranking code (``_pools``) and the
+    taxonomy (DD-054). Baseline B is a fixed comparison point, so a fresh run
+    must reproduce ``results/hybrid/per_question.json`` on every field except
+    those that cannot be equal. With ``TestBaselineAIsUnchanged`` this is the
+    evidence ``metrics.SCORE_COMPATIBLE_VERSIONS["2026-09-23.1"]`` cites."""
+
+    def test_a_fresh_hybrid_run_reproduces_the_stored_baseline_b(self, hybrid_run):
+        _, out = hybrid_run
+        volatile = TestBaselineAIsUnchanged.VOLATILE | {"rerank_s"}
+
+        def strip(value):
+            if isinstance(value, dict):
+                return {k: strip(v) for k, v in value.items() if k not in volatile}
+            if isinstance(value, list):
+                return [strip(v) for v in value]
+            return value
+
+        stored = json.loads((HYBRID / "per_question.json").read_text(encoding="utf-8"))
+        fresh = json.loads((out / "per_question.json").read_text(encoding="utf-8"))
+        assert len(fresh) == len(stored)
+        for old, new in zip(strip(stored), strip(fresh)):
+            assert new == old, old["question_id"]
 
 
 class TestFullBaselineBSmokeRun:
