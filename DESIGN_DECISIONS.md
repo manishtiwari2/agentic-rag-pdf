@@ -1263,3 +1263,180 @@ harness imports the detector and hard-codes no refusal phrase of its own.
 
 A disagreement between the two is visible per question rather than silently
 resolved in the system's favour.
+
+---
+
+# DD-044 — A Gold Page Is Lost "by the Reranker" Only If Reranker-OFF Would Have Kept It
+
+**Status:** Accepted — changes DD-038's rule 2
+
+### Decision
+
+`reranking` fires when a gold page was in the top-k the reranker was handed —
+what the generator would have received with the reranker off — and no gold
+page is in the top-k it returned. The system reports that counterfactual itself
+(`metadata["pre_rerank_pages"]`, beside `metadata["stages"]`), and the harness
+reads it without knowing which system produced it.
+
+A gold page that was only deeper in the pool and never promoted, or that fusion
+dropped before the reranker saw it, is a `retrieval` failure. The taxonomy has
+no fusion category, and fusion is part of the retrieval stage.
+
+### Reason
+
+DD-038 reserved `reranking` ("a reranker had it and lost it") but ordered it
+*after* `retrieval`, whose trigger was "no gold page on the answer path". A gold
+page the reranker pushes out is by definition missing from the answer path, so
+rule 2 always fired first and rule 3 was unreachable. Phase 3 could not notice:
+no system declared the stage and no caller ever passed the flag. Rule 2 now
+excludes the reranker-lost case.
+
+The counterfactual boundary is the one an ablation can check. "Reranker OFF"
+(EVALUATION_PROTOCOL.md section 24) sends exactly the pre-rerank top-k, so every
+question filed as `reranking` is one the OFF arm answers from a gold page.
+
+### Consequence
+
+`ERROR_TAXONOMY_VERSION` and `SCORING_RULES_VERSION` become `2026-09-23.1`. No
+formula or threshold changed, and a record declaring no reranking stage is
+classified exactly as before: `TestBaselineAIsUnchanged` re-runs Baseline A and
+requires its stored per-question records, categories included.
+`metrics.SCORE_COMPATIBLE_VERSIONS` records `2026-09-21.1` as score-compatible
+on that evidence, so `results/baseline/` is compared as published rather than
+regenerated.
+
+---
+
+# DD-045 — RRF With k = 60, Exact Arithmetic and a Fixed Tie-Break
+
+**Status:** Accepted — implements DD-008
+
+### Decision
+
+`rrf(d) = sum 1/(60 + rank)` over the rankings containing `d`, summed as
+`fractions.Fraction`. Scores are never read. Ties are broken by, in order: the
+best single rank; the higher-priority ranking among those giving that rank
+(`retrieval.retrievers` order, dense first); document position; chunk id.
+
+### Reason
+
+k = 60 is the value from Cormack et al. (2009) and is not tuned here: open
+question 2 in `EXPERIMENT_PLAN.md` section 5 stays open until a dev-set sweep.
+Exact arithmetic makes ties exact — ranks (1, 3) and (3, 1) are mathematically
+equal, and with three or more rankings float addition would order them by
+summation order. Every tie-break key is a function of the input rankings, so a
+test can require the fused order to survive any rescaling, or replacement, of
+the input scores.
+
+### Alternative
+
+Normalized score fusion, which needs dense and BM25 scores calibrated against
+each other. `retrieval.fusion` is a field, so a second method is a
+configuration change.
+
+---
+
+# DD-046 — Each Retriever Ranks to 20, and the Reranker Sees the Fused Top 20
+
+**Status:** Accepted, untuned
+
+### Decision
+
+`retrieval.candidate_k = 20` and `reranking.candidates = 20`. With the reranker
+off, the fused top 20 is the ranking, unchanged. The ranking never depends on
+the `k` a caller asks for.
+
+### Reason
+
+The pool must be at least the harness's probe depth (10, DD-039), or Recall@10
+would be capped. At twice that depth the reranker can promote from beyond depth
+10. The pool is identical with the reranker on and off, so the ablation changes
+one thing. Cost is linear in pool size: 20 cross-encoder pairs per question.
+
+---
+
+# DD-047 — The Paired Test's p-Value Is the One Its Percentile Interval Implies
+
+**Status:** Accepted — implements DD-028
+
+### Decision
+
+2,000 resamples, seed 42, percentile CI (the 2.5th and 97.5th percentiles of
+the resampled mean differences), exactly as EVALUATION_PROTOCOL.md 26.1 states.
+The two-sided p-value is
+`min(1, 2 * min(#{mean* <= 0} + 1, #{mean* >= 0} + 1) / 2001)`.
+
+### Reason
+
+Section 26.1 asks for a p-value and does not name a method. This one comes from
+the same bootstrap distribution the CI is read from, so the two never disagree
+about which side of zero a result is on. The +1 correction means a finite
+resample cannot claim p = 0. Identical systems give exactly 1.0 and CI [0, 0];
+the smallest reportable value is 2/2001. Both are tested as known answers.
+
+The verdict follows the CI alone: zero inside the interval, including at its
+boundary, means "no significant difference".
+
+### Consequence
+
+Per-question vectors are read from stored `per_question.json` records, so
+Baseline A is compared as published. Records round to 4 dp, so a vector's mean
+matches the summary figure to within 5e-5; a test holds it there.
+
+---
+
+# DD-048 — The Offline Reranker Is Term Coverage, and the Primary Metrics Were Named Before the Run
+
+**Status:** Accepted, with known limitation
+
+### Decision
+
+`RAGConfig.offline()` reranks with `local/term-overlap-reranker`, which scores
+each (query, passage) pair on the share of the query's distinct content words
+the passage contains, plus half the share of its adjacent word pairs.
+
+Declared before the Phase 4 run, per EVALUATION_PROTOCOL.md 26.2:
+
+| | Primary | Secondary |
+| --- | --- | --- |
+| RQ1 (hybrid vs dense) | Recall@5 | MRR@10, Full-Recall@5 (multi) |
+| RQ2 (reranker on vs off) | accuracy (all), faithfulness; latency as cost | Recall@5, MRR@10 |
+
+### Reason
+
+`--offline` has to run Baseline B end to end with no weights, just as it runs
+Baseline A. The fallback is deliberately a different signal from BM25 (no IDF,
+no TF saturation, no length normalization), so it actually reorders the fused
+pool rather than restating one of its inputs.
+
+### Limitation
+
+It is not a cross-encoder. Any RQ2 finding measured with it is a finding about
+it, not about `bge-reranker-v2-m3`, and its latency says nothing about the T4.
+
+---
+
+# DD-049 — BM25 With Whole Numbers, No Stemming, and No Zero-Score Hits
+
+**Status:** Accepted
+
+### Decision
+
+Okapi BM25, k1 = 1.2 and b = 0.75, with Lucene's non-negative IDF. The tokenizer
+lowercases, keeps `9.4` as one token and folds `1,200` to `1200`. There is no
+stemmer and no stopword list. A chunk scoring 0 is not returned.
+
+### Reason
+
+Numbers and identifiers are what DD-007 adds a lexical retriever for, and
+splitting `3.14` into `3` and `14` would give a lexical retriever the dense
+retriever's weakness. IDF already drives a ubiquitous word towards zero, and a
+stemmer would blur the exact-match signal. Ranking zero-score chunks would hand
+fusion ranks decided by document order.
+
+### Validation
+
+`tests/test_hybrid.py` builds a parts-catalogue fixture: three distractors
+carry identifiers one digit away and repeat every query word, and the target
+states `884211` once. BM25 ranks the target first. The offline dense retriever
+ranks it fifth, behind the near-identical identifiers.

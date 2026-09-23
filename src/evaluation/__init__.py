@@ -10,12 +10,14 @@ from .benchmark import (
     BenchmarkRun,
     QuestionRun,
     QueryableSystem,
+    compare_runs,
     load_results,
     run_benchmark,
     run_benchmark_cli,
     score_result,
     write_results,
 )
+from .statistics import bootstrap_ci, compare, headline_intervals, paired_bootstrap
 from .judge import JUDGE_PROTOCOL_VERSION, JudgeVerdict, LLMJudge
 from .metrics import (
     ERROR_CATEGORIES,
@@ -40,8 +42,13 @@ __all__ = [
     "QuestionScore",
     "QueryableSystem",
     "SCORING_RULES_VERSION",
+    "bootstrap_ci",
     "classify_error",
+    "compare",
+    "compare_runs",
+    "headline_intervals",
     "load_results",
+    "paired_bootstrap",
     "run_benchmark",
     "run_benchmark_cli",
     "score_answer",

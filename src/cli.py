@@ -1,8 +1,15 @@
-"""Command-line entry point for the dense baseline.
+"""Command-line entry point for both baselines.
 
     python -m src.cli ask --pdf paper.pdf --question "What was measured?"
+    python -m src.cli ask --pdf paper.pdf --question "..." --system hybrid
     python -m src.cli inspect --pdf paper.pdf --offline
-    python -m src.cli run-benchmark --out results/baseline --offline
+    python -m src.cli run-benchmark --offline                      # Baseline A
+    python -m src.cli run-benchmark --system hybrid --offline      # Baseline B
+    python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
+
+``--system`` selects the system through configuration (``retrieval.strategy``)
+rather than through a second code path, so every other flag means the same
+thing for both.
 
 The notebook is the deliverable (DD-002); this exists so a single PDF can be run
 end to end without one, which is what the Phase 1 and Phase 2 exit criteria ask
@@ -22,8 +29,11 @@ from .benchmark.manifest import DEFAULT_MANIFEST_PATH
 from .benchmark.schema import DEFAULT_DOCUMENTS_DIR, DEFAULT_QUESTIONS_PATH
 from .benchmark.validate import validate_benchmark
 from .config import ChunkingConfig, IngestionConfig, RAGConfig, RetrievalConfig
-from .errors import RAGError
-from .pipeline import DenseRAGPipeline
+from .errors import ConfigurationError, RAGError
+from .pipeline import build_pipeline
+
+#: Where each system's results go by default (EVALUATION_PROTOCOL.md 27).
+DEFAULT_OUT = {"dense": "results/baseline", "hybrid": "results/hybrid"}
 
 
 def _build_config(args: argparse.Namespace) -> RAGConfig:
@@ -43,8 +53,33 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
     retrieval: RetrievalConfig = config.retrieval
     if args.top_k:
         retrieval = replace(retrieval, top_k=args.top_k)
+    system = getattr(args, "system", "dense") or "dense"
+    retrieval = replace(retrieval, strategy=system)
 
-    return replace(config, chunking=chunking, retrieval=retrieval)
+    reranking = config.reranking
+    if getattr(args, "no_rerank", False):
+        if system != "hybrid":
+            raise ConfigurationError(
+                "--no-rerank applies to --system hybrid; the dense baseline "
+                "has no reranker to switch off."
+            )
+        reranking = replace(reranking, enabled=False)
+
+    return replace(config, chunking=chunking, retrieval=retrieval, reranking=reranking)
+
+
+def _add_system(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--system",
+        choices=["dense", "hybrid"],
+        default="dense",
+        help="dense = Baseline A; hybrid = Baseline B (dense + BM25, RRF, rerank).",
+    )
+    parser.add_argument(
+        "--no-rerank",
+        action="store_true",
+        help="Hybrid only: the 'Reranker OFF' ablation (EVALUATION_PROTOCOL.md 24).",
+    )
 
 
 def _report(question_run) -> None:
@@ -107,6 +142,48 @@ def _format_summary(summary: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_comparison(comparison: dict) -> str:
+    """One line per metric: both means, the paired difference, its CI, the verdict."""
+
+    def signed(value):
+        return "n/a" if value is None else f"{value:+.3f}"
+
+    def plain(value):
+        return "n/a" if value is None else f"{value:.3f}"
+
+    lines = [
+        f"{comparison['system_system_name']} vs {comparison['baseline_system_name']}"
+        f"    n = {comparison['n_questions']}    "
+        f"paired bootstrap, {comparison['method']['resamples']} resamples",
+    ]
+    if comparison["fair_comparison"]["confounded"]:
+        mismatched = sorted(comparison["fair_comparison"]["mismatched"])
+        lines.append("  CONFOUNDED: " + ", ".join(mismatched))
+    lines.append("")
+    lines.append(
+        f"  {'metric':<38} {'base':>6} {'sys':>6} {'diff':>7}  {'95% CI':<17} "
+        f"{'p':>6} {'n':>3}  verdict"
+    )
+    for name, c in comparison["contrasts"].items():
+        if c["ci_low"] is None:
+            ci = "n/a"
+        else:
+            ci = f"[{c['ci_low']:+.3f}, {c['ci_high']:+.3f}]"
+        p = "n/a" if c["p_value"] is None else f"{c['p_value']:.3f}"
+        lines.append(
+            f"  {name:<38} {plain(c['baseline_mean']):>6} {plain(c['system_mean']):>6} "
+            f"{signed(c['mean_difference']):>7}  {ci:<17} {p:>6} {c['n']:>3}  "
+            f"{c['verdict']}"
+        )
+    lines.append("")
+    multiple = comparison["multiple_comparisons"]
+    lines.append(
+        f"  {multiple['n_comparisons']} comparisons, {multiple['n_significant']} "
+        "significant (EVALUATION_PROTOCOL.md 26.2: read the primary metrics first)"
+    )
+    return "\n".join(lines)
+
+
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pdf", required=True, help="Path to the PDF.")
     parser.add_argument(
@@ -124,6 +201,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--chunk-overlap", type=int)
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--json", action="store_true", help="Emit a JSON record.")
+    _add_system(parser)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -162,7 +240,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     bench.add_argument("--questions", default=str(DEFAULT_QUESTIONS_PATH))
     bench.add_argument("--pdf-dir", default=str(DEFAULT_DOCUMENTS_DIR))
-    bench.add_argument("--out", default="results/baseline")
+    bench.add_argument(
+        "--out", help="Output directory. Default: results/baseline or results/hybrid."
+    )
+    _add_system(bench)
     bench.add_argument(
         "--offline",
         action="store_true",
@@ -192,13 +273,50 @@ def main(argv: list[str] | None = None) -> int:
         help="Run against a dataset that fails BENCHMARK_SPEC.md 5.1. Off by default.",
     )
 
+    compare_cmd = sub.add_parser(
+        "compare-runs",
+        help="Paired bootstrap comparison of two stored runs (DD-028).",
+    )
+    compare_cmd.add_argument("--baseline", default="results/baseline")
+    compare_cmd.add_argument("--system", default="results/hybrid")
+    compare_cmd.add_argument("--out", help="Default: <system>/comparison.json")
+    compare_cmd.add_argument(
+        "--allow-confounded",
+        action="store_true",
+        help="Compare runs differing in a held-constant field (EVALUATION_PROTOCOL.md 10).",
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "compare-runs":
+        from .evaluation.benchmark import compare_runs  # noqa: PLC0415
+        from .evaluation.statistics import ComparisonError  # noqa: PLC0415
+
+        try:
+            comparison = compare_runs(
+                args.baseline,
+                args.system,
+                out_path=args.out,
+                allow_confounded=args.allow_confounded,
+            )
+        except (ComparisonError, OSError, RAGError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        print(_format_comparison(comparison))
+        print()
+        print(f"Wrote {comparison['written_to']}")
+        return 0
 
     if args.command == "run-benchmark":
         from .evaluation.benchmark import run_benchmark_cli  # noqa: PLC0415
         from .evaluation.judge import LLMJudge  # noqa: PLC0415
 
-        config = _build_config(args)
+        try:
+            config = _build_config(args)
+        except RAGError as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        args.out = args.out or DEFAULT_OUT[args.system]
         judge = LLMJudge(config.generation) if args.judge else None
         try:
             run = run_benchmark_cli(
@@ -250,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.ok else 1
 
     try:
-        pipeline = DenseRAGPipeline(_build_config(args))
+        pipeline = build_pipeline(_build_config(args))
         pipeline.index(args.pdf)
 
         if args.command == "inspect":
