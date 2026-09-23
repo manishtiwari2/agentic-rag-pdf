@@ -43,7 +43,14 @@ from ..generation.abstention import ABSTENTION_PATTERNS_VERSION, is_abstention
 #: reranker pushed out (DD-044). No formula or threshold changed, and for a
 #: record that declares no reranking stage every rule is as before -- a test
 #: re-runs Baseline A and requires its stored per-question metrics exactly.
-SCORING_RULES_VERSION = "2026-09-23.1"
+#:
+#: 2026-09-23.2: a declared verifier that turned a correct draft into a wrong
+#: final answer is filed as ``verification``, not ``abstention`` (DD-054), and a
+#: failed or unavailable verification makes a record a failure only when an
+#: answer was returned. No formula or threshold changed; for a record declaring
+#: no verification stage every rule is as before -- tests re-run Baselines A and
+#: B and require their stored per-question records exactly.
+SCORING_RULES_VERSION = "2026-09-23.2"
 
 #: Earlier versions whose per-question *scores* (not error categories) are
 #: computed identically to this one, so a paired comparison across them is
@@ -52,6 +59,11 @@ SCORE_COMPATIBLE_VERSIONS: dict[str, str] = {
     "2026-09-21.1": (
         "taxonomy-only change (DD-044); tests/test_hybrid.py::"
         "TestBaselineAIsUnchanged reproduces results/baseline/ metrics exactly"
+    ),
+    "2026-09-23.1": (
+        "taxonomy-only change (DD-054); tests/test_hybrid.py::"
+        "TestBaselineAIsUnchanged and TestBaselineBIsUnchanged reproduce "
+        "results/baseline/ and results/hybrid/ records exactly"
     ),
 }
 
@@ -156,7 +168,7 @@ def token_overlap(answer: str, reference: str) -> float:
 #: Bump when a trigger rule below changes, for the same reason
 #: ABSTENTION_PATTERNS_VERSION exists: a category assigned under different rules
 #: is not the same category.
-ERROR_TAXONOMY_VERSION = "2026-09-23.1"
+ERROR_TAXONOMY_VERSION = "2026-09-23.2"
 
 RETRIEVAL_FAILURE = "retrieval"
 RERANKING_FAILURE = "reranking"
@@ -193,6 +205,11 @@ STAGE_RERANKING = "reranking"
 STAGE_CONTEXT_SELECTION = "context-selection"
 STAGE_GENERATION = "generation"
 STAGE_VERIFICATION = "verification"
+#: The agentic system's other stages (DD-050). No category keys on them; they
+#: are named here so the pipeline and the taxonomy spell them the same way.
+STAGE_PLANNING = "planning"
+STAGE_EVIDENCE_ASSESSMENT = "evidence-assessment"
+STAGE_REFINEMENT = "refinement"
 
 #: ARCHITECTURE.md section 24: "Verifier failure -> mark verification as
 #: unavailable rather than claiming success." A system without a verifier
@@ -676,7 +693,14 @@ def is_failure(score: QuestionScore) -> bool:
     """
     if score.error:
         return True
-    if score.verification_status in (VERIFICATION_FAILED, VERIFICATION_UNAVAILABLE):
+    # A verification that did not pass is a failure of the *answer returned*.
+    # A refusal asserts nothing, so a verifier that rejected a draft and the
+    # system then abstained is judged by the abstention rules alone -- which is
+    # how a verifier correctly refusing an unanswerable question passes (DD-054).
+    if (
+        score.verification_status in (VERIFICATION_FAILED, VERIFICATION_UNAVAILABLE)
+        and not score.abstention.abstained
+    ):
         return True
     if score.answer.correct < 1.0:
         return True
@@ -693,6 +717,7 @@ def classify_error(
     reranking_lost_gold: bool = False,
     evidence_pages: Sequence[int] = (),
     retrieved_pages: Sequence[int] | None = None,
+    verification_lost_answer: bool = False,
 ) -> str | None:
     """Assign exactly one category to a failing record, or None to a passing one.
 
@@ -715,6 +740,13 @@ def classify_error(
     was only deeper in the pool and never promoted, or that fusion dropped, is a
     ``retrieval`` failure: the taxonomy has no fusion category, and fusion is
     part of the retrieval stage.
+
+    ``verification_lost_answer`` is the same counterfactual for the verifier
+    (DD-054): the draft it was handed -- what "Verification OFF" would have
+    returned -- was correct, and the answer returned after verification is not.
+    Without it rule 8 could never fire for the verifier's most consequential
+    mistake, because a correct draft it rejected becomes a refusal of an
+    answerable question, which rule 5 would take first.
 
     ``retrieved_pages`` is the depth the system actually answered from, which is
     not always the depth its retrieval was *scored* at: the harness ranks to
@@ -766,8 +798,12 @@ def classify_error(
     # 5. The abstention decision itself was wrong, in either direction. Checked
     #    before hallucination so that a false answer on an unanswerable question
     #    is filed as the abstention failure it is, rather than as a generation
-    #    problem that better prompting would fix.
-    if score.abstention.false_answer or score.abstention.over_abstention:
+    #    problem that better prompting would fix. A refusal a
+    #    declared verifier forced on a correct draft is the verifier's (rule 8).
+    lost_by_verifier = STAGE_VERIFICATION in stages and verification_lost_answer
+    if (
+        score.abstention.false_answer or score.abstention.over_abstention
+    ) and not lost_by_verifier:
         return ABSTENTION_FAILURE
 
     # 6. It answered, from evidence it had, with something the evidence does not
@@ -784,10 +820,11 @@ def classify_error(
     ):
         return CITATION_FAILURE
 
-    # 8. Reserved, like reranking: a verifier that ran and did not pass.
-    if STAGE_VERIFICATION in stages and score.verification_status in (
-        VERIFICATION_FAILED,
-        VERIFICATION_UNAVAILABLE,
+    # 8. A verifier that ran and did not pass the answer returned, or that
+    #    turned a correct draft into this failure (DD-054).
+    if STAGE_VERIFICATION in stages and (
+        lost_by_verifier
+        or score.verification_status in (VERIFICATION_FAILED, VERIFICATION_UNAVAILABLE)
     ):
         return VERIFICATION_FAILURE
 
@@ -861,6 +898,11 @@ def summarize(scores: Sequence[QuestionScore]) -> dict[str, Any]:
     # collapsed into one.
     summary["accuracy_all"] = _mean(s.answer.correct for s in scores)
     summary["accuracy_answerable"] = _mean(s.answer.correct for s in answerable)
+    # RQ3's subset (DD-056): the question types that need more than one piece
+    # of evidence. Keyed on question_type, which every stored record carries.
+    multi_all = [s for s in scores if s.question_type in FULL_RECALL_REQUIRED_TYPES]
+    summary["n_multi_hop_comparison"] = len(multi_all)
+    summary["accuracy_multi_hop_comparison"] = _mean(s.answer.correct for s in multi_all)
     summary["faithfulness"] = _mean(s.answer.faithfulness_token for s in scores)
     summary["faithfulness_numeric"] = _mean(
         s.answer.faithfulness_numeric for s in scores

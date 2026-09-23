@@ -1440,3 +1440,287 @@ fusion ranks decided by document order.
 carry identifiers one digit away and repeat every query word, and the target
 states `884211` once. BM25 ranks the target first. The offline dense retriever
 ranks it fifth, behind the near-identical identifiers.
+
+---
+
+# DD-050 — The Agentic System Is Baseline B's Retrieval Driven by an Explicit, Bounded Loop
+
+**Status:** Accepted — implements EVALUATION_PROTOCOL.md section 9
+
+### Decision
+
+`AgenticRAGPipeline` (`retrieval.strategy = "agentic"`) subclasses Baseline B.
+Retrieval, fusion and reranking are Baseline B's `_pools`, called once per query
+the system issues. Chunking, evidence assembly, generation, citations and
+abstention are the shared layers, unchanged. What it adds is the loop
+planner → retrieval → assessment → refinement → context → generation →
+verification, and the four components in `src/agents/`.
+
+Each component is switched by one configuration field: `agents.planner_enabled`,
+`evidence_controller_enabled`, `refinement_enabled` and `verification_enabled`.
+A switched-off component is never built. Refinement is triggered only by the
+controller, so switching the controller off also means a single round. With all
+four off, the system answers exactly as Baseline B does: one query's ranking is
+never re-scored.
+
+Every loop has a cap from configuration: retrieval rounds
+(`max_retrieval_iterations`, default 2), sub-queries (`max_sub_queries`, 3) and
+regenerations (`max_regenerations`, 1). **The loop enforces each cap, not the
+component.** A controller that asks for another round forever still stops. The
+cap and whether it was hit are written into every trace.
+
+The probe (DD-039) re-runs the retrieval loop without generating and returns
+the final merged ranking. It is stateless, and `ask`'s context is the first
+`top_k` of that ranking.
+
+### Reason
+
+EVALUATION_PROTOCOL.md section 10: change only the component under test. Reusing
+B's retrieval makes agentic-vs-B the comparison that isolates the agent loop,
+and one field per component makes the section 24 ablations configuration.
+
+---
+
+# DD-051 — The Planner Decomposes Multi-Hop and Comparison Questions by Clause, Original First
+
+**Status:** Accepted, untuned
+
+### Decision
+
+The rule-based planner assigns one question type from ordered cue patterns:
+comparison, multi_hop, numerical, definition, summary, else factual. It never
+emits `unanswerable`, because rules cannot tell. Only `multi_hop` and
+`comparison` questions are decomposed. Such a question is split on generic
+clause boundaries (`;`, sentence breaks, `, and`, `and what/how/which…`,
+`versus`, `compared to`, `differ from`), and lead-ins ("Combining", "Using
+both") are stripped. The original question is always query 0, duplicates are
+dropped, and the list is capped at 3.
+
+Sub-query rankings, each Baseline B's reranked pool, are fused by the same RRF
+the retrievers use (DD-045), with the original question first in priority. The
+retrieval strategy is always executed as `hybrid`. An LLM planner's suggested
+strategy is recorded and not acted on.
+
+The LLM planner asks for a JSON plan. Invalid JSON or schema falls back to the
+rules, with the failure counted (DD-055).
+
+### Reason
+
+Keeping the original first means decomposition can add evidence but cannot
+lose the un-decomposed ranking. RRF across sub-queries puts each hop's best
+chunks into the top k, which a single ranking by the whole question does not
+guarantee. Fixing the strategy keeps RQ3 about decomposition and refinement,
+not a retriever switch.
+
+### Disclosure
+
+The benchmark questions are in the repository and were visible while these
+rules were written. The rules are generic English clause structure, not fitted
+to any question, but that is a statement of intent, not a validation.
+
+---
+
+# DD-052 — Evidence Is Sufficient When Every Query Is Half-Covered and Every Question Number Is Present
+
+**Status:** Accepted, untuned
+
+### Decision
+
+The rule-based controller calls the top-k context sufficient iff:
+
+* for every query issued, at least `agents.sufficiency_threshold = 0.5` of its
+  distinct content terms appear in the union of the context text, compared as
+  crude suffix-stripped word forms; and
+* every number in the original question appears in the context.
+
+Sufficient → answer. Insufficient with budget left → retrieve again.
+Insufficient at the cap, or with no new query to issue → **abstain** without
+calling the generator (DD-014, ARCHITECTURE.md section 24).
+
+The LLM controller returns section 12's JSON. Its sufficiency verdict decides,
+and the budget rule is the same for both controllers.
+
+### Reason
+
+A question whose terms and figures are largely absent from the best evidence
+the system can find is the case DD-014 says to refuse. 0.5 is a round number
+set before any agentic result existed. The stemming was added while
+smoke-testing on the synthetic fixture PDF, before any benchmark run, because
+"embeds" did not cover "embedded". The threshold is to be swept only on
+`--split dev` in Phase 6.
+
+### Consequence
+
+This is the only component that can move abstention on the offline stack, and
+it can equally cause over-abstention. Both are measured over their own
+denominators.
+
+---
+
+# DD-053 — Refinement Rewrites Each Under-Covered Query From Its Missing Terms
+
+**Status:** Accepted
+
+### Decision
+
+Refinement is deterministic in every configuration. For each query below the
+coverage threshold, plus the original question when a number was missing, the
+refined query is up to two covered terms as topic anchors, then the missing
+terms, then the missing numbers. A refined query whose term set matches one
+already issued is dropped. If none remain, the loop stops with `no_new_query`
+and abstains. New rankings join the RRF merge; earlier ones are kept.
+
+`max_retrieval_iterations` counts total rounds, the first included.
+
+When a second round ran, the pipeline also generates, diagnostically, from the
+first round's context. It records `refinement_changed_answer`: whether that
+draft differs from the draft generated from the final context. The diagnostic
+call is counted in `diagnostic_model_calls`, never in `model_calls`, and never
+reaches the answer.
+
+### Reason
+
+Section 13's first option, aimed at the gap the controller measured.
+Re-running a query already issued cannot retrieve anything new. The
+counterfactual is how open question 3 ("does iteration 2 ever change an
+answer?") is answered, independently of what the controller or verifier then
+did with the answer.
+
+---
+
+# DD-054 — Verification: Claim-Level Rules, One Bounded Regeneration, and a Counterfactual Taxonomy Rule
+
+**Status:** Accepted — changes DD-038 rules 5 and 8
+
+### Decision
+
+**Rule-based verifier.** Each substantive sentence is a claim, and a claim is
+supported when all three hold:
+
+* it carries a resolvable marker, its own or the one closing its run of
+  unmarked sentences;
+* every number in it appears in the evidence it cites; and
+* at least 0.5 of its word forms appear in that cited evidence.
+
+`SUPPORTED` means every claim passes.
+
+**Status mapping.** SUPPORTED → `passed`. UNSUPPORTED or UNCERTAIN → `failed`.
+A verifier that raised, or an LLM verifier whose output did not parse, gives
+`unavailable`. It is never `passed`, and there is no fallback to the rules,
+because a substituted weaker check would report a verification that did not
+happen.
+
+**Action.** On `failed`, regenerate up to `max_regenerations = 1` times,
+dropping the evidence the unsupported claims cited, and re-verify. If the
+answer still fails, abstain. On `unavailable`, keep the answer, marked
+unverified.
+
+**Taxonomy.** The system reports its first draft as `metadata["draft_answer"]`,
+which is what Verification OFF would return. The harness scores the draft with
+the same rule as the answer. When a declared verifier turned a correct draft
+into a wrong final answer, the record is filed as `verification`, not
+`abstention` (rule 5 excludes it and rule 8 takes it). Separately, a
+failed/unavailable verification makes a record a failure only when an answer
+was returned: a verifier that refused an unanswerable question has done its job.
+
+The harness now reads `verification_status` from the result's metadata.
+Phase 3 hard-wired `not_run`, which no verifying system could have survived.
+
+### Reason
+
+Without the counterfactual, rule 8 is unreachable for the verifier's most
+consequential mistake. A rejected correct draft becomes a refusal of an
+answerable question, and rule 5 fires first. This is the same defect DD-044
+fixed for `reranking`, fixed the same way.
+
+### Consequence
+
+`SCORING_RULES_VERSION` and `ERROR_TAXONOMY_VERSION` → `2026-09-23.2`. No
+formula or threshold changed. For a record declaring no verification stage
+every rule is as before, and `2026-09-23.1` is recorded as score-compatible.
+
+---
+
+# DD-055 — Offline Rule-Based Stand-Ins, LLM Fallbacks, Parse-Failure Rate and Model-Call Accounting
+
+**Status:** Accepted, with known limitation
+
+### Decision
+
+`RAGConfig.offline()` sets the planner, controller and verifier to `"rules"`:
+`local/rule-based-planner`, `local/rule-based-evidence-controller` and
+`local/rule-based-verifier`. These names appear wherever a record names the
+component that decided. `"llm"` components share the generator's backend, so
+no second model is loaded, and they are refused on the scripted backend.
+
+An unparseable LLM decision falls back to the rules for the planner and the
+controller, and becomes `unavailable` for the verifier (DD-054). Every LLM
+decision and parse failure is counted per question. The summary reports
+`llm_parse_failure_rate` over all LLM decisions (EXPERIMENT_PLAN.md section 4).
+
+`model_calls` counts generation-model invocations made by the system: planner,
+controller, generator and verifier. Reranker passes are `reranker_calls`, and
+diagnostic calls are `diagnostic_model_calls`. The summary's
+`retrieval_iterations_mean` and `model_calls_mean` (EVALUATION_PROTOCOL.md
+section 28) are read from any record that reports them. They are not an agentic
+special case, and they are null for systems that report none.
+
+### Limitation
+
+Offline figures measure the stand-ins, not an LLM planner, controller or
+verifier, just as DD-048's reranker finding is about the term-overlap
+stand-in. The LLM paths are exercised only against canned outputs. Their
+behaviour with a real model is unmeasured, and the parse-failure rate offline
+is undefined (zero LLM decisions).
+
+---
+
+# DD-056 — RQ3, RQ4 and the Keep-or-Drop Metrics Were Named Before the Agentic Run
+
+**Status:** Accepted — declared before `results/agentic/` existed
+
+### Decision
+
+Declared per EVALUATION_PROTOCOL.md 26.2, and recorded in
+`statistics.PRIMARY_METRICS`:
+
+| | Primary | Secondary | Cost |
+| --- | --- | --- | --- |
+| RQ3 (agentic retrieval on hard / multi-hop) | Full-Recall@5 (multi_hop + comparison), accuracy (multi_hop + comparison) — n = 15 | accuracy (all), Recall@5, MRR@10 | latency, model calls, iterations |
+| RQ4 (verification vs unsupported answers) | unsupported-answer rate | false-answer rate, faithfulness, citation precision, `verification` category count | — |
+
+**Keep-or-drop (EXPERIMENT_PLAN.md section 3).** The agentic system is kept
+only if at least one of accuracy (all), faithfulness, citation any-correct or
+abstention accuracy improves over **Baseline B** by a margin whose 95% CI
+excludes zero. Baseline B is the decisive comparison because the agentic
+system reuses B's retrieval, so agentic-vs-B isolates the agent loop.
+Agentic-vs-A is reported beside it. Otherwise the report says the added
+complexity did not pay for itself. The number of comparisons is reported.
+
+"Difficult" questions are not a separate subset. `difficulty` is not in the
+stored baseline records, so a difficulty subset could not be paired against
+`results/baseline/` or `results/hybrid/` without regenerating them, and those
+are fixed. multi_hop + comparison covers 7 of the 11 `hard` questions.
+
+### Floors, stated in advance
+
+* **RQ4 is expected to be unanswerable offline.** Both baselines'
+  unsupported-answer rate is already 0.000 on the scripted backend, which
+  copies its sentences verbatim out of the evidence it cites. A rate cannot
+  fall below zero, and the rule-based verifier is expected to pass essentially
+  every draft. An offline null on RQ4 says nothing about an LLM verifier.
+* **Abstention has 6 questions.** One question moves abstention accuracy by 17
+  points. Any offline movement there comes from the evidence controller (DD-052),
+  not the verifier. It can be attributed to the controller only by Phase 6's
+  controller-OFF arm, not by this run.
+* **RQ3's subset is 15 questions.** A CI on 15 paired binary differences is
+  wide; a real effect of a few questions may not be detectable.
+* The generator is the scripted extractive backend throughout. It answers from
+  the single best-matching block, so decomposition can change which blocks it
+  sees but cannot make it combine two hops into one answer.
+
+### Reason
+
+A metric chosen after the result is not a test of the result. The floors are
+written down now so that a null is read as what the offline stack can and
+cannot show, not explained after the fact.

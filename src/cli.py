@@ -1,10 +1,12 @@
-"""Command-line entry point for both baselines.
+"""Command-line entry point for both baselines and the agentic system.
 
     python -m src.cli ask --pdf paper.pdf --question "What was measured?"
     python -m src.cli ask --pdf paper.pdf --question "..." --system hybrid
     python -m src.cli inspect --pdf paper.pdf --offline
     python -m src.cli run-benchmark --offline                      # Baseline A
     python -m src.cli run-benchmark --system hybrid --offline      # Baseline B
+    python -m src.cli run-benchmark --system agentic --offline     # agentic
+    python -m src.cli run-benchmark --system agentic --no-verification --offline         --out results/ablations/verification_off                   # an ablation
     python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
 
 ``--system`` selects the system through configuration (``retrieval.strategy``)
@@ -28,12 +30,25 @@ from .benchmark.inspect import inspect_page
 from .benchmark.manifest import DEFAULT_MANIFEST_PATH
 from .benchmark.schema import DEFAULT_DOCUMENTS_DIR, DEFAULT_QUESTIONS_PATH
 from .benchmark.validate import validate_benchmark
-from .config import ChunkingConfig, IngestionConfig, RAGConfig, RetrievalConfig
+from .config import AgentConfig, ChunkingConfig, IngestionConfig, RAGConfig, RetrievalConfig
 from .errors import ConfigurationError, RAGError
 from .pipeline import build_pipeline
 
 #: Where each system's results go by default (EVALUATION_PROTOCOL.md 27).
-DEFAULT_OUT = {"dense": "results/baseline", "hybrid": "results/hybrid"}
+DEFAULT_OUT = {
+    "dense": "results/baseline",
+    "hybrid": "results/hybrid",
+    "agentic": "results/agentic",
+}
+
+#: The agentic ablation switches of EVALUATION_PROTOCOL.md section 24, each one
+#: configuration field (DD-050).
+AGENT_SWITCHES: dict[str, str] = {
+    "no_planner": "planner_enabled",
+    "no_evidence_controller": "evidence_controller_enabled",
+    "no_refinement": "refinement_enabled",
+    "no_verification": "verification_enabled",
+}
 
 
 def _build_config(args: argparse.Namespace) -> RAGConfig:
@@ -58,27 +73,65 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
 
     reranking = config.reranking
     if getattr(args, "no_rerank", False):
-        if system != "hybrid":
+        if system not in ("hybrid", "agentic"):
             raise ConfigurationError(
-                "--no-rerank applies to --system hybrid; the dense baseline "
-                "has no reranker to switch off."
+                "--no-rerank applies to --system hybrid or agentic; the dense "
+                "baseline has no reranker to switch off."
             )
         reranking = replace(reranking, enabled=False)
 
-    return replace(config, chunking=chunking, retrieval=retrieval, reranking=reranking)
+    agents: AgentConfig = config.agents
+    requested = [flag for flag in AGENT_SWITCHES if getattr(args, flag, False)]
+    iterations = getattr(args, "max_iterations", None)
+    if (requested or iterations is not None) and system != "agentic":
+        flags = [f"--{f.replace('_', '-')}" for f in requested]
+        if iterations is not None:
+            flags.append("--max-iterations")
+        raise ConfigurationError(
+            f"{', '.join(flags)} apply to --system agentic; the {system} "
+            "baseline has no agent components to switch off."
+        )
+    for flag in requested:
+        agents = replace(agents, **{AGENT_SWITCHES[flag]: False})
+    if iterations is not None:
+        agents = replace(agents, max_retrieval_iterations=iterations)
+
+    return replace(
+        config, chunking=chunking, retrieval=retrieval, reranking=reranking, agents=agents
+    )
 
 
 def _add_system(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--system",
-        choices=["dense", "hybrid"],
+        choices=["dense", "hybrid", "agentic"],
         default="dense",
-        help="dense = Baseline A; hybrid = Baseline B (dense + BM25, RRF, rerank).",
+        help=(
+            "dense = Baseline A; hybrid = Baseline B (dense + BM25, RRF, rerank); "
+            "agentic = Baseline B's retrieval driven by planner, evidence "
+            "controller, refinement and verifier."
+        ),
     )
     parser.add_argument(
         "--no-rerank",
         action="store_true",
-        help="Hybrid only: the 'Reranker OFF' ablation (EVALUATION_PROTOCOL.md 24).",
+        help="Hybrid/agentic: the 'Reranker OFF' ablation (EVALUATION_PROTOCOL.md 24).",
+    )
+    for flag, label in (
+        ("--no-planner", "Agent planner OFF"),
+        ("--no-evidence-controller", "Evidence controller OFF"),
+        ("--no-refinement", "Retrieval refinement OFF"),
+        ("--no-verification", "Verification OFF"),
+    ):
+        parser.add_argument(
+            flag,
+            action="store_true",
+            help=f"Agentic only: the '{label}' ablation (EVALUATION_PROTOCOL.md 24).",
+        )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        help="Agentic only: MAX_RETRIEVAL_ITERATIONS (default 2; open question 3).",
     )
 
 
@@ -134,6 +187,22 @@ def _format_summary(summary: dict) -> str:
         f"  latency median / p95    {show(summary['latency_median_s'])} s / "
         f"{show(summary['latency_p95_s'])} s",
         "",
+    ]
+    if summary.get("n_reporting_model_calls"):
+        # EVALUATION_PROTOCOL.md section 28's extras, for a system reporting them.
+        lines += [
+            f"  retrieval iterations    {show(summary['retrieval_iterations_mean'])} mean,"
+            f" {summary['retrieval_iterations_max']:.0f} max",
+            f"  model calls             {show(summary['model_calls_mean'])} mean,"
+            f" {summary['model_calls_max']:.0f} max",
+            f"  LLM parse failures      {summary['llm_parse_failures_total']}"
+            f" of {summary['llm_decisions_total']} decisions",
+            f"  refined / changed       {summary['n_refined']} /"
+            f" {summary['n_refinement_changed_answer']}",
+            f"  verification            {summary['verification_status_counts']}",
+            "",
+        ]
+    lines += [
         f"  failures: {summary['n_failures']}",
     ]
     for category, count in summary["error_categories"].items():

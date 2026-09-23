@@ -106,6 +106,12 @@ def _correct(answerable_only: bool) -> Callable[[Mapping[str, Any]], float | Non
     return read
 
 
+def _multi_correct(record: Mapping[str, Any]) -> float | None:
+    if _metrics(record).get("question_type") not in FULL_RECALL_REQUIRED_TYPES:
+        return None
+    return _metrics(record).get("correct")
+
+
 def _answer(key: str) -> Callable[[Mapping[str, Any]], float | None]:
     def read(record: Mapping[str, Any]) -> float | None:
         value = _section(record, "answer").get(key)
@@ -146,6 +152,11 @@ def _latency(record: Mapping[str, Any]) -> float | None:
 METRICS: tuple[MetricSpec, ...] = (
     MetricSpec("accuracy_all", _correct(answerable_only=False)),
     MetricSpec("accuracy_answerable", _correct(answerable_only=True)),
+    MetricSpec(
+        "accuracy_multi_hop_comparison",
+        _multi_correct,
+        note="multi_hop + comparison questions only (RQ3, DD-056)",
+    ),
     MetricSpec("recall_at_1", _retrieval("recall_at_1")),
     MetricSpec("recall_at_3", _retrieval("recall_at_3")),
     MetricSpec("recall_at_5", _retrieval("recall_at_5")),
@@ -201,6 +212,38 @@ PRIMARY_METRICS: dict[str, dict[str, list[str]]] = {
         "primary": ["accuracy_all", "faithfulness"],
         "cost": ["latency_s"],
         "secondary": ["recall_at_5", "mrr_at_10"],
+    },
+    # Declared before the Phase 5 run (DD-056), with the floors that bound what
+    # the offline run can show stated there rather than after the result.
+    "RQ3": {
+        "question": [
+            "Does adaptive/agentic retrieval improve difficult and multi-hop questions?"
+        ],
+        "primary": [
+            "full_recall_at_5_multi_hop_comparison",
+            "accuracy_multi_hop_comparison",
+        ],
+        "cost": ["latency_s"],
+        "secondary": ["accuracy_all", "recall_at_5", "mrr_at_10"],
+    },
+    "RQ4": {
+        "question": ["Does evidence verification reduce unsupported answers?"],
+        "primary": ["unsupported_answer_rate"],
+        "secondary": ["false_answer_rate", "faithfulness", "citation_precision"],
+    },
+    # EXPERIMENT_PLAN.md section 3: the agentic system is kept only if one of
+    # these improves with a CI excluding zero, against Baseline B (DD-056).
+    "keep_or_drop": {
+        "question": [
+            "Does the agentic pipeline improve accuracy, faithfulness, citation "
+            "correctness or abstention over Baseline B?"
+        ],
+        "primary": [
+            "accuracy_all",
+            "faithfulness",
+            "citation_any_correct",
+            "abstention_accuracy",
+        ],
     },
 }
 
@@ -380,6 +423,15 @@ VARIED: tuple[str, ...] = (
     "reranker_enabled",
     "reranker_model",
     "rerank_k",
+    # The agentic system's switches (DD-050): what Phase 5 and 6 vary.
+    "max_retrieval_iterations",
+    "planner_enabled",
+    "planner",
+    "evidence_controller_enabled",
+    "evidence_controller",
+    "refinement_enabled",
+    "verification_enabled",
+    "verifier",
 )
 
 
