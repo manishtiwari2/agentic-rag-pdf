@@ -127,6 +127,10 @@ class TestAgainstTheStoredBaseline:
         for spec in METRICS:
             if spec.name == "latency_s":
                 continue
+            if spec.name not in summary:
+                # Added after results/baseline/ was written (DD-056); the same
+                # check runs against a fresh summary in tests/test_agentic.py.
+                continue
             values = list(vectors[spec.name].values())
             assert sum(values) / len(values) == pytest.approx(summary[spec.name], abs=5e-5), spec.name
         assert len(vectors["recall_at_5"]) == summary["n_retrieval_scored"]

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-23 (Phase 4 hybrid retrieval + reranking; Baseline B vs A paired test)
+Last updated: 2026-09-23 (Phase 5 agentic pipeline; measured against both baselines)
 
 A factual record of what exists, what it is verified to do, and what blocks the
 next step. `EXPERIMENT_PLAN.md` says what order to build in; this says how far
@@ -12,8 +12,9 @@ along that order the project actually is.
 
 | | |
 | --- | --- |
-| Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking) |
-| Next phase | **5 (agentic)** — both baselines measured, so there are two systems to measure it against |
+| Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking), 5 (agentic) |
+| Next phase | **6 (ablations + write-up)** |
+| **Phase 5 result** | **The agentic pipeline is not kept: its added complexity did not pay for itself.** No keep-or-drop metric improves over Baseline B. Faithfulness −0.132 [−0.211, −0.053] and citation any-correct −0.143 [−0.229, −0.071] *regress*, because the rule-based evidence controller refused 11 answerable questions. RQ3 not shown, and RQ4 unanswerable offline (floor), as DD-056 declared in advance. Rule-based stand-ins for every agent decision (section 9.3) |
 | Tests | 508 passing |
 | Source | 9,010 lines in `src/`, 4,652 lines in `tests/` |
 | Licence | Apache-2.0 (DD-035) |
@@ -34,7 +35,7 @@ Against the exit criteria in `EXPERIMENT_PLAN.md` section 2.
 | **2 — Dense baseline** | Baseline A answers the benchmark end to end, produces `results/baseline/` | **Met.** All 76 questions answered end to end against the 5 benchmark PDFs; `results/baseline/` holds `config.json`, `results.json`, `per_question.json` and `summary.csv`. The exit criterion says "Numbers may be poor. They must exist." They are poor and they exist |
 | **3 — Metrics harness** | Retrieval, answer, citation and abstention metrics; error taxonomy; per-question records | **Met.** `src/evaluation/metrics.py` computes Recall@1/3/5/10, Full-Recall@5/10, MRR@10 and nDCG@10 at page level (DD-025), with `unanswerable` questions excluded rather than scored 0.0; deterministic correctness, faithfulness, citation precision/completeness; the four abstention rates over their three distinct denominators. The nine-category error taxonomy (DD-038) assigns exactly one category to every failing record, 65 of 76 here. `src/evaluation/benchmark.py` drives any system through its public `ask`, checkpoints per question, and writes the four files `EVALUATION_PROTOCOL.md` section 27 names. The LLM judge is built, optional and off by default (DD-041) |
 | **4 — Hybrid + reranking** | Baseline B vs A with a paired test (DD-028) | **Met.** `HybridRAGPipeline` (BM25 + dense, RRF, reranker) shares every other layer with Baseline A and is chosen by `retrieval.strategy`. `results/hybrid/` holds the four section 27 files from a real 76-question run, plus `comparison.json`: the paired bootstrap against `results/baseline/` (2,000 resamples, 19 metrics). The "Reranker OFF" arm is in `results/ablations/reranker_off/`, so the hybrid and reranker effects are measured separately. Findings are in section 9.2; neither primary metric differs significantly |
-| **5 — Agentic** | Planner, evidence controller, refinement, verifier; bounded loops; full trace | Not started |
+| **5 — Agentic** | Planner, evidence controller, refinement, verifier; bounded loops; full trace | **Met.** `AgenticRAGPipeline` (`--system agentic`) drives Baseline B's retrieval through a bounded loop of the four components in `src/agents/`, each switchable by one config field. Every per-question record carries the full `agent_trace` with its caps. `results/agentic/` has the four section 27 files plus paired comparisons against A (`comparison.json`) and B (`comparison_vs_hybrid.json`). Findings are in section 9.3: not kept |
 | **6 — Ablations + write-up** | Seven ablations, comparison table, error analysis | Not started |
 
 `EXPERIMENT_PLAN.md` section 1 argued the benchmark, not the retrieval code,
@@ -102,6 +103,8 @@ python -m src.cli run-benchmark --pdf-dir benchmark/documents --out results/base
 python -m src.cli run-benchmark --system hybrid --offline                    # results/hybrid
 python -m src.cli run-benchmark --system hybrid --no-rerank --offline --out results/ablations/reranker_off
 python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
+python -m src.cli run-benchmark --system agentic --offline                   # results/agentic
+python -m src.cli compare-runs --baseline results/hybrid --system results/agentic --out results/agentic/comparison_vs_hybrid.json
 ```
 
 `src/evaluation/statistics.py` is the DD-028 machinery. It computes a percentile
@@ -120,10 +123,15 @@ the same reason: PDF-library use stays confined to `src/ingestion/`.
 
 ## 4. Deliberately absent
 
-Not missing — excluded, because DD-013 requires a baseline that lacks them
-before their value can be measured:
+Not missing: excluded **from both baselines**, because DD-013 requires systems
+that lack them before their value can be measured:
 
 query planner · evidence controller · retrieval refinement · verifier
+
+Phase 5 built them, in `src/agents/`, used only by `AgenticRAGPipeline`.
+`tests/test_architecture.py` no longer asserts `src/agents/` is absent. It
+asserts that Baselines A and B have none of the four components, do not
+override the shared `ask`, and declare no agentic stage.
 
 Lexical retrieval, rank fusion and reranking have left this list: they are
 Phase 4's deliverable and are built, in Baseline B only. Two tests in
@@ -437,6 +445,73 @@ them record for record.
 
 ---
 
+## 9.3 Agentic system vs both baselines (Phase 5)
+
+`results/agentic/` holds the agentic system. It uses Baseline B's retrieval, fusion and reranking, with the rule-based planner, evidence controller, refinement and verifier (DD-050 to DD-055). It was run over the same 76 questions. **Fallback stack throughout**:
+* hashing embedder, scripted generator and term-overlap reranker, as in 9.2;
+* rule-based stand-ins for every agent decision. No LLM planned, assessed or verified anything, so every finding below is about the stand-ins.
+
+The metrics were declared before the run, in DD-056, committed ahead of the results. Paired bootstrap, 2,000 resamples, seed 42. `comparison.json` is against A and `comparison_vs_hybrid.json` against B. Each file has **20 comparisons**, 40 in total. A has 6 significant, B has 5.
+
+| Metric (n) | A | B | Agentic | Agentic − B, 95% CI | Verdict vs B |
+| --- | ---: | ---: | ---: | --- | --- |
+| **accuracy (all)** (76) — keep/drop | 0.171 | 0.197 | 0.184 | −0.013 [−0.066, +0.026] | n.s. |
+| **faithfulness** (76) — keep/drop | 0.934 | 0.934 | 0.803 | −0.132 [−0.211, −0.053] | **significant regression** |
+| **citation any-correct** (70) — keep/drop | 0.643 | 0.671 | 0.529 | −0.143 [−0.229, −0.071] | **significant regression** |
+| **abstention accuracy** (6) — keep/drop | 0.167 | 0.167 | 0.333 | +0.167 [0.000, +0.500] | n.s. (CI touches zero) |
+| **Full-Recall@5, multi-hop + comparison** (15) — RQ3 primary | 0.733 | 0.867 | 0.800 | −0.067 [−0.200, 0.000] | n.s. |
+| **accuracy, multi-hop + comparison** (15) — RQ3 primary | 0.333 | 0.267 | 0.267 | 0.000 [0, 0] | n.s. (identical) |
+| **unsupported-answer rate** (76) — RQ4 primary | 0.000 | 0.000 | 0.000 | 0.000 [0, 0] | n.s. (floor) |
+| false-answer rate (6) | 0.833 | 0.833 | 0.667 | −0.167 [−0.500, 0.000] | n.s. |
+| over-abstention rate (70) | 0.057 | 0.057 | 0.186 | +0.129 [+0.057, +0.214] | **significant regression** |
+| Recall@5 (70) | 0.886 | 0.943 | 0.929 | −0.014 [−0.043, 0.000] | n.s. |
+| MRR@10 (70) | 0.736 | 0.827 | 0.814 | −0.013 [−0.040, +0.001] | n.s. |
+| latency (76) | 0.005 s | 0.004 s | 0.013 s | +0.009 s | significant regression (cost) |
+
+Against A, the agentic system inherits B's ranking gains: MRR@10 +0.078 and Full-Recall@5 +0.086, both significant. It shows the same faithfulness and citation regressions as against B.
+
+EVALUATION_PROTOCOL.md section 28 costs:
+* 1.05 retrieval iterations per question on average, 2 at most;
+* 0.87 model calls per question on average, 2 at most. That is below 1, because 13 questions were refused without calling the generator;
+* LLM parse-failure rate: undefined, 0 LLM decisions offline.
+
+### Keep-or-drop (EXPERIMENT_PLAN.md section 3)
+
+**The agentic pipeline is not kept. Its added complexity did not pay for itself.** None of the four keep-or-drop metrics improves over Baseline B with a CI excluding zero. Two of them, faithfulness and citation any-correct, *significantly regress*. That is a legitimate result (EVALUATION_PROTOCOL.md 26.3), and it is a finding about the rule-based stand-ins.
+
+The regressions have one cause: **the evidence controller abstains too often.**
+* It refused 13 questions, 11 of them answerable. That is the over-abstention regression: 4 answerable questions refused by B, 13 by the agentic system.
+* A refusal scores 0 on citation any-correct, and low on token faithfulness, because the refusal sentence's words are not in the evidence.
+* Only 3 answers changed correctness against B:
+  * q057, unanswerable, is now correctly refused, by the controller;
+  * q069 was lost to a controller refusal;
+  * q065 was lost to a verifier refusal.
+
+The untuned 0.5 coverage threshold (DD-052) is the obvious suspect. Tuning it belongs on `--split dev` in Phase 6, not here.
+
+### RQ3 — does agentic retrieval improve hard and multi-hop questions?
+
+**Not shown.** Both primary metrics are not significantly different from B on the 15 multi-hop and comparison questions. Accuracy is identical, and Full-Recall@5 is −0.067, with a CI touching zero.
+* The rule planner decomposed 10 of 76 questions.
+* Refinement ran on 4 questions.
+* The scripted generator answers from the single best-matching block, so it cannot combine two hops even when both are retrieved. DD-056 recorded this floor in advance.
+
+**Open question 3** (does iteration 2 ever change an answer?): **once in 4.** Of the 4 refined questions, only q069's draft differed between the first and final round's context. `MAX_RETRIEVAL_ITERATIONS = 2` is almost never exercised by the rule controller: 10 of the 13 insufficient verdicts stopped with `no_new_query`, because the refined query would have repeated one already issued.
+
+### RQ4 — does verification reduce unsupported answers?
+
+**Unanswerable offline, as declared in DD-056.** The unsupported-answer rate is 0.000 for A, B and the agentic system. It cannot fall.
+* The rule verifier passed 61 answers and failed 2.
+* One of the two failures (q065) rejected a *correct* draft, and is the first record ever filed as `verification`. DD-054's counterfactual rule is what let the taxonomy say so, rather than filing it as `abstention`.
+* The abstention gain on q057 came from the evidence controller, not the verifier, and can only be attributed to the controller by Phase 6's controller-OFF arm.
+
+**Taxonomy (vs B):**
+* `abstention` rose from 9 to 16;
+* `generation` fell from 47 to 39;
+* `verification` fires once, and `reranking` once.
+
+---
+
 ## 10. Next step
 
 **Phases 0 to 4 are done.** Both baselines run against the verified dataset
@@ -461,7 +536,14 @@ In this order:
    model-stack Baseline B with the fallback Baseline A, because the embedder and
    generator would differ (EVALUATION_PROTOCOL.md section 10).
 
-2. **Phase 5: the agentic pipeline.** Phase 4's result sharpens what it has to
+2. **Phase 6: ablations and write-up.** Phase 5 is done (section 9.3). The
+   ablation arms are configuration flags: `--no-planner`,
+   `--no-evidence-controller`, `--no-refinement`, `--no-verification` and
+   `--max-iterations`. The first question is whether the controller alone
+   explains the regression. Sweep `agents.sufficiency_threshold` on
+   `--split dev` only.
+
+3. *(Done.)* **Phase 5: the agentic pipeline.** Phase 4's result sharpens what it has to
    do. Retrieval is not the bottleneck on this stack. Better ranking moved 6 of
    76 answers, and `generation` and `abstention` are 56 of the 63 failures. The
    planner and refinement loop improve retrieval; the verifier and evidence

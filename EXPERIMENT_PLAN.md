@@ -116,6 +116,20 @@ Fallback stack throughout; `STATUS.md` section 9.2 has the full table.
 loops bounded, full trace per query. Measured against both baselines.
 Answers RQ3 and RQ4.
 
+**Status: met, 2026-09-23.** `results/agentic/` has paired comparisons against
+`results/baseline/` and `results/hybrid/`: 20 metrics each, with the metrics
+pre-declared in DD-056 and committed before the run.
+
+* **Keep-or-drop: not kept.** Against Baseline B, nothing on the keep list
+  improves. Faithfulness (−0.132) and citation any-correct (−0.143)
+  significantly regress, driven by the rule-based evidence controller's
+  over-abstention.
+* **RQ3: not shown.**
+* **RQ4: unanswerable offline.** The unsupported-answer floor is 0.000
+  everywhere.
+
+Rule-based stand-ins throughout; `STATUS.md` section 9.3 has the table.
+
 ### Phase 6 — Ablations and write-up
 
 **Exit:** the seven ablations in `EVALUATION_PROTOCOL.md` section 24, the
@@ -178,7 +192,11 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
    untuned (DD-045), and `retrieval.fusion` is a field so a weighted method can
    be swept on `--split dev` without code changes elsewhere.
 3. **`MAX_RETRIEVAL_ITERATIONS = 2`.** Chosen for latency, not measured. Phase
-   5 should check whether iteration 2 ever changes an answer.
+   5 should check whether iteration 2 ever changes an answer. **Measured in Phase 5
+   (DD-053):** with the rule-based controller, a second round ran on 4 of 76
+   questions and changed the generated answer on 1. The cap is rarely reached:
+   most insufficient verdicts stop earlier, with no new query to issue. The
+   value remains unvalidated for an LLM controller.
 4. ~~**How the notebook obtains `src/`.**~~ **Decided 2026-09-21 (DD-034):**
    the setup cell clones the repository at a pinned tag and adds it to
    `sys.path`. The pinned ref is recorded with every run. The notebook is not
