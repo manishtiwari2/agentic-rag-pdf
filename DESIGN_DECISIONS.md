@@ -1724,3 +1724,246 @@ are fixed. multi_hop + comparison covers 7 of the 11 `hard` questions.
 A metric chosen after the result is not a test of the result. The floors are
 written down now so that a null is read as what the offline stack can and
 cannot show, not explained after the fact.
+
+---
+
+# DD-057 — The Seven Ablations Are Section 24's Six Components on the Agentic System, Plus the Existing Reranker-OFF Arm on Baseline B
+
+**Status:** Accepted — reconciles EXPERIMENT_PLAN.md section 2 with EVALUATION_PROTOCOL.md section 24
+
+### Decision
+
+The Phase 6 exit criterion names "the seven ablations in
+`EVALUATION_PROTOCOL.md` section 24". Section 24 lists six components, and
+section 26.2 says "seven or more arms". The specifications name no seventh
+component anywhere, so none is invented to reach the number. The seven are
+seven *arms*, meaning measured configurations:
+
+| # | Arm | Removed from | Reference | Directory |
+| --- | --- | --- | --- | --- |
+| 1 | Agent planner OFF | agentic | `results/agentic/` | `results/ablations/planner_off/` |
+| 2 | Hybrid retrieval OFF | agentic | `results/agentic/` | `results/ablations/hybrid_off/` |
+| 3 | Reranker OFF | agentic | `results/agentic/` | `results/ablations/reranker_off_agentic/` |
+| 4 | Retrieval refinement OFF | agentic | `results/agentic/` | `results/ablations/refinement_off/` |
+| 5 | Evidence controller OFF | agentic | `results/agentic/` | `results/ablations/evidence_controller_off/` |
+| 6 | Verification OFF | agentic | `results/agentic/` | `results/ablations/verification_off/` |
+| 7 | Reranker OFF | Baseline B | `results/hybrid/` | `results/ablations/reranker_off/` (Phase 4, exists) |
+
+Section 24 says "each major component should be removed independently". That
+means removing it from the full system, and arms 1-6 do exactly that.
+
+Arm 3 is needed even though arm 7 exists:
+* Arm 7 removes the reranker from Baseline B, where it answers RQ2 (DD-048).
+* Arm 3 asks whether the reranker still earns its place once the planner merges
+  several reranked rankings by RRF.
+
+Arm 7 is kept and counted for two reasons. It is a measured configuration under
+`results/ablations/`, and the reranker verdict uses both arms.
+
+Not counted as ablations:
+
+* **Agent loop OFF** (all four switches off). DD-050 and
+  `test_all_four_off_is_baseline_b` make it Baseline B, record for record. It is
+  a baseline, and Phase 5 already compared against it.
+* **Hybrid OFF at the baseline level.** That is Baseline A against
+  `reranker_off`, which is RQ1's comparison (STATUS.md section 9.2). It is not a
+  new arm.
+* **`--max-iterations 1`.** With the rule controller it behaves exactly like
+  refinement OFF. `can_retrieve_again` is false in both, so the controller
+  answers or abstains the same way, and only `stop_reason` differs. It belongs to
+  open question 3's sweep (DD-058), not to the ablations.
+* **The threshold sweep.** It tunes a value on `--split dev` and removes
+  nothing.
+
+### Reason
+
+A count that does not match its source list is a documentation defect. There
+are two ways to fix it: add a component, or read "seven" as arms.
+
+Adding a component would mean inventing an experiment to satisfy a number,
+which is the opposite of pre-declaration. Every arm above maps to a switch the
+code already has, and six of them map to a line of section 24.
+
+### Consequence
+
+`--no-hybrid` is added to the CLI. It sets `retrieval.retrievers = ("dense",)`
+and nothing else. `tests/test_ablations.py` checks that every arm differs from
+the reference in exactly one configuration field.
+
+In the agentic system, hybrid OFF still reranks the dense top 20. It is
+therefore not Baseline A.
+
+---
+
+# DD-058 — Phase 6's Metrics, Floors, Threshold Rule and "Earned Its Cost" Rule Were Named Before Any Run
+
+**Status:** Accepted — declared before any Phase 6 result existed. Recorded in
+`statistics.PRIMARY_METRICS` under the `ablation:*` and `threshold_selection`
+keys.
+
+### Ablation arms
+
+Each arm runs over all 76 questions, the same set as `results/agentic/`.
+
+Each arm is compared with `compare-runs` against the full agentic system,
+`results/agentic/`, as **arm − reference**. The one exception is arm 7, whose
+reference remains Baseline B (DD-048).
+
+A component **helps** on a metric when removing it makes that metric
+significantly worse: the 95% CI of arm − reference excludes zero in the
+harmful direction.
+
+| Arm | Metrics the component should plausibly move (n) | Why |
+| --- | --- | --- |
+| planner OFF | Full-Recall@5, multi-hop + comparison (15); accuracy, multi-hop + comparison (15) | decomposition exists to retrieve each hop |
+| hybrid OFF | Recall@5 (70); MRR@10 (70) | BM25 adds candidates the dense retriever misses |
+| reranker OFF (agentic) | MRR@10 (70); accuracy (all) (76) | it reorders the pool; accuracy is RQ2's answer metric |
+| refinement OFF | over-abstention rate (70); Full-Recall@5 (70) | a second round should turn a refusal into an answer from new evidence |
+| evidence controller OFF | abstention accuracy (6); over-abstention rate (70) | the only component that refuses before generation |
+| verification OFF | unsupported-answer rate (76); faithfulness (76) | RQ4 |
+| reranker OFF (Baseline B, exists) | accuracy (all); faithfulness (DD-048) | unchanged from Phase 4 |
+
+**Regression attribution.** Phase 5's two significant regressions against
+Baseline B were in faithfulness and citation any-correct. Both metrics are read
+on every arm against the reference.
+
+The hypothesis, stated now: **only the evidence-controller-OFF arm**
+significantly improves both, because the controller's refusals caused them
+(STATUS.md section 9.3). If no arm separates the cause, or more than one does,
+that is recorded as a follow-up. No unplanned run is added to settle it.
+
+**Cost** is read on every arm:
+* mean latency, as a paired contrast;
+* mean generation-model calls, also paired. `model_calls_mean` is added to
+  `statistics.METRICS` so it gets a paired contrast;
+* reranker passes (retrieval queries issued), reported descriptively.
+
+### "Earned its cost", per component
+
+Three things are read for each component:
+
+1. **Benefit:** removing it significantly worsens at least one of its own
+   metrics above.
+2. **Harm:** removing it significantly *improves* any of the four keep-or-drop
+   metrics: accuracy (all), faithfulness, citation any-correct, abstention
+   accuracy. A harm means the component causes a regression.
+3. **Cost:** the paired latency and model-call differences, reported whatever
+   their size.
+
+The verdict follows from them:
+
+* **Earned its cost:** benefit, and no harm.
+* **Did not earn its cost:** no benefit. A null buys nothing, so even a
+  negligible cost is unjustified (BENCHMARK_SPEC.md section 18). If the arm's
+  answers are identical to the reference's, the component is called **inert on
+  this stack**.
+* **Not shown (trade-off):** benefit and harm both. It is reported as the
+  trade-off it is, not as earned.
+
+Offline, cost cannot disqualify a component that shows benefit. Every agent is a
+rule, makes zero model calls and adds milliseconds. So the cost column is
+reported but is not decisive. It does not transfer to an LLM agent, which would
+add a model call per decision on a T4.
+
+For **hybrid retrieval** and **the reranker**, the agentic arm is section 24's
+test and decides the verdict. The Phase 4 baseline-level contrasts (RQ1, RQ2)
+are reported beside it, and any disagreement between the two is stated.
+
+A significant result on a metric *not* declared above is a hypothesis, not a
+benefit (EVALUATION_PROTOCOL.md 26.2).
+
+### Evidence-controller threshold (DD-052's 0.5)
+
+* **Values:** `agents.sufficiency_threshold` ∈ {0.2, 0.3, 0.4, 0.5, 0.6}, on
+  `--split dev` only (33 questions). Every other field is the reference
+  configuration.
+* **Selection rule:** the highest dev accuracy (all). Ties are broken in order:
+  1. higher dev citation any-correct;
+  2. lower dev over-abstention rate;
+  3. the value nearest 0.5, the untuned default, so nothing changes without
+     evidence;
+  4. if two values are equally near 0.5, the higher, because it abstains more.
+
+  Accuracy (all) is the criterion because DD-029 counts unanswerable questions
+  in it. It therefore penalises both over-abstention and false answers.
+* **Order of work:** the dev results are committed, and the chosen value
+  recorded in a DD, before the eval run.
+* **The eval run:** the chosen value is run **once** on `--split eval`
+  (43 questions), into `results/experiments/threshold/eval_<value>/`. It is
+  compared, on the eval split, against the reference and against Baseline B.
+  Both are restricted to eval from their stored all-question runs
+  (`compare-runs --split eval`).
+* **Keep-or-drop:** the rule is applied to the tuned arm against Baseline B,
+  exactly as DD-056 applied it to the reference.
+* If the rule selects 0.5, the eval run is still made once, and the report says
+  that tuning did not move the default.
+
+### `MAX_RETRIEVAL_ITERATIONS` (open question 3)
+
+* **Values:** `--max-iterations` ∈ {1, 2, 3}, on `--split dev`, at the reference
+  threshold of 0.5. That keeps this sweep independent of the threshold choice.
+* **Descriptive only.** Reported per value: questions refined, answers changed
+  by the extra round(s), mean iterations, accuracy and over-abstention.
+* The cap stays at 2 in every reported system. No second tuned value goes to
+  the eval set, so eval is looked at for one tuned parameter only.
+
+### Final table
+
+The headline table (EVALUATION_PROTOCOL.md 28) is on the **eval split**,
+43 questions. It has four rows: dense, hybrid, agentic and the tuned arm, each
+figure with a 95% CI. Section 5.2 forbids headline results from anything else.
+
+The stored all-question runs are restricted to eval by filtering their records,
+not by re-running them. The stack is deterministic, so a re-run would be another
+look at eval that adds no information.
+
+Two other tables are kept separate from the headline:
+* an all-76-question table, labelled, for continuity with STATUS.md sections
+  9.2-9.3;
+* the dev sweep numbers, in their own table only.
+
+Peak VRAM is `null` offline, and is written as null, never as 0.
+
+### Floors, stated in advance
+
+* **Offline stack throughout:** hashing embedder, scripted extractive generator,
+  term-overlap reranker, and rule-based planner, controller and verifier. No
+  finding is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
+* **Unanswerable questions:** 6 of 76, 3 in each split. One question moves
+  abstention accuracy by 17 points over all questions, and by 33 over one
+  split. The controller-OFF arm's abstention CI will almost certainly include
+  zero.
+* **Multi-hop + comparison:** 15 of 76, 6 dev and 9 eval. The planner's metrics
+  are bounded by this. The scripted generator also answers from a single block,
+  so it cannot combine hops (DD-056).
+* **Unsupported-answer rate is already 0.000** in every system. Removing the
+  verifier cannot show it lowering that rate, so the verifier's primary metric
+  is expected to be null by construction.
+* **Refinement ran on 4 of 76 questions** in Phase 5 (DD-053). Refinement OFF can
+  change at most those 4 records. That is far too few for a CI over 70 questions
+  to exclude zero unless all four move.
+* **Model calls:** rule agents make none. Arms differ in model calls only
+  through refusals (fewer generator calls) and regenerations (more).
+* **Latency** is milliseconds on a stack that loads no weights. A paired latency
+  contrast is a real measurement of the stand-ins and nothing more.
+
+### Multiple comparisons
+
+* **Planned Phase 6 comparisons:** 6 arm files plus 2 eval files, at 21
+  contrasts each, **168** in total.
+* **Pre-declared among them:**
+  * 23 distinct ablation contrasts: 12 per-arm and 12 attribution, with the
+    verifier's faithfulness counted in both lists;
+  * 4 keep-or-drop contrasts for the tuned arm against Baseline B.
+* **Earlier phases:** the 97 comparisons of Phases 4-5 are reported beside
+  these in the write-up.
+* **Not added:** eval-split pairwise contrasts among dense, hybrid and agentic.
+  Those comparisons were already made over all questions.
+
+### Disclosure
+
+Phase 5's diagnosis, which named the 0.5 threshold as the suspect, read failures
+from both splits. The two lost answers it cited, q065 and q069, are eval
+questions. So the decision *to tune this threshold* was informed by eval-set
+failures, even though the *value* is chosen on dev alone. Under section 5.2 this
+is a disclosed leak, and the write-up repeats it.
