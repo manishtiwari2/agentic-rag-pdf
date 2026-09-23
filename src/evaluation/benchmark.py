@@ -9,9 +9,12 @@ with what is being measured.
 Three properties this file is built around:
 
 * **It is system-agnostic.** It drives anything satisfying :class:`QueryableSystem`
-  -- an ``ask`` returning something shaped like a ``RAGResult``. Phases 4 and 5
-  point it at the hybrid and agentic pipelines without changing a line here, and
-  nothing below the evaluation layer imports it.
+  -- an ``ask`` returning something shaped like a ``RAGResult``. The system is
+  whatever ``build_pipeline(config)`` builds, and the stages a system ran are
+  read from its own result metadata, so nothing here names a particular
+  system. Phase 4 found two places Phase 3 had assumed the dense baseline (the
+  default factory, and taxonomy stages that no caller ever set); both now read
+  the system instead. Nothing below the evaluation layer imports this module.
 * **It does not change answer behaviour** (ARCHITECTURE.md section 26). It calls
   ``ask`` exactly as a user would and measures what comes back. The retrieval
   probe used for Recall@10 is a separate read-only call.
@@ -46,7 +49,8 @@ from ..benchmark.validate import validate_benchmark
 from ..config import RAGConfig
 from ..errors import BenchmarkValidationError, RAGError
 from ..generation.abstention import ABSTENTION_PATTERNS_VERSION, is_abstention
-from ..pipeline import DenseRAGPipeline, RAGResult
+from ..pipeline import RAGResult, build_pipeline
+from . import statistics
 from .metrics import (
     ERROR_TAXONOMY_VERSION,
     RECALL_KS,
@@ -197,12 +201,21 @@ def _finalize(
     )
 
 
+#: The stages a system is taken to have run when it declares none: retrieve,
+#: assemble context, generate. Baseline A's shape.
+DEFAULT_STAGES: tuple[str, ...] = (
+    STAGE_RETRIEVAL,
+    STAGE_CONTEXT_SELECTION,
+    STAGE_GENERATION,
+)
+
+
 def score_result(
     question: Question,
     result: RAGResult,
     system: str,
     retrieved_for_metrics: Sequence[Any] | None = None,
-    stages: Sequence[str] = (STAGE_RETRIEVAL, STAGE_CONTEXT_SELECTION, STAGE_GENERATION),
+    stages: Sequence[str] | None = None,
     verification_status: str = VERIFICATION_NOT_RUN,
     latency_s: float | None = None,
 ) -> QuestionRun:
@@ -214,7 +227,15 @@ def score_result(
     graded on its self-report, and the two are cross-checked in the record so a
     disagreement is visible rather than silently resolved in the system's
     favour.
+
+    The system under test declares its stages in ``result.metadata["stages"]``
+    and, when it reranks, the pages of the top-k it handed the reranker in
+    ``metadata["pre_rerank_pages"]``. Both are read from the result rather
+    than from knowledge of any particular system, which is what keeps this
+    function system-agnostic (DD-038, DD-044).
     """
+    if stages is None:
+        stages = tuple(result.metadata.get("stages") or DEFAULT_STAGES)
     abstained = is_abstention(result.answer)
     ranked = list(retrieved_for_metrics if retrieved_for_metrics is not None else result.retrieved)
 
@@ -256,6 +277,9 @@ def score_result(
         stages=stages,
         evidence_pages=result.evidence_pages,
         retrieved_pages=answer_path_pages,
+        reranking_lost_gold=reranking_lost_gold(
+            question, answer_path_pages, result.metadata.get("pre_rerank_pages")
+        ),
     )
 
     metrics = score.to_record()
@@ -272,6 +296,24 @@ def score_result(
         latency_s=latency_s,
     )
     return QuestionRun(question=question, score=score, record=record)
+
+
+def reranking_lost_gold(
+    question: Question,
+    answer_path_pages: Sequence[int],
+    pre_rerank_pages: Sequence[int] | None,
+) -> bool:
+    """Did the reranker push every gold page off the answer path? (DD-044)
+
+    True when a gold page was in the top-k the reranker was handed -- what the
+    generator would have seen with the reranker off -- and no gold page is in
+    the top-k it returned. ``None`` means the system reported no pre-rerank
+    ranking, so nothing can be blamed on a reranker.
+    """
+    if pre_rerank_pages is None:
+        return False
+    gold = set(question.evidence_pages)
+    return bool(gold & set(pre_rerank_pages)) and not (gold & set(answer_path_pages))
 
 
 # ---------------------------------------------------------------------------
@@ -418,14 +460,20 @@ def build_config_snapshot(
         "quantization": config.generation.quantization,
         "embedding_model": config.embedding.model_id,
         "embedding_model_revision": None,
-        "reranker_model": None,
-        "reranker_enabled": False,
+        "reranker_model": described["reranker_model"],
+        "reranker_enabled": described["reranker_enabled"],
         "chunking_strategy": config.chunking.strategy,
         "chunk_size": config.chunking.chunk_size,
         "chunk_overlap": config.chunking.chunk_overlap,
-        "retrieval_strategy": "dense",
+        "retrieval_strategy": config.retrieval.strategy,
+        "retrievers": described["retrievers"],
+        "fusion": described["fusion"],
+        "rrf_k": described["rrf_k"],
+        "candidate_k": described["candidate_k"],
         "top_k": config.retrieval.top_k,
-        "rerank_k": None,
+        # The depth the reranker ranks, or -- with it off -- the depth of the
+        # fused pool passed through unchanged (DD-046).
+        "rerank_k": described["rerank_candidates"],
         "retrieval_metric_depth": RETRIEVAL_METRIC_DEPTH,
         "max_retrieval_iterations": None,
         "temperature": config.generation.temperature,
@@ -460,7 +508,7 @@ def run_benchmark(
     documents_dir = Path(documents_dir)
     _seed_everything()
 
-    factory = system_factory or (lambda: DenseRAGPipeline(config))
+    factory = system_factory or (lambda: build_pipeline(config))
     probe_system = factory()
     run = BenchmarkRun(
         system=getattr(probe_system, "name", "system"),
@@ -587,6 +635,8 @@ def write_results(out_dir: str | Path, run: BenchmarkRun) -> dict[str, Path]:
         paths["results"],
         {
             "summary": summary,
+            # EVALUATION_PROTOCOL.md 26.1: every headline figure carries a 95% CI.
+            "confidence_intervals": statistics.headline_intervals(run.records),
             "by_question_type": summarize_by(run.scores, "question_type"),
             "by_split": summarize_by(run.scores, "split"),
             "failures": [
@@ -658,6 +708,34 @@ def load_results(out_dir: str | Path) -> dict[str, Any]:
         ),
         "summary_csv": summary_rows,
     }
+
+
+COMPARISON_FILENAME = "comparison.json"
+
+
+def compare_runs(
+    baseline_dir: str | Path,
+    system_dir: str | Path,
+    out_path: str | Path | None = None,
+    allow_confounded: bool = False,
+) -> dict[str, Any]:
+    """Paired comparison of two stored runs (DD-028), written as JSON.
+
+    Reads both result sets as written, so a stored baseline is compared without
+    being re-run or rewritten. Defaults to ``<system_dir>/comparison.json``.
+    """
+    comparison = statistics.compare(
+        load_results(baseline_dir),
+        load_results(system_dir),
+        baseline_label=str(baseline_dir),
+        system_label=str(system_dir),
+        allow_confounded=allow_confounded,
+    )
+    path = Path(out_path) if out_path else Path(system_dir) / COMPARISON_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(path, comparison)
+    comparison["written_to"] = str(path)
+    return comparison
 
 
 # ---------------------------------------------------------------------------
