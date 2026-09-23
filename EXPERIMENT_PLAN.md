@@ -95,6 +95,21 @@ its bottleneck: Recall@5 is 0.886, clearing the stopping rule below, while 46 of
 65 failures are filed as `generation`. Phase 4 improves retrieval, so the honest
 expectation is a small gain — which is worth recording now, before the result.
 
+**Status: met, 2026-09-23.** `results/hybrid/comparison.json` is the paired
+bootstrap of Baseline B against `results/baseline/`: 76 questions, 2,000
+resamples. The expectation held. Neither pre-declared primary metric differs
+significantly: Recall@5 +0.057, CI [−0.014, +0.143]; accuracy +0.026, CI
+[−0.039, +0.092]. Ranking quality does improve significantly: MRR@10 +0.091,
+CI [+0.019, +0.167]. A reranker-off arm (`results/ablations/reranker_off/`)
+separates the two questions:
+
+* RQ1: hybrid retrieval ranks gold pages higher, but does not significantly
+  raise Recall@5.
+* RQ2: with the offline term-overlap stand-in, reranking shows no significant
+  answer gain. That finding does not transfer to `bge-reranker-v2-m3`.
+
+Fallback stack throughout; `STATUS.md` section 9.2 has the full table.
+
 ### Phase 5 — Agentic pipeline
 
 **Exit:** planner, evidence controller, refinement and verifier working, all
@@ -159,7 +174,9 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
    set in Phase 1; do not tune further afterwards.
 2. **RRF vs. weighted fusion**, and the dense/lexical weights. RRF is the
    default (DD-008) because it needs no calibration, not because it is known
-   to be better here.
+   to be better here. Still open after Phase 4: RRF is built with k = 60
+   untuned (DD-045), and `retrieval.fusion` is a field so a weighted method can
+   be swept on `--split dev` without code changes elsewhere.
 3. **`MAX_RETRIEVAL_ITERATIONS = 2`.** Chosen for latency, not measured. Phase
    5 should check whether iteration 2 ever changes an answer.
 4. ~~**How the notebook obtains `src/`.**~~ **Decided 2026-09-21 (DD-034):**

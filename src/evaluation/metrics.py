@@ -38,7 +38,22 @@ from ..generation.abstention import ABSTENTION_PATTERNS_VERSION, is_abstention
 
 #: Bump when any formula, threshold or taxonomy rule below changes. Recorded
 #: with every result set.
-SCORING_RULES_VERSION = "2026-09-21.1"
+#:
+#: 2026-09-23.1: taxonomy rule 2 no longer claims a gold page a declared
+#: reranker pushed out (DD-044). No formula or threshold changed, and for a
+#: record that declares no reranking stage every rule is as before -- a test
+#: re-runs Baseline A and requires its stored per-question metrics exactly.
+SCORING_RULES_VERSION = "2026-09-23.1"
+
+#: Earlier versions whose per-question *scores* (not error categories) are
+#: computed identically to this one, so a paired comparison across them is
+#: valid. Each entry needs the reason and the test that establishes it.
+SCORE_COMPATIBLE_VERSIONS: dict[str, str] = {
+    "2026-09-21.1": (
+        "taxonomy-only change (DD-044); tests/test_hybrid.py::"
+        "TestBaselineAIsUnchanged reproduces results/baseline/ metrics exactly"
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Retrieval (BENCHMARK_SPEC.md section 10)
@@ -141,7 +156,7 @@ def token_overlap(answer: str, reference: str) -> float:
 #: Bump when a trigger rule below changes, for the same reason
 #: ABSTENTION_PATTERNS_VERSION exists: a category assigned under different rules
 #: is not the same category.
-ERROR_TAXONOMY_VERSION = "2026-09-21.1"
+ERROR_TAXONOMY_VERSION = "2026-09-23.1"
 
 RETRIEVAL_FAILURE = "retrieval"
 RERANKING_FAILURE = "reranking"
@@ -694,6 +709,13 @@ def classify_error(
     declares the stage in ``stages``, which is how one taxonomy serves Phases 3,
     4 and 5 without inventing the missing components now.
 
+    ``reranking_lost_gold`` is the counterfactual DD-044 defines: a gold page
+    was in the top-k the reranker was handed -- what "Reranker OFF" would have
+    sent the generator -- and is not in the top-k it returned. A gold page that
+    was only deeper in the pool and never promoted, or that fusion dropped, is a
+    ``retrieval`` failure: the taxonomy has no fusion category, and fusion is
+    part of the retrieval stage.
+
     ``retrieved_pages`` is the depth the system actually answered from, which is
     not always the depth its retrieval was *scored* at: the harness ranks to
     depth 10 for Recall@10 while the baseline generates from 5. Blame follows
@@ -714,13 +736,21 @@ def classify_error(
     )
     gold_retrieved = bool(set(retrieval.gold_pages) & answer_path_pages)
 
-    # 2. The evidence was never retrieved.
-    if retrieval.scored and not gold_retrieved:
+    # A reranker "lost" gold when the ranking it was handed would have put a
+    # gold page on the answer path and its own ranking did not (DD-044). Only a
+    # system that declares the stage can suffer one.
+    lost_by_reranker = STAGE_RERANKING in stages and reranking_lost_gold
+
+    # 2. The evidence was never retrieved -- not onto the answer path, and not
+    #    into the top-k the reranker was handed either. A gold page the reranker
+    #    pushed out *was* retrieved, so it falls through to rule 3; without this
+    #    exclusion rule 3 could never fire, because a page the reranker pushed
+    #    out is by definition missing from the answer path.
+    if retrieval.scored and not gold_retrieved and not lost_by_reranker:
         return RETRIEVAL_FAILURE
 
-    # 3. Retrieval found it and the reranker pushed it out. Reserved: only a
-    #    system that ran a reranker can suffer one.
-    if STAGE_RERANKING in stages and reranking_lost_gold:
+    # 3. Retrieval found it and the reranker pushed it out.
+    if lost_by_reranker:
         return RERANKING_FAILURE
 
     # 4. It survived ranking but never reached the generator, because evidence
