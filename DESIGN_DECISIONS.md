@@ -2159,3 +2159,83 @@ EVALUATION_PROTOCOL.md 26.3: a null is a finding. Every component's null here
 is bounded by the floors DD-058 stated in advance, so these verdicts are about
 the rule-based and hashing stand-ins. They are not verdicts on the components
 as designed for the model stack.
+
+---
+
+# DD-061 — Every Chunk Carries Its Section Heading, and No Table Is Cut Off
+
+**Status:** Accepted — changes what every system sees; every stored offline
+result is regenerated under it (DD-069). Issue #13.
+
+### Decision
+
+The structure chunker now guarantees that every line a page shows reaches
+`chunk.text`. Two changes do this:
+
+1. **Headings.**
+   * Every chunk starts with its section heading, not only the chunk the
+     heading opened.
+   * When a heading is followed only by tables, as on `doc1.pdf`, the headings
+     waiting in the buffer lead the first table instead of being dropped at
+     the end of the document.
+   * A heading still waiting when the document ends becomes its own chunk.
+   * `chunk.section` is unchanged and still labels citations.
+   * The repeated heading counts toward `chunk_size` (DD-030): the room left
+     for content is `chunk_size − len(heading) − 2`, never less than half the
+     chunk size.
+2. **Tables.**
+   * A table over `max_table_chars` is split into row groups, each repeating
+     the header rows (every line up to the `| --- |` rule).
+   * It is no longer cut off with "[table truncated]".
+   * A single row longer than the cap is kept whole.
+
+The repeated heading is a label, not evidence. It adds no page to the chunk's
+`pages`, so a chunk on page 4 under a heading from page 3 still cites page 4.
+
+The fixed-size chunker is untouched and records no section (DD-032), so the
+DD-009 comparison still sets structure against no structure.
+
+### Reason
+
+`chunk.section` is read only by citation labels. The embedder, BM25, the
+reranker, the generator, the evidence controller and the verifier all read
+`chunk.text`. DD-060 traced q001, q002 and q005 to this.
+
+On `doc1.pdf`, "GATE 2027 IIT Madras | Organizing Institute" is followed only
+by tables. Before the fix:
+* it sat in the heading buffer;
+* it labelled the tables' `section`;
+* the final `flush()` discarded it.
+
+So "2027" and "IIT Madras" were invisible to every component.
+
+The invariant written for this fix exposed a second loss, which no DD had
+recorded. Three `doc2.pdf` tables exceed 4,000 characters and lost 20 lines to
+truncation.
+
+### Test
+
+`tests/test_chunking.py::TestNoPageTextIsLost` asserts that every non-blank
+line of every page of the five benchmark PDFs appears in at least one chunk.
+Whitespace is compared collapsed, because segmentation joins a paragraph's
+lines with spaces.
+* Before the fix, it failed on `doc1.pdf` (the title line, twice) and
+  `doc2.pdf` (20 table lines).
+* After the fix, it passes on all five.
+
+Unit tests cover:
+* a heading followed only by tables;
+* a long section whose every chunk carries the heading within `chunk_size`;
+* a 200-row table split with its header.
+
+### Trade-off
+
+* Repeating a heading costs up to about 120 characters of each chunk's 1,200.
+* Retrieval now scores the heading once per chunk under it, which can tilt BM25
+  towards heading terms. This is measured, not assumed, by the regenerated
+  results.
+
+### Consequence
+
+Chunk text changes on every benchmark document. Every result in `results/` was
+measured under the old chunker and is regenerated under DD-069.
