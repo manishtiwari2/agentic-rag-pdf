@@ -2239,3 +2239,61 @@ Unit tests cover:
 
 Chunk text changes on every benchmark document. Every result in `results/` was
 measured under the old chunker and is regenerated under DD-069.
+
+---
+
+# DD-062 — A Bare `[n]` Is a Citation Only If the Evidence Does Not Already Contain It
+
+**Status:** Accepted. Issue #14.
+
+### Decision
+
+**The resolver.** `resolve_citations` still accepts a bare `[n]`, because
+small models drop the `C` prefix. It now treats one as source text when that
+exact bracketed token already occurs in the evidence text. It leaves such a
+token in place and cites nothing.
+
+**Unchanged:**
+* A prefixed `[C3]`, which never occurs in source text, is always a marker.
+* A bare `[1]` that the evidence does not contain still resolves to block 1.
+
+**The readers.** Two readers of a *resolved* answer now count only the
+canonical `[Cn]` form the resolver emits:
+* the verifier's `cited_numbers` (`src/agents/text.py`);
+* citation completeness (`src/evaluation/metrics.py`).
+
+Leaving the bare token in the answer is not enough on its own. Both readers
+used the resolver's old permissive pattern, so the verifier would still have
+read "shrinking[3]" as a citation of block 3.
+
+**Scope limit.** Stripping markers before counting terms or numbers
+(`content_terms`, `numbers_in`, `content_tokens`) is unchanged.
+
+**Version.** `SCORING_RULES_VERSION` → `2026-09-24.1`.
+* It is declared score-compatible with `2026-09-23.2`. Before this change the
+  resolver rewrote or removed every bare group, so no stored answer contains
+  one, and completeness scores every stored record as before. A test checks
+  this claim against every stored `per_question.json`.
+* `scores_comparable` now accepts any two versions that are each
+  score-compatible with the current one, because they all score identically.
+
+### Reason
+
+DD-060 finding 4 is q065. The verifier rejected a correct draft that was a
+verbatim passage from block C1:
+1. The passage carries the paper's own reference, "shrinking[3]".
+2. The resolver rewrote that reference to `[C3]`.
+3. The verifier checked the claim against block C3, a licence notice, and
+   failed it.
+
+### Alternative rejected
+
+Stop accepting a bare `[n]` altogether. That breaks citation for any model
+that drops the prefix, which small models do. The evidence-text test separates
+the two cases directly.
+
+### Limitation
+
+A bare `[n]` that the model meant as a citation, and that also happens to
+occur verbatim in the evidence, is now left uncited. Quoting is the far more
+likely reading of such a token.

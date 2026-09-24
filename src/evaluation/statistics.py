@@ -541,8 +541,9 @@ def scores_comparable(version_a: str | None, version_b: str | None) -> bool:
     """Were the per-question scores of both runs computed by the same formulas?"""
     if version_a == version_b:
         return True
-    pair = {version_a, version_b}
-    return any(pair == {SCORING_RULES_VERSION, old} for old in SCORE_COMPATIBLE_VERSIONS)
+    # Every listed version scores exactly as the current one does, so any two
+    # of them also score alike.
+    return {version_a, version_b} <= {SCORING_RULES_VERSION, *SCORE_COMPATIBLE_VERSIONS}
 
 
 def compare(

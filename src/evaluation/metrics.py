@@ -50,7 +50,12 @@ from ..generation.abstention import ABSTENTION_PATTERNS_VERSION, is_abstention
 #: answer was returned. No formula or threshold changed; for a record declaring
 #: no verification stage every rule is as before -- tests re-run Baselines A and
 #: B and require their stored per-question records exactly.
-SCORING_RULES_VERSION = "2026-09-23.2"
+#:
+#: 2026-09-24.1: citation completeness counts only the canonical ``[Cn]``
+#: markers the resolver emits; a bare ``[3]`` left in an answer is quoted source
+#: text (DD-062). Before DD-062 the resolver rewrote or removed every bare
+#: group, so no stored answer contains one and every stored score is unchanged.
+SCORING_RULES_VERSION = "2026-09-24.1"
 
 #: Earlier versions whose per-question *scores* (not error categories) are
 #: computed identically to this one, so a paired comparison across them is
@@ -64,6 +69,12 @@ SCORE_COMPATIBLE_VERSIONS: dict[str, str] = {
         "taxonomy-only change (DD-054); tests/test_hybrid.py::"
         "TestBaselineAIsUnchanged and TestBaselineBIsUnchanged reproduce "
         "results/baseline/ and results/hybrid/ records exactly"
+    ),
+    "2026-09-23.2": (
+        "completeness now counts canonical markers only (DD-062); resolved "
+        "answers under 2026-09-23.2 never contained a bare [n], which "
+        "tests/test_generation.py::TestBareBracketsInSourceText checks against "
+        "every stored per_question.json"
     ),
 }
 
@@ -109,6 +120,10 @@ _STOPWORDS: frozenset[str] = frozenset(
 _TOKEN = re.compile(r"[a-z0-9]+")
 #: Evidence markers are the harness's own annotation, not answer content.
 _MARKER = re.compile(r"\[[Cc]?\s*\d+(?:\s*[,;]\s*[Cc]?\s*\d+)*\]")
+#: What counts as a citation in a resolved answer: only the canonical form
+#: ``resolve_citations`` emits. A bare ``[3]`` left in place is quoted source
+#: text (DD-062).
+_CANONICAL_MARKER = re.compile(r"\[C\d+(?:, C\d+)*\]")
 #: Numbers as a reader would see them: 1,200  86.7  9.4%  -3
 _NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
@@ -671,7 +686,7 @@ def _citation_completeness(answer: str) -> float | None:
     ]
     if not sentences:
         return None
-    cited = sum(1 for s in sentences if _MARKER.search(s))
+    cited = sum(1 for s in sentences if _CANONICAL_MARKER.search(s))
     return cited / len(sentences)
 
 
