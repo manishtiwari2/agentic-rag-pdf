@@ -6,7 +6,7 @@
   "n_questions": 33,
   "split": "dev",
   "random_seed": 42,
-  "scoring_rules_version": "2026-09-23.2",
+  "scoring_rules_version": "2026-09-24.1",
   "error_taxonomy_version": "2026-09-23.2",
   "abstention_patterns_version": "2026-09-21.1",
   "generation_model": "local/scripted-extractive",
@@ -45,9 +45,9 @@
     "enabled": false,
     "reason": "not requested"
   },
-  "config_fingerprint": "c74d53517bf345ac",
+  "config_fingerprint": "4f0911980866167a",
   "config": {
-    "config_fingerprint": "c74d53517bf345ac",
+    "config_fingerprint": "4f0911980866167a",
     "generation_model": "local/scripted-extractive",
     "generation_license": "unregistered",
     "quantization": "none",
@@ -55,6 +55,7 @@
     "embedding_model": "local/hashing-embedder",
     "embedding_license": "unregistered",
     "embedding_pooling": "mean",
+    "ocr": true,
     "chunk_strategy": "structure",
     "chunk_size": 1200,
     "chunk_overlap": 150,
