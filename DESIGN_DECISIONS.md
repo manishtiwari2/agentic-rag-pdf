@@ -2336,3 +2336,28 @@ The candidate change was chosen with q069 ("iPhone 6") in mind, and q069 is an
 eval question. DD-060 already inspected it. Choosing the candidate is therefore
 informed by one eval failure. Applying the candidate is decided by dev counts
 alone.
+
+### Outcome (appended after the dev run)
+
+**Offline stand-in stack, `--split dev` (33 questions), threshold 0.5.**
+
+| Controller refusals on dev | Phase 6 reference | Under DD-061 and DD-062 |
+| --- | ---: | ---: |
+| total | 7 | 5 |
+| number-only, answerable | 0 | **0** |
+| both rules (number and coverage) | 2 (q001 answerable, q007 unanswerable), both missing "2027" | 0 |
+| coverage-only | 5 (q051, q053, q055, q057, q061) | 5 (the same) |
+
+**Decision: no change.** No number-only refusal of an answerable dev question
+remains, so the declared rule keeps the number rule as it is.
+
+What moved:
+* **"2027" now reaches the context.** Neither q001 nor q007 trips the number
+  rule any more.
+* **q007 is no longer refused.** It is an unanswerable dev question that the
+  reference refused only because "2027" was missing. That was a right refusal
+  for a wrong reason, and it is gone. It is reported here rather than hidden,
+  because it will show up in the regenerated abstention numbers (DD-069).
+
+The number-only refusals DD-060 listed, q005 and q069, are eval questions. They
+were neither counted nor looked at for this decision.
