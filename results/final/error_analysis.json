@@ -5,12 +5,12 @@
       "directory": "results/baseline",
       "split": null,
       "n_questions": 76,
-      "n_failures": 65,
+      "n_failures": 64,
       "error_categories": {
         "system-runtime": 0,
         "retrieval": 8,
         "reranking": 0,
-        "context-selection": 1,
+        "context-selection": 0,
         "abstention": 9,
         "hallucination": 0,
         "citation": 1,
@@ -28,11 +28,8 @@
           "q033",
           "q062"
         ],
-        "context-selection": [
-          "q022"
-        ],
         "abstention": [
-          "q008",
+          "q007",
           "q024",
           "q046",
           "q047",
@@ -46,7 +43,6 @@
           "q020"
         ],
         "generation": [
-          "q001",
           "q002",
           "q003",
           "q004",
@@ -60,6 +56,7 @@
           "q018",
           "q019",
           "q021",
+          "q022",
           "q023",
           "q025",
           "q026",
@@ -82,6 +79,1156 @@
           "q055",
           "q059",
           "q061",
+          "q063",
+          "q064",
+          "q065",
+          "q068",
+          "q069",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 1,
+          "failed": 4,
+          "categories": {
+            "generation": 4
+          },
+          "accuracy": 0.2
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 5,
+            "retrieval": 2
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 0,
+          "failed": 8,
+          "categories": {
+            "retrieval": 2,
+            "generation": 6
+          },
+          "accuracy": 0.0
+        },
+        "factual": {
+          "n": 13,
+          "correct": 4,
+          "failed": 10,
+          "categories": {
+            "generation": 5,
+            "retrieval": 4,
+            "abstention": 1
+          },
+          "accuracy": 0.3077
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 6
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 2,
+          "failed": 9,
+          "categories": {
+            "generation": 8,
+            "abstention": 1
+          },
+          "accuracy": 0.1818
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "citation": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 0,
+          "failed": 6,
+          "categories": {
+            "abstention": 6
+          },
+          "accuracy": 0.0
+        }
+      }
+    },
+    "hybrid": {
+      "directory": "results/hybrid",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 61,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 4,
+        "reranking": 0,
+        "context-selection": 1,
+        "abstention": 9,
+        "hallucination": 0,
+        "citation": 1,
+        "verification": 0,
+        "generation": 46
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q020",
+          "q023",
+          "q028",
+          "q033"
+        ],
+        "context-selection": [
+          "q009"
+        ],
+        "abstention": [
+          "q007",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q054",
+          "q056",
+          "q057",
+          "q074"
+        ],
+        "citation": [
+          "q011"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q022",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q031",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q053",
+          "q055",
+          "q059",
+          "q061",
+          "q062",
+          "q063",
+          "q064",
+          "q068",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 1,
+          "failed": 4,
+          "categories": {
+            "generation": 4
+          },
+          "accuracy": 0.2
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 7
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.125
+        },
+        "factual": {
+          "n": 13,
+          "correct": 5,
+          "failed": 9,
+          "categories": {
+            "generation": 5,
+            "context-selection": 1,
+            "citation": 1,
+            "retrieval": 1,
+            "abstention": 1
+          },
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 5,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 3,
+          "failed": 8,
+          "categories": {
+            "generation": 7,
+            "abstention": 1
+          },
+          "accuracy": 0.2727
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 0,
+          "failed": 6,
+          "categories": {
+            "abstention": 6
+          },
+          "accuracy": 0.0
+        }
+      }
+    },
+    "agentic": {
+      "directory": "results/agentic",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 62,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 4,
+        "reranking": 0,
+        "context-selection": 1,
+        "abstention": 13,
+        "hallucination": 0,
+        "citation": 1,
+        "verification": 0,
+        "generation": 43
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q020",
+          "q023",
+          "q028",
+          "q033"
+        ],
+        "context-selection": [
+          "q009"
+        ],
+        "abstention": [
+          "q007",
+          "q008",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q053",
+          "q054",
+          "q055",
+          "q056",
+          "q061",
+          "q069",
+          "q074"
+        ],
+        "citation": [
+          "q011"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q022",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q031",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q059",
+          "q062",
+          "q063",
+          "q064",
+          "q068",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 0,
+          "failed": 5,
+          "categories": {
+            "abstention": 1,
+            "generation": 4
+          },
+          "accuracy": 0.0
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "abstention": 1
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.125
+        },
+        "factual": {
+          "n": 13,
+          "correct": 5,
+          "failed": 9,
+          "categories": {
+            "generation": 4,
+            "context-selection": 1,
+            "citation": 1,
+            "retrieval": 1,
+            "abstention": 2
+          },
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 5,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 2,
+          "failed": 9,
+          "categories": {
+            "generation": 6,
+            "abstention": 3
+          },
+          "accuracy": 0.1818
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 1,
+          "failed": 5,
+          "categories": {
+            "abstention": 5
+          },
+          "accuracy": 0.1667
+        }
+      }
+    },
+    "reranker_off (B)": {
+      "directory": "results/ablations/reranker_off",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 63,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 5,
+        "reranking": 0,
+        "context-selection": 1,
+        "abstention": 9,
+        "hallucination": 0,
+        "citation": 0,
+        "verification": 0,
+        "generation": 48
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q009",
+          "q020",
+          "q023",
+          "q028",
+          "q033"
+        ],
+        "context-selection": [
+          "q022"
+        ],
+        "abstention": [
+          "q007",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q054",
+          "q056",
+          "q057",
+          "q074"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q011",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q031",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q053",
+          "q055",
+          "q059",
+          "q061",
+          "q062",
+          "q063",
+          "q064",
+          "q065",
+          "q068",
+          "q069",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 1,
+          "failed": 4,
+          "categories": {
+            "generation": 4
+          },
+          "accuracy": 0.2
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 7
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 0,
+          "failed": 8,
+          "categories": {
+            "generation": 7,
+            "retrieval": 1
+          },
+          "accuracy": 0.0
+        },
+        "factual": {
+          "n": 13,
+          "correct": 5,
+          "failed": 9,
+          "categories": {
+            "generation": 6,
+            "retrieval": 2,
+            "abstention": 1
+          },
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 4,
+            "context-selection": 1,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 2,
+          "failed": 9,
+          "categories": {
+            "generation": 8,
+            "abstention": 1
+          },
+          "accuracy": 0.1818
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 0,
+          "failed": 6,
+          "categories": {
+            "abstention": 6
+          },
+          "accuracy": 0.0
+        }
+      }
+    },
+    "planner_off": {
+      "directory": "results/ablations/planner_off",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 62,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 4,
+        "reranking": 0,
+        "context-selection": 1,
+        "abstention": 13,
+        "hallucination": 0,
+        "citation": 1,
+        "verification": 0,
+        "generation": 43
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q020",
+          "q023",
+          "q028",
+          "q033"
+        ],
+        "context-selection": [
+          "q009"
+        ],
+        "abstention": [
+          "q007",
+          "q008",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q053",
+          "q054",
+          "q055",
+          "q056",
+          "q061",
+          "q069",
+          "q074"
+        ],
+        "citation": [
+          "q011"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q022",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q031",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q059",
+          "q062",
+          "q063",
+          "q064",
+          "q068",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 0,
+          "failed": 5,
+          "categories": {
+            "abstention": 1,
+            "generation": 4
+          },
+          "accuracy": 0.0
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "abstention": 1
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.125
+        },
+        "factual": {
+          "n": 13,
+          "correct": 5,
+          "failed": 9,
+          "categories": {
+            "generation": 4,
+            "context-selection": 1,
+            "citation": 1,
+            "retrieval": 1,
+            "abstention": 2
+          },
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 5,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 2,
+          "failed": 9,
+          "categories": {
+            "generation": 6,
+            "abstention": 3
+          },
+          "accuracy": 0.1818
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 1,
+          "failed": 5,
+          "categories": {
+            "abstention": 5
+          },
+          "accuracy": 0.1667
+        }
+      }
+    },
+    "hybrid_off": {
+      "directory": "results/ablations/hybrid_off",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 62,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 4,
+        "reranking": 2,
+        "context-selection": 0,
+        "abstention": 12,
+        "hallucination": 0,
+        "citation": 1,
+        "verification": 0,
+        "generation": 43
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q009",
+          "q028",
+          "q031",
+          "q033"
+        ],
+        "reranking": [
+          "q020",
+          "q023"
+        ],
+        "abstention": [
+          "q007",
+          "q008",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q053",
+          "q054",
+          "q055",
+          "q056",
+          "q061",
+          "q074"
+        ],
+        "citation": [
+          "q011"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q022",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q059",
+          "q062",
+          "q063",
+          "q064",
+          "q068",
+          "q069",
+          "q070",
+          "q071",
+          "q072",
+          "q075",
+          "q076"
+        ]
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "n": 5,
+          "correct": 0,
+          "failed": 5,
+          "categories": {
+            "abstention": 1,
+            "generation": 4
+          },
+          "accuracy": 0.0
+        },
+        "comparison": {
+          "n": 8,
+          "correct": 4,
+          "failed": 4,
+          "categories": {
+            "generation": 3,
+            "abstention": 1
+          },
+          "accuracy": 0.5
+        },
+        "definition": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 5,
+            "retrieval": 1,
+            "abstention": 1
+          },
+          "accuracy": 0.125
+        },
+        "explanation": {
+          "n": 8,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "retrieval": 1
+          },
+          "accuracy": 0.125
+        },
+        "factual": {
+          "n": 13,
+          "correct": 6,
+          "failed": 9,
+          "categories": {
+            "generation": 4,
+            "retrieval": 2,
+            "citation": 1,
+            "abstention": 2
+          },
+          "accuracy": 0.4615
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 5,
+            "reranking": 1
+          },
+          "accuracy": 0.1429
+        },
+        "numerical": {
+          "n": 11,
+          "correct": 2,
+          "failed": 9,
+          "categories": {
+            "generation": 7,
+            "abstention": 2
+          },
+          "accuracy": 0.1818
+        },
+        "summary": {
+          "n": 3,
+          "correct": 0,
+          "failed": 3,
+          "categories": {
+            "generation": 3
+          },
+          "accuracy": 0.0
+        },
+        "table": {
+          "n": 7,
+          "correct": 1,
+          "failed": 7,
+          "categories": {
+            "generation": 6,
+            "reranking": 1
+          },
+          "accuracy": 0.1429
+        },
+        "unanswerable": {
+          "n": 6,
+          "correct": 1,
+          "failed": 5,
+          "categories": {
+            "abstention": 5
+          },
+          "accuracy": 0.1667
+        }
+      }
+    },
+    "reranker_off_agentic": {
+      "directory": "results/ablations/reranker_off_agentic",
+      "split": null,
+      "n_questions": 76,
+      "n_failures": 63,
+      "error_categories": {
+        "system-runtime": 0,
+        "retrieval": 5,
+        "reranking": 0,
+        "context-selection": 0,
+        "abstention": 12,
+        "hallucination": 0,
+        "citation": 0,
+        "verification": 0,
+        "generation": 46
+      },
+      "failing_questions": {
+        "retrieval": [
+          "q009",
+          "q020",
+          "q023",
+          "q028",
+          "q033"
+        ],
+        "abstention": [
+          "q007",
+          "q008",
+          "q024",
+          "q046",
+          "q047",
+          "q051",
+          "q053",
+          "q054",
+          "q055",
+          "q056",
+          "q061",
+          "q074"
+        ],
+        "generation": [
+          "q002",
+          "q003",
+          "q004",
+          "q005",
+          "q006",
+          "q011",
+          "q013",
+          "q014",
+          "q015",
+          "q016",
+          "q017",
+          "q018",
+          "q019",
+          "q021",
+          "q022",
+          "q025",
+          "q026",
+          "q027",
+          "q029",
+          "q030",
+          "q031",
+          "q032",
+          "q034",
+          "q035",
+          "q036",
+          "q040",
+          "q041",
+          "q042",
+          "q043",
+          "q044",
+          "q045",
+          "q048",
+          "q049",
+          "q050",
+          "q059",
+          "q062",
           "q063",
           "q064",
           "q065",
@@ -120,8 +1267,8 @@
           "correct": 1,
           "failed": 7,
           "categories": {
-            "generation": 5,
-            "retrieval": 2
+            "generation": 6,
+            "abstention": 1
           },
           "accuracy": 0.125
         },
@@ -130,21 +1277,21 @@
           "correct": 0,
           "failed": 8,
           "categories": {
-            "retrieval": 2,
-            "generation": 6
+            "generation": 7,
+            "retrieval": 1
           },
           "accuracy": 0.0
         },
         "factual": {
           "n": 13,
-          "correct": 3,
-          "failed": 11,
+          "correct": 5,
+          "failed": 9,
           "categories": {
-            "generation": 6,
-            "retrieval": 4,
-            "abstention": 1
+            "generation": 5,
+            "retrieval": 2,
+            "abstention": 2
           },
-          "accuracy": 0.2308
+          "accuracy": 0.3846
         },
         "multi_hop": {
           "n": 7,
@@ -152,7 +1299,7 @@
           "failed": 6,
           "categories": {
             "generation": 5,
-            "context-selection": 1
+            "retrieval": 1
           },
           "accuracy": 0.1429
         },
@@ -160,605 +1307,9 @@
           "n": 11,
           "correct": 2,
           "failed": 9,
-          "categories": {
-            "generation": 8,
-            "abstention": 1
-          },
-          "accuracy": 0.1818
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "citation": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 1,
-          "failed": 5,
-          "categories": {
-            "abstention": 5
-          },
-          "accuracy": 0.1667
-        }
-      }
-    },
-    "hybrid": {
-      "directory": "results/hybrid",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 63,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 4,
-        "reranking": 0,
-        "context-selection": 2,
-        "abstention": 9,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 0,
-        "generation": 47
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q020",
-          "q023",
-          "q028",
-          "q033"
-        ],
-        "context-selection": [
-          "q009",
-          "q022"
-        ],
-        "abstention": [
-          "q008",
-          "q024",
-          "q046",
-          "q047",
-          "q051",
-          "q054",
-          "q056",
-          "q057",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "generation": [
-          "q001",
-          "q002",
-          "q003",
-          "q004",
-          "q005",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q045",
-          "q048",
-          "q049",
-          "q050",
-          "q053",
-          "q055",
-          "q059",
-          "q061",
-          "q062",
-          "q063",
-          "q064",
-          "q068",
-          "q070",
-          "q071",
-          "q072",
-          "q073",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 7
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1
-          },
-          "accuracy": 0.125
-        },
-        "factual": {
-          "n": 13,
-          "correct": 4,
-          "failed": 10,
-          "categories": {
-            "generation": 6,
-            "context-selection": 1,
-            "citation": 1,
-            "retrieval": 1,
-            "abstention": 1
-          },
-          "accuracy": 0.3077
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 5,
-            "context-selection": 1,
-            "retrieval": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 3,
-          "failed": 8,
           "categories": {
             "generation": 7,
-            "abstention": 1
-          },
-          "accuracy": 0.2727
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 1,
-          "failed": 5,
-          "categories": {
-            "abstention": 5
-          },
-          "accuracy": 0.1667
-        }
-      }
-    },
-    "agentic": {
-      "directory": "results/agentic",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 64,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 4,
-        "reranking": 1,
-        "context-selection": 2,
-        "abstention": 16,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 1,
-        "generation": 39
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q020",
-          "q023",
-          "q028",
-          "q033"
-        ],
-        "reranking": [
-          "q073"
-        ],
-        "context-selection": [
-          "q009",
-          "q022"
-        ],
-        "abstention": [
-          "q001",
-          "q002",
-          "q005",
-          "q008",
-          "q024",
-          "q046",
-          "q047",
-          "q051",
-          "q053",
-          "q054",
-          "q055",
-          "q056",
-          "q061",
-          "q063",
-          "q069",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "verification": [
-          "q065"
-        ],
-        "generation": [
-          "q003",
-          "q004",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q045",
-          "q048",
-          "q049",
-          "q050",
-          "q059",
-          "q062",
-          "q064",
-          "q068",
-          "q070",
-          "q071",
-          "q072",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "abstention": 1
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 0,
-          "failed": 8,
-          "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
-          },
-          "accuracy": 0.0
-        },
-        "factual": {
-          "n": 13,
-          "correct": 4,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "context-selection": 1,
-            "citation": 1,
-            "generation": 3,
-            "retrieval": 1
-          },
-          "accuracy": 0.3077
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 4,
-            "context-selection": 1,
-            "retrieval": 1,
-            "reranking": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 2,
-          "failed": 9,
-          "categories": {
-            "abstention": 4,
-            "generation": 5
-          },
-          "accuracy": 0.1818
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 2,
-          "failed": 4,
-          "categories": {
-            "abstention": 4
-          },
-          "accuracy": 0.3333
-        }
-      }
-    },
-    "reranker_off (B)": {
-      "directory": "results/ablations/reranker_off",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 65,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 5,
-        "reranking": 0,
-        "context-selection": 2,
-        "abstention": 9,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 0,
-        "generation": 48
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q009",
-          "q020",
-          "q023",
-          "q028",
-          "q033"
-        ],
-        "context-selection": [
-          "q022",
-          "q065"
-        ],
-        "abstention": [
-          "q008",
-          "q024",
-          "q046",
-          "q047",
-          "q051",
-          "q054",
-          "q056",
-          "q057",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "generation": [
-          "q001",
-          "q002",
-          "q003",
-          "q004",
-          "q005",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q045",
-          "q048",
-          "q049",
-          "q050",
-          "q053",
-          "q055",
-          "q059",
-          "q061",
-          "q062",
-          "q063",
-          "q064",
-          "q068",
-          "q069",
-          "q070",
-          "q071",
-          "q072",
-          "q073",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 7
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 0,
-          "failed": 8,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1,
-            "context-selection": 1
-          },
-          "accuracy": 0.0
-        },
-        "factual": {
-          "n": 13,
-          "correct": 5,
-          "failed": 10,
-          "categories": {
-            "generation": 6,
-            "retrieval": 2,
-            "citation": 1,
-            "abstention": 1
-          },
-          "accuracy": 0.3846
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 5,
-            "context-selection": 1,
-            "retrieval": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 2,
-          "failed": 9,
-          "categories": {
-            "generation": 8,
-            "abstention": 1
+            "abstention": 2
           },
           "accuracy": 0.1818
         },
@@ -789,608 +1340,6 @@
             "abstention": 5
           },
           "accuracy": 0.1667
-        }
-      }
-    },
-    "planner_off": {
-      "directory": "results/ablations/planner_off",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 64,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 4,
-        "reranking": 0,
-        "context-selection": 2,
-        "abstention": 16,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 1,
-        "generation": 40
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q020",
-          "q023",
-          "q028",
-          "q033"
-        ],
-        "context-selection": [
-          "q009",
-          "q022"
-        ],
-        "abstention": [
-          "q001",
-          "q002",
-          "q005",
-          "q008",
-          "q024",
-          "q046",
-          "q047",
-          "q051",
-          "q053",
-          "q054",
-          "q055",
-          "q056",
-          "q061",
-          "q063",
-          "q069",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "verification": [
-          "q065"
-        ],
-        "generation": [
-          "q003",
-          "q004",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q045",
-          "q048",
-          "q049",
-          "q050",
-          "q059",
-          "q062",
-          "q064",
-          "q068",
-          "q070",
-          "q071",
-          "q072",
-          "q073",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "abstention": 1
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 0,
-          "failed": 8,
-          "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
-          },
-          "accuracy": 0.0
-        },
-        "factual": {
-          "n": 13,
-          "correct": 4,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "context-selection": 1,
-            "citation": 1,
-            "generation": 3,
-            "retrieval": 1
-          },
-          "accuracy": 0.3077
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 5,
-            "context-selection": 1,
-            "retrieval": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 2,
-          "failed": 9,
-          "categories": {
-            "abstention": 4,
-            "generation": 5
-          },
-          "accuracy": 0.1818
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 2,
-          "failed": 4,
-          "categories": {
-            "abstention": 4
-          },
-          "accuracy": 0.3333
-        }
-      }
-    },
-    "hybrid_off": {
-      "directory": "results/ablations/hybrid_off",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 64,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 3,
-        "reranking": 2,
-        "context-selection": 1,
-        "abstention": 17,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 1,
-        "generation": 39
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q009",
-          "q028",
-          "q033"
-        ],
-        "reranking": [
-          "q020",
-          "q023"
-        ],
-        "context-selection": [
-          "q022"
-        ],
-        "abstention": [
-          "q001",
-          "q002",
-          "q005",
-          "q008",
-          "q024",
-          "q045",
-          "q046",
-          "q047",
-          "q051",
-          "q053",
-          "q054",
-          "q055",
-          "q056",
-          "q061",
-          "q063",
-          "q069",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "verification": [
-          "q065"
-        ],
-        "generation": [
-          "q003",
-          "q004",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q048",
-          "q049",
-          "q050",
-          "q059",
-          "q062",
-          "q064",
-          "q068",
-          "q070",
-          "q071",
-          "q072",
-          "q073",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "abstention": 1
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 0,
-          "failed": 8,
-          "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
-          },
-          "accuracy": 0.0
-        },
-        "factual": {
-          "n": 13,
-          "correct": 5,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "retrieval": 2,
-            "citation": 1,
-            "generation": 3
-          },
-          "accuracy": 0.3846
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 4,
-            "context-selection": 1,
-            "reranking": 1,
-            "abstention": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 2,
-          "failed": 9,
-          "categories": {
-            "abstention": 4,
-            "generation": 5
-          },
-          "accuracy": 0.1818
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "reranking": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 2,
-          "failed": 4,
-          "categories": {
-            "abstention": 4
-          },
-          "accuracy": 0.3333
-        }
-      }
-    },
-    "reranker_off_agentic": {
-      "directory": "results/ablations/reranker_off_agentic",
-      "split": null,
-      "n_questions": 76,
-      "n_failures": 64,
-      "error_categories": {
-        "system-runtime": 0,
-        "retrieval": 5,
-        "reranking": 0,
-        "context-selection": 1,
-        "abstention": 16,
-        "hallucination": 0,
-        "citation": 1,
-        "verification": 0,
-        "generation": 41
-      },
-      "failing_questions": {
-        "retrieval": [
-          "q009",
-          "q020",
-          "q023",
-          "q028",
-          "q033"
-        ],
-        "context-selection": [
-          "q065"
-        ],
-        "abstention": [
-          "q001",
-          "q002",
-          "q005",
-          "q008",
-          "q022",
-          "q024",
-          "q046",
-          "q047",
-          "q051",
-          "q053",
-          "q054",
-          "q055",
-          "q056",
-          "q061",
-          "q063",
-          "q074"
-        ],
-        "citation": [
-          "q011"
-        ],
-        "generation": [
-          "q003",
-          "q004",
-          "q006",
-          "q013",
-          "q014",
-          "q015",
-          "q016",
-          "q017",
-          "q018",
-          "q019",
-          "q021",
-          "q025",
-          "q026",
-          "q027",
-          "q029",
-          "q030",
-          "q031",
-          "q032",
-          "q034",
-          "q035",
-          "q036",
-          "q040",
-          "q041",
-          "q042",
-          "q043",
-          "q044",
-          "q045",
-          "q048",
-          "q049",
-          "q050",
-          "q059",
-          "q062",
-          "q064",
-          "q068",
-          "q069",
-          "q070",
-          "q071",
-          "q072",
-          "q073",
-          "q075",
-          "q076"
-        ]
-      },
-      "by_question_type": {
-        "ambiguous": {
-          "n": 5,
-          "correct": 0,
-          "failed": 5,
-          "categories": {
-            "abstention": 1,
-            "generation": 4
-          },
-          "accuracy": 0.0
-        },
-        "comparison": {
-          "n": 8,
-          "correct": 4,
-          "failed": 4,
-          "categories": {
-            "generation": 3,
-            "abstention": 1
-          },
-          "accuracy": 0.5
-        },
-        "definition": {
-          "n": 8,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "abstention": 1
-          },
-          "accuracy": 0.125
-        },
-        "explanation": {
-          "n": 8,
-          "correct": 0,
-          "failed": 8,
-          "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "context-selection": 1
-          },
-          "accuracy": 0.0
-        },
-        "factual": {
-          "n": 13,
-          "correct": 5,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "retrieval": 2,
-            "citation": 1,
-            "generation": 3
-          },
-          "accuracy": 0.3846
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
-          "categories": {
-            "generation": 5,
-            "abstention": 1,
-            "retrieval": 1
-          },
-          "accuracy": 0.0
-        },
-        "numerical": {
-          "n": 11,
-          "correct": 2,
-          "failed": 9,
-          "categories": {
-            "abstention": 3,
-            "generation": 6
-          },
-          "accuracy": 0.1818
-        },
-        "summary": {
-          "n": 3,
-          "correct": 0,
-          "failed": 3,
-          "categories": {
-            "generation": 3
-          },
-          "accuracy": 0.0
-        },
-        "table": {
-          "n": 7,
-          "correct": 1,
-          "failed": 7,
-          "categories": {
-            "generation": 6,
-            "retrieval": 1
-          },
-          "accuracy": 0.1429
-        },
-        "unanswerable": {
-          "n": 6,
-          "correct": 2,
-          "failed": 4,
-          "categories": {
-            "abstention": 4
-          },
-          "accuracy": 0.3333
         }
       }
     },
@@ -1398,17 +1347,17 @@
       "directory": "results/ablations/refinement_off",
       "split": null,
       "n_questions": 76,
-      "n_failures": 64,
+      "n_failures": 62,
       "error_categories": {
         "system-runtime": 0,
         "retrieval": 4,
         "reranking": 0,
-        "context-selection": 2,
-        "abstention": 17,
+        "context-selection": 1,
+        "abstention": 14,
         "hallucination": 0,
         "citation": 1,
-        "verification": 1,
-        "generation": 39
+        "verification": 0,
+        "generation": 42
       },
       "failing_questions": {
         "retrieval": [
@@ -1418,15 +1367,13 @@
           "q033"
         ],
         "context-selection": [
-          "q009",
-          "q022"
+          "q009"
         ],
         "abstention": [
-          "q001",
-          "q002",
-          "q005",
+          "q007",
           "q008",
           "q024",
+          "q045",
           "q046",
           "q047",
           "q051",
@@ -1435,20 +1382,17 @@
           "q055",
           "q056",
           "q061",
-          "q063",
           "q069",
-          "q073",
           "q074"
         ],
         "citation": [
           "q011"
         ],
-        "verification": [
-          "q065"
-        ],
         "generation": [
+          "q002",
           "q003",
           "q004",
+          "q005",
           "q006",
           "q013",
           "q014",
@@ -1458,6 +1402,7 @@
           "q018",
           "q019",
           "q021",
+          "q022",
           "q025",
           "q026",
           "q027",
@@ -1473,12 +1418,12 @@
           "q042",
           "q043",
           "q044",
-          "q045",
           "q048",
           "q049",
           "q050",
           "q059",
           "q062",
+          "q063",
           "q064",
           "q068",
           "q070",
@@ -1521,48 +1466,45 @@
         },
         "explanation": {
           "n": 8,
-          "correct": 0,
-          "failed": 8,
+          "correct": 1,
+          "failed": 7,
           "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
+            "generation": 6,
+            "retrieval": 1
           },
-          "accuracy": 0.0
+          "accuracy": 0.125
         },
         "factual": {
           "n": 13,
-          "correct": 4,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "context-selection": 1,
-            "citation": 1,
-            "generation": 3,
-            "retrieval": 1
-          },
-          "accuracy": 0.3077
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
+          "correct": 5,
+          "failed": 9,
           "categories": {
             "generation": 4,
             "context-selection": 1,
+            "citation": 1,
+            "retrieval": 1,
+            "abstention": 2
+          },
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 4,
             "retrieval": 1,
             "abstention": 1
           },
-          "accuracy": 0.0
+          "accuracy": 0.1429
         },
         "numerical": {
           "n": 11,
           "correct": 2,
           "failed": 9,
           "categories": {
-            "abstention": 4,
-            "generation": 5
+            "generation": 6,
+            "abstention": 3
           },
           "accuracy": 0.1818
         },
@@ -1587,12 +1529,12 @@
         },
         "unanswerable": {
           "n": 6,
-          "correct": 2,
-          "failed": 4,
+          "correct": 1,
+          "failed": 5,
           "categories": {
-            "abstention": 4
+            "abstention": 5
           },
-          "accuracy": 0.3333
+          "accuracy": 0.1667
         }
       }
     },
@@ -1600,16 +1542,16 @@
       "directory": "results/ablations/evidence_controller_off",
       "split": null,
       "n_questions": 76,
-      "n_failures": 64,
+      "n_failures": 61,
       "error_categories": {
         "system-runtime": 0,
         "retrieval": 4,
         "reranking": 0,
-        "context-selection": 2,
-        "abstention": 10,
+        "context-selection": 1,
+        "abstention": 9,
         "hallucination": 0,
         "citation": 1,
-        "verification": 1,
+        "verification": 0,
         "generation": 46
       },
       "failing_questions": {
@@ -1620,11 +1562,10 @@
           "q033"
         ],
         "context-selection": [
-          "q009",
-          "q022"
+          "q009"
         ],
         "abstention": [
-          "q008",
+          "q007",
           "q024",
           "q046",
           "q047",
@@ -1632,17 +1573,12 @@
           "q054",
           "q056",
           "q057",
-          "q063",
           "q074"
         ],
         "citation": [
           "q011"
         ],
-        "verification": [
-          "q065"
-        ],
         "generation": [
-          "q001",
           "q002",
           "q003",
           "q004",
@@ -1656,6 +1592,7 @@
           "q018",
           "q019",
           "q021",
+          "q022",
           "q025",
           "q026",
           "q027",
@@ -1680,12 +1617,12 @@
           "q059",
           "q061",
           "q062",
+          "q063",
           "q064",
           "q068",
           "q070",
           "q071",
           "q072",
-          "q073",
           "q075",
           "q076"
         ]
@@ -1693,13 +1630,12 @@
       "by_question_type": {
         "ambiguous": {
           "n": 5,
-          "correct": 0,
-          "failed": 5,
+          "correct": 1,
+          "failed": 4,
           "categories": {
-            "abstention": 1,
             "generation": 4
           },
-          "accuracy": 0.0
+          "accuracy": 0.2
         },
         "comparison": {
           "n": 8,
@@ -1722,39 +1658,36 @@
         },
         "explanation": {
           "n": 8,
-          "correct": 0,
-          "failed": 8,
+          "correct": 1,
+          "failed": 7,
           "categories": {
-            "generation": 5,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
+            "generation": 6,
+            "retrieval": 1
           },
-          "accuracy": 0.0
+          "accuracy": 0.125
         },
         "factual": {
           "n": 13,
-          "correct": 4,
-          "failed": 10,
+          "correct": 5,
+          "failed": 9,
           "categories": {
-            "generation": 6,
+            "generation": 5,
             "context-selection": 1,
             "citation": 1,
             "retrieval": 1,
             "abstention": 1
           },
-          "accuracy": 0.3077
+          "accuracy": 0.3846
         },
         "multi_hop": {
           "n": 7,
-          "correct": 0,
-          "failed": 7,
+          "correct": 1,
+          "failed": 6,
           "categories": {
             "generation": 5,
-            "context-selection": 1,
             "retrieval": 1
           },
-          "accuracy": 0.0
+          "accuracy": 0.1429
         },
         "numerical": {
           "n": 11,
@@ -1787,12 +1720,12 @@
         },
         "unanswerable": {
           "n": 6,
-          "correct": 1,
-          "failed": 5,
+          "correct": 0,
+          "failed": 6,
           "categories": {
-            "abstention": 5
+            "abstention": 6
           },
-          "accuracy": 0.1667
+          "accuracy": 0.0
         }
       }
     },
@@ -1800,17 +1733,17 @@
       "directory": "results/ablations/verification_off",
       "split": null,
       "n_questions": 76,
-      "n_failures": 63,
+      "n_failures": 62,
       "error_categories": {
         "system-runtime": 0,
         "retrieval": 4,
-        "reranking": 1,
-        "context-selection": 2,
-        "abstention": 15,
+        "reranking": 0,
+        "context-selection": 1,
+        "abstention": 13,
         "hallucination": 0,
         "citation": 1,
         "verification": 0,
-        "generation": 40
+        "generation": 43
       },
       "failing_questions": {
         "retrieval": [
@@ -1819,17 +1752,11 @@
           "q028",
           "q033"
         ],
-        "reranking": [
-          "q073"
-        ],
         "context-selection": [
-          "q009",
-          "q022"
+          "q009"
         ],
         "abstention": [
-          "q001",
-          "q002",
-          "q005",
+          "q007",
           "q008",
           "q024",
           "q046",
@@ -1847,8 +1774,10 @@
           "q011"
         ],
         "generation": [
+          "q002",
           "q003",
           "q004",
+          "q005",
           "q006",
           "q013",
           "q014",
@@ -1858,6 +1787,7 @@
           "q018",
           "q019",
           "q021",
+          "q022",
           "q025",
           "q026",
           "q027",
@@ -1932,36 +1862,34 @@
         },
         "factual": {
           "n": 13,
-          "correct": 4,
-          "failed": 10,
-          "categories": {
-            "abstention": 4,
-            "context-selection": 1,
-            "citation": 1,
-            "generation": 3,
-            "retrieval": 1
-          },
-          "accuracy": 0.3077
-        },
-        "multi_hop": {
-          "n": 7,
-          "correct": 0,
-          "failed": 7,
+          "correct": 5,
+          "failed": 9,
           "categories": {
             "generation": 4,
             "context-selection": 1,
+            "citation": 1,
             "retrieval": 1,
-            "reranking": 1
+            "abstention": 2
           },
-          "accuracy": 0.0
+          "accuracy": 0.3846
+        },
+        "multi_hop": {
+          "n": 7,
+          "correct": 1,
+          "failed": 6,
+          "categories": {
+            "generation": 5,
+            "retrieval": 1
+          },
+          "accuracy": 0.1429
         },
         "numerical": {
           "n": 11,
           "correct": 2,
           "failed": 9,
           "categories": {
-            "abstention": 4,
-            "generation": 5
+            "generation": 6,
+            "abstention": 3
           },
           "accuracy": 0.1818
         },
@@ -1986,17 +1914,17 @@
         },
         "unanswerable": {
           "n": 6,
-          "correct": 2,
-          "failed": 4,
+          "correct": 1,
+          "failed": 5,
           "categories": {
-            "abstention": 4
+            "abstention": 5
           },
-          "accuracy": 0.3333
+          "accuracy": 0.1667
         }
       }
     },
-    "tuned 0.3 (eval only)": {
-      "directory": "results/experiments/threshold/eval_0.3",
+    "tuned 0.6 (eval only)": {
+      "directory": "results/experiments/threshold/eval_0.6",
       "split": "eval",
       "n_questions": 43,
       "n_failures": 38,
@@ -2004,50 +1932,45 @@
         "system-runtime": 0,
         "retrieval": 2,
         "reranking": 0,
-        "context-selection": 1,
-        "abstention": 10,
+        "context-selection": 0,
+        "abstention": 11,
         "hallucination": 0,
         "citation": 1,
-        "verification": 1,
-        "generation": 23
+        "verification": 0,
+        "generation": 24
       },
       "failing_questions": {
         "retrieval": [
           "q028",
           "q033"
         ],
-        "context-selection": [
-          "q022"
-        ],
         "abstention": [
-          "q002",
-          "q005",
+          "q006",
           "q008",
+          "q021",
           "q024",
-          "q046",
+          "q029",
+          "q052",
           "q054",
           "q056",
-          "q063",
+          "q067",
           "q069",
           "q074"
         ],
         "citation": [
           "q011"
         ],
-        "verification": [
-          "q065"
-        ],
         "generation": [
+          "q002",
           "q003",
-          "q006",
+          "q005",
           "q013",
           "q015",
           "q016",
           "q018",
           "q019",
-          "q021",
+          "q022",
           "q025",
-          "q029",
           "q031",
           "q035",
           "q036",
@@ -2058,6 +1981,7 @@
           "q050",
           "q059",
           "q062",
+          "q063",
           "q071",
           "q072",
           "q076"
@@ -2076,13 +2000,13 @@
         },
         "comparison": {
           "n": 5,
-          "correct": 2,
-          "failed": 3,
+          "correct": 1,
+          "failed": 4,
           "categories": {
             "generation": 2,
-            "abstention": 1
+            "abstention": 2
           },
-          "accuracy": 0.4
+          "accuracy": 0.2
         },
         "definition": {
           "n": 4,
@@ -2095,25 +2019,23 @@
         },
         "explanation": {
           "n": 5,
-          "correct": 0,
-          "failed": 5,
+          "correct": 1,
+          "failed": 4,
           "categories": {
-            "generation": 2,
-            "retrieval": 1,
-            "abstention": 1,
-            "verification": 1
+            "generation": 3,
+            "retrieval": 1
           },
-          "accuracy": 0.0
+          "accuracy": 0.2
         },
         "factual": {
           "n": 7,
           "correct": 3,
           "failed": 5,
           "categories": {
-            "abstention": 1,
+            "generation": 2,
             "citation": 1,
             "retrieval": 1,
-            "generation": 2
+            "abstention": 1
           },
           "accuracy": 0.4286
         },
@@ -2122,20 +2044,20 @@
           "correct": 0,
           "failed": 4,
           "categories": {
-            "generation": 3,
-            "context-selection": 1
+            "abstention": 1,
+            "generation": 3
           },
           "accuracy": 0.0
         },
         "numerical": {
           "n": 7,
-          "correct": 1,
-          "failed": 6,
+          "correct": 0,
+          "failed": 7,
           "categories": {
-            "abstention": 3,
-            "generation": 3
+            "generation": 4,
+            "abstention": 3
           },
-          "accuracy": 0.1429
+          "accuracy": 0.0
         },
         "summary": {
           "n": 2,
@@ -2151,33 +2073,24 @@
           "correct": 0,
           "failed": 3,
           "categories": {
-            "generation": 3
+            "abstention": 1,
+            "generation": 2
           },
           "accuracy": 0.0
         },
         "unanswerable": {
           "n": 3,
-          "correct": 0,
-          "failed": 3,
+          "correct": 1,
+          "failed": 2,
           "categories": {
-            "abstention": 3
+            "abstention": 2
           },
-          "accuracy": 0.0
+          "accuracy": 0.3333
         }
       }
     }
   },
   "question_type_difficulty": [
-    {
-      "question_type": "ambiguous",
-      "n": 5,
-      "accuracy": {
-        "dense": 0.0,
-        "hybrid": 0.0,
-        "agentic": 0.0
-      },
-      "best": 0.0
-    },
     {
       "question_type": "summary",
       "n": 3,
@@ -2204,7 +2117,7 @@
       "accuracy": {
         "dense": 0.0,
         "hybrid": 0.125,
-        "agentic": 0.0
+        "agentic": 0.125
       },
       "best": 0.125
     },
@@ -2213,8 +2126,8 @@
       "n": 7,
       "accuracy": {
         "dense": 0.1429,
-        "hybrid": 0.0,
-        "agentic": 0.0
+        "hybrid": 0.1429,
+        "agentic": 0.1429
       },
       "best": 0.1429
     },
@@ -2227,6 +2140,26 @@
         "agentic": 0.1429
       },
       "best": 0.1429
+    },
+    {
+      "question_type": "unanswerable",
+      "n": 6,
+      "accuracy": {
+        "dense": 0.0,
+        "hybrid": 0.0,
+        "agentic": 0.1667
+      },
+      "best": 0.1667
+    },
+    {
+      "question_type": "ambiguous",
+      "n": 5,
+      "accuracy": {
+        "dense": 0.2,
+        "hybrid": 0.2,
+        "agentic": 0.0
+      },
+      "best": 0.2
     },
     {
       "question_type": "numerical",
@@ -2242,21 +2175,11 @@
       "question_type": "factual",
       "n": 13,
       "accuracy": {
-        "dense": 0.2308,
-        "hybrid": 0.3077,
-        "agentic": 0.3077
+        "dense": 0.3077,
+        "hybrid": 0.3846,
+        "agentic": 0.3846
       },
-      "best": 0.3077
-    },
-    {
-      "question_type": "unanswerable",
-      "n": 6,
-      "accuracy": {
-        "dense": 0.1667,
-        "hybrid": 0.1667,
-        "agentic": 0.3333
-      },
-      "best": 0.3333
+      "best": 0.3846
     },
     {
       "question_type": "comparison",
@@ -2270,13 +2193,12 @@
     }
   ],
   "never_correct_in_headline_systems": [
-    "q001",
     "q002",
     "q003",
     "q004",
     "q005",
     "q006",
-    "q008",
+    "q007",
     "q009",
     "q013",
     "q014",
@@ -2329,7 +2251,7 @@
     "q075",
     "q076"
   ],
-  "n_never_correct": 58,
+  "n_never_correct": 57,
   "n_headline_questions": 76,
   "inspection_sample": {
     "retrieval": [
@@ -2337,28 +2259,21 @@
       "q023",
       "q028"
     ],
-    "reranking": [
-      "q073"
-    ],
     "context-selection": [
-      "q009",
-      "q022"
+      "q009"
     ],
     "abstention": [
-      "q001",
-      "q002",
-      "q005"
+      "q007",
+      "q008",
+      "q024"
     ],
     "citation": [
       "q011"
     ],
-    "verification": [
-      "q065"
-    ],
     "generation": [
+      "q002",
       "q003",
-      "q004",
-      "q006"
+      "q004"
     ]
   }
 }

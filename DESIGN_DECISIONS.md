@@ -2866,3 +2866,72 @@ DD-059.
 
 The threshold value was chosen on dev alone. The eval run is made once, at 0.6,
 and it is reported whatever it shows.
+
+### Part 2 — the eval run and the regenerated verdicts (appended after the eval run)
+
+**Eval, run once at 0.6** (`results/experiments/threshold/eval_0.6/`). The
+stale `eval_0.3/` from the pre-fix system was removed rather than left beside
+it. Against Baseline B on eval (43 questions):
+
+| Metric | B | 0.6 | 0.6 − B, 95% CI | Verdict |
+| --- | ---: | ---: | --- | --- |
+| accuracy (all) | 0.209 | 0.140 | −0.070 [−0.163, +0.023] | n.s. |
+| faithfulness | 0.953 | 0.774 | −0.179 [−0.302, −0.070] | significant regression |
+| citation any-correct | 0.675 | 0.525 | −0.150 [−0.275, −0.050] | significant regression |
+| over-abstention | 0.050 | 0.225 | +0.175 [+0.075, +0.300] | significant regression |
+| abstention accuracy (n=3) | 0.000 | 0.333 | +0.333 [0.000, +1.000] | n.s. |
+
+**Not kept**, by the rule DD-056 applied. Against the 0.5 reference, 0.6 also
+significantly regresses faithfulness, citation and over-abstention. Dev's lead
+was one question in 33. On eval the higher threshold does what its dev
+citation and over-abstention figures warned: it refuses more answerable
+questions. It is the first system to refuse an eval unanswerable question
+(1 of 3), and that CI spans [0, 1].
+
+**Regenerated headline (offline, all 76).** Agentic against B:
+* faithfulness −0.079 [−0.145, −0.026];
+* citation any-correct −0.057 [−0.114, −0.014];
+* over-abstention +0.071 [+0.014, +0.129].
+
+All three are significant regressions, and smaller than Phase 5's (−0.132,
+−0.143, +0.129). Accuracy is n.s. **The agentic system is still not kept, and
+no component earned its cost.** The evidence controller is still the only arm
+that recovers faithfulness (+0.079) and citation (+0.057).
+
+The fixes change two things:
+* the controller's refusals fall from 13 to 9, 8 of them answerable;
+* the verifier is inert. It passed all 67 answers it checked, and removing it
+  changes no answer.
+
+**What moved, by defect.**
+* **q001** is correct for every system (DD-061).
+* **q065** is correct, and passes verification (DD-062).
+* **q002 and q005** are no longer refused, but are wrong (the generator's
+  ceiling).
+* **q069** is still refused by the number rule, as DD-063 left it.
+* **Dense abstention accuracy fell from 0.167 to 0.000.** The unanswerable q007,
+  once refused only because "2027" was hidden, is now answered from the
+  visible title line.
+
+STATUS.md section 9.4 has every table.
+
+**Contrasts.**
+* The regenerated Phase 6 files hold 168 contrasts:
+  * 126 in the arms, 11 of them significant. Six of the 11 are a
+    between-session latency effect;
+  * 42 in the eval files, 10 of them significant.
+* With Phases 4-5's 105, the regenerated results make 273, and every one is
+  counted in STATUS.md.
+
+**The report now names its stack.** `final-table` used to print the offline
+caveat unconditionally. It now reads the stack from the stored `config.json`
+(`report.stack_note`), so `final-table --root model_stack` labels model-stack
+numbers as the model stack. The tuned arm's path is one constant,
+`report.TUNED_DIRECTORY`.
+
+**Disclosure, restated.** Eval has been run twice for the tuned arm:
+* DD-059's 0.3 on the old system;
+* this 0.6 on the new one.
+
+Each value was chosen on dev alone. The headline table carries this caveat
+(STATUS.md 9.4).
