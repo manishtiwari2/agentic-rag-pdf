@@ -204,6 +204,21 @@ class TestIndexing:
         assert [d["source_name"] for d in state.documents] == ["structured.pdf"]
         assert "locked.pdf: EncryptedPDFError" in status and "password" in status
 
+    def test_a_scanned_pdf_is_ocrd_and_its_pages_reported(self, uploads, monkeypatch):
+        class FakeOcr:
+            name = "test/fake-ocr"
+
+            def image_to_text(self, image):
+                return "The scanned page reports a median latency of 4.2 seconds."
+
+        monkeypatch.setattr(
+            "src.ingestion.parser_base.build_ocr_engine", lambda config: FakeOcr()
+        )
+        path = uploads("scan.pdf", pdfs.scanned_pdf(2))
+        state, status = ui.load_documents([path], "dense", ui.ChatState())
+        assert state.documents[0]["ocr_pages"] == [1, 2]
+        assert "| scan.pdf | 2 | 2 |" in status
+
     def test_only_unreadable_pdfs_leave_nothing_to_ask(self, uploads):
         path = uploads("locked.pdf", pdfs.encrypted_pdf())
         state, status = ui.load_documents([path], "dense", ui.ChatState())
