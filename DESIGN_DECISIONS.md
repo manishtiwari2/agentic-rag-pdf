@@ -2297,3 +2297,42 @@ the two cases directly.
 A bare `[n]` that the model meant as a citation, and that also happens to
 occur verbatim in the evidence, is now left uncited. Quoting is the far more
 likely reading of such a token.
+
+---
+
+# DD-063 — The Evidence Controller's Number Rule: Decided on Dev, by a Rule Written First
+
+**Status:** Rule declared 2026-09-24, before any run under DD-061 and DD-062.
+The outcome is appended below it. Issue #15.
+
+### Background
+
+The rule-based evidence controller refuses unless every number in the question
+appears in the context (DD-052). In Phase 6, 5 of its 13 refusals involved this
+rule. Three of the five (q001, q002, q005) trace to the DD-061 chunking defect,
+because "2027" never reached the context. The GPU run uses the LLM controller,
+which does not have this rule, so a change affects the offline stack only.
+
+### Rule, declared before looking
+
+1. **Run.** `python -m src.cli run-benchmark --system agentic --offline --split
+   dev` on the DD-061 and DD-062 code, at the default threshold 0.5, into a
+   scratch directory. Eval is not run and not read for this decision.
+2. **Count.** A refusal is *number-only* when all of the following hold:
+   * `abstention_source` is `evidence_controller`;
+   * the question is answerable;
+   * the final round's `evidence_decision` has a non-empty `missing_numbers`;
+   * every query's coverage is at or above the threshold.
+3. **Decide.**
+   * **0 number-only refusals:** no change. The rule is recorded and kept.
+   * **1 or more:** make exactly one change: numbers of a single digit (0-9)
+     are exempt from the rule. Years, quantities and multi-digit identifiers
+     stay checked. Then re-run dev and record the before-and-after counts. No
+     second change is tried.
+
+### Disclosure
+
+The candidate change was chosen with q069 ("iPhone 6") in mind, and q069 is an
+eval question. DD-060 already inspected it. Choosing the candidate is therefore
+informed by one eval failure. Applying the candidate is decided by dev counts
+alone.
