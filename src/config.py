@@ -214,6 +214,15 @@ class IngestionConfig:
     #: ...and the whole document yielded fewer than this many characters.
     min_document_chars: int = 200
 
+    # OCR (DD-067). On in every preset: "any uploaded PDF" includes scanned
+    # ones. Only a page with images and no text layer at all is OCR'd, so a
+    # PDF with text on every page parses exactly as it would with OCR off.
+    ocr: bool = True
+    #: Tesseract language codes, joined with "+" (for example ``"eng+deu"``).
+    ocr_languages: str = "eng"
+    #: Render resolution for OCR, in DPI; 300 is what Tesseract is tuned for.
+    ocr_resolution: int = 300
+
 
 @dataclass(frozen=True)
 class ChunkingConfig:
@@ -503,6 +512,7 @@ class RAGConfig:
             "embedding_model": self.embedding.model_id,
             "embedding_license": emb.license if emb else "unregistered",
             "embedding_pooling": embedding_profile(self.embedding.model_id).pooling,
+            "ocr": self.ingestion.ocr,
             "chunk_strategy": self.chunking.strategy,
             "chunk_size": self.chunking.chunk_size,
             "chunk_overlap": self.chunking.chunk_overlap,
