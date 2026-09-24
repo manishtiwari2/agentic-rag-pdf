@@ -469,3 +469,39 @@ class TestEmbeddingProfiles:
         profile = embedding_profile("some-org/unknown-encoder")
         assert profile.query_prefix == ""
         assert profile.pooling == "mean"
+
+
+class TestChatLayer:
+    """DD-065: the conversation layer sits above the pipeline, never inside it.
+
+    If a layer below imported ``src/chat``, a chat feature could reach into
+    what the benchmark measures. Keeping every arrow pointing up is what makes
+    "single-turn behaviour is unchanged" a structural fact rather than a hope.
+    """
+
+    BELOW = ("ingestion", "chunking", "retrieval", "reranking", "generation",
+             "agents", "evaluation", "benchmark")
+
+    @staticmethod
+    def _imports_chat(path: pathlib.Path) -> bool:
+        return any(
+            name == "chat" or name.startswith("chat.") or name.startswith("src.chat")
+            for name in _imports(path)
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [p for package in BELOW for p in _modules(package)] + [SRC / "pipeline.py"],
+        ids=lambda p: f"{p.parent.name}/{p.name}",
+    )
+    def test_nothing_below_the_chat_layer_imports_it(self, path):
+        assert not self._imports_chat(path), (
+            f"{path.relative_to(SRC)} imports src/chat. The conversation layer "
+            "wraps the pipeline; nothing the benchmark runs may depend on it."
+        )
+
+    def test_the_chat_layer_does_not_parse_pdfs_itself(self):
+        for path in _modules("chat"):
+            source = path.read_text(encoding="utf-8")
+            for library in ("pdfplumber", "pymupdf", "fitz", "pypdfium2", "pytesseract"):
+                assert f"import {library}" not in source, (path.name, library)

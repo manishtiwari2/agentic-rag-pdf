@@ -2420,3 +2420,73 @@ run. The records' own timings are kept as they were measured.
 The fingerprint hashes every configuration field (`RAGConfig.fingerprint`), so
 a resume across code that added a field is refused too. That is the right
 default for a run meant to be one experiment.
+
+---
+
+# DD-065 — Follow-Up Questions: A Rewriting Layer Above the Pipeline
+
+**Status:** Accepted. Issue #17.
+
+### Decision
+
+`src/chat/session.py` adds `ChatSession(pipeline, rewriter=None, max_turns=5)`:
+
+1. It keeps the last `max_turns` turns: question, standalone question, answer.
+2. Before calling `pipeline.ask`, it rewrites the new question into a
+   standalone one. The pipeline sees only that standalone question, never the
+   history.
+3. It records `metadata["conversation"]` on the result. The record holds:
+   * the turn number;
+   * the original and standalone questions;
+   * whether the question was rewritten;
+   * which rewriter ran;
+   * whether it fell back;
+   * the rewriter's model calls.
+
+Two rewriters, chosen by `build_rewriter` from what the pipeline has loaded:
+
+* **`LLMRewriter`** asks the pipeline's own generation backend, through the new
+  read-only `pipeline.backend` property. No second model is loaded
+  (ARCHITECTURE.md section 21).
+  * A reply that is empty, the refusal sentence, or more than
+    `3 × len(question) + 200` characters is unusable. The rules then answer,
+    and the rewrite is marked `fallback`, in the spirit of DD-055.
+  * The first turn makes no model call.
+* **`RuleBasedRewriter`**, offline. A question is a follow-up when it:
+  * contains a referring word ("it", "that", "those", ...);
+  * opens with a continuation ("and", "what about", ...);
+  * or has fewer than three content terms.
+
+  A follow-up becomes `"<question> (<previous standalone question>)"`.
+
+### Why above the pipeline
+
+The benchmark measures one self-contained question at a time, and the stored
+results depend on that. A layer that only calls `pipeline.ask` cannot change
+what a single question retrieves or how it is answered:
+* the first turn of a chat is passed through unchanged;
+* the harness never constructs a `ChatSession`.
+
+`tests/test_architecture.py::TestChatLayer` asserts that ingestion, chunking,
+retrieval, reranking, generation, agents, evaluation, benchmark and
+`pipeline.py` never import `src/chat`. `tests/test_chat.py` checks that a first
+turn equals a bare `pipeline.ask`.
+
+### Alternatives rejected
+
+* **Passing the history into the prompt.** It changes the generator's input for
+  every question, so single-turn answers would no longer be the benchmarked
+  ones.
+* **A second, small rewriting model.** ARCHITECTURE.md section 21 forbids
+  loading several generation models, and a T4 has no room for one.
+
+### Limitation
+
+The rule rewriter is crude:
+* it cannot resolve "the second one";
+* it treats a short standalone question ("What is RAG?") as a follow-up.
+
+Appending the previous question only widens retrieval, so the cost is a
+noisier query, not a wrong answer. It exists so the chat runs and is tested
+offline. It is not a measured component: no benchmark question is multi-turn,
+so no follow-up rewrite has a number attached, on either stack.

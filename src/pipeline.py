@@ -247,6 +247,15 @@ class _RetrieveThenGenerate:
     def is_indexed(self) -> bool:
         return self._retriever.is_indexed
 
+    @property
+    def backend(self) -> LLMBackend:
+        """The generation backend, for layers above the pipeline that need the model.
+
+        Shared, never duplicated: a conversation layer rewriting follow-ups asks
+        the model the generator already loaded (ARCHITECTURE.md section 21).
+        """
+        return self._generator.backend
+
     # -- querying -----------------------------------------------------------
 
     def ask(self, question: str, top_k: int | None = None) -> RAGResult:
