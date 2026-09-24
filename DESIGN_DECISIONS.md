@@ -1586,6 +1586,18 @@ counterfactual is how open question 3 ("does iteration 2 ever change an
 answer?") is answered, independently of what the controller or verifier then
 did with the answer.
 
+### Clarification (2026-09-24, issue #12)
+
+A missing question number does not always produce a new query. The refined
+query is at most two covered terms, then the missing terms, then the missing
+numbers. For a question with two or fewer covered terms, that is the
+question's own term set, so the dedup rule above drops it and the loop stops
+with `no_new_query`. The code has always done this. A test in
+`tests/test_agentic.py` expected `["latency 2019"]` for such a question, and a
+malformed `or` clause hid the mismatch. The test was wrong, not the code, so
+no stored result changes. The test now asserts `[]` for that case, and a
+second test covers a question with enough anchors to yield a new query.
+
 ---
 
 # DD-054 — Verification: Claim-Level Rules, One Bounded Regeneration, and a Counterfactual Taxonomy Rule
@@ -1638,6 +1650,17 @@ fixed for `reranking`, fixed the same way.
 `SCORING_RULES_VERSION` and `ERROR_TAXONOMY_VERSION` → `2026-09-23.2`. No
 formula or threshold changed. For a record declaring no verification stage
 every rule is as before, and `2026-09-23.1` is recorded as score-compatible.
+
+### Clarification (2026-09-24, issue #12)
+
+"Re-verify" applies to an answer, not to a refusal. A regeneration whose draft
+abstains counts toward `regenerations_used`: it was a generator call. The loop
+then stops without calling the verifier, because a refusal has no claims to
+check. So the verifier is called once per generation that did not abstain,
+which is not always `regenerations_used + 1`. The code has always done this. A
+test assumed the `+ 1` formula and failed at a cap of 2, where the second
+regeneration abstains. The test was wrong, not the code, so no stored result
+changes.
 
 ---
 
@@ -2136,3 +2159,779 @@ EVALUATION_PROTOCOL.md 26.3: a null is a finding. Every component's null here
 is bounded by the floors DD-058 stated in advance, so these verdicts are about
 the rule-based and hashing stand-ins. They are not verdicts on the components
 as designed for the model stack.
+
+---
+
+# DD-061 — Every Chunk Carries Its Section Heading, and No Table Is Cut Off
+
+**Status:** Accepted — changes what every system sees; every stored offline
+result is regenerated under it (DD-069). Issue #13.
+
+### Decision
+
+The structure chunker now guarantees that every line a page shows reaches
+`chunk.text`. Two changes do this:
+
+1. **Headings.**
+   * Every chunk starts with its section heading, not only the chunk the
+     heading opened.
+   * When a heading is followed only by tables, as on `doc1.pdf`, the headings
+     waiting in the buffer lead the first table instead of being dropped at
+     the end of the document.
+   * A heading still waiting when the document ends becomes its own chunk.
+   * `chunk.section` is unchanged and still labels citations.
+   * The repeated heading counts toward `chunk_size` (DD-030): the room left
+     for content is `chunk_size − len(heading) − 2`, never less than half the
+     chunk size.
+2. **Tables.**
+   * A table over `max_table_chars` is split into row groups, each repeating
+     the header rows (every line up to the `| --- |` rule).
+   * It is no longer cut off with "[table truncated]".
+   * A single row longer than the cap is kept whole.
+
+The repeated heading is a label, not evidence. It adds no page to the chunk's
+`pages`, so a chunk on page 4 under a heading from page 3 still cites page 4.
+
+The fixed-size chunker is untouched and records no section (DD-032), so the
+DD-009 comparison still sets structure against no structure.
+
+### Reason
+
+`chunk.section` is read only by citation labels. The embedder, BM25, the
+reranker, the generator, the evidence controller and the verifier all read
+`chunk.text`. DD-060 traced q001, q002 and q005 to this.
+
+On `doc1.pdf`, "GATE 2027 IIT Madras | Organizing Institute" is followed only
+by tables. Before the fix:
+* it sat in the heading buffer;
+* it labelled the tables' `section`;
+* the final `flush()` discarded it.
+
+So "2027" and "IIT Madras" were invisible to every component.
+
+The invariant written for this fix exposed a second loss, which no DD had
+recorded. Three `doc2.pdf` tables exceed 4,000 characters and lost 20 lines to
+truncation.
+
+### Test
+
+`tests/test_chunking.py::TestNoPageTextIsLost` asserts that every non-blank
+line of every page of the five benchmark PDFs appears in at least one chunk.
+Whitespace is compared collapsed, because segmentation joins a paragraph's
+lines with spaces.
+* Before the fix, it failed on `doc1.pdf` (the title line, twice) and
+  `doc2.pdf` (20 table lines).
+* After the fix, it passes on all five.
+
+Unit tests cover:
+* a heading followed only by tables;
+* a long section whose every chunk carries the heading within `chunk_size`;
+* a 200-row table split with its header.
+
+### Trade-off
+
+* Repeating a heading costs up to about 120 characters of each chunk's 1,200.
+* Retrieval now scores the heading once per chunk under it, which can tilt BM25
+  towards heading terms. This is measured, not assumed, by the regenerated
+  results.
+
+### Consequence
+
+Chunk text changes on every benchmark document. Every result in `results/` was
+measured under the old chunker and is regenerated under DD-069.
+
+---
+
+# DD-062 — A Bare `[n]` Is a Citation Only If the Evidence Does Not Already Contain It
+
+**Status:** Accepted. Issue #14.
+
+### Decision
+
+**The resolver.** `resolve_citations` still accepts a bare `[n]`, because
+small models drop the `C` prefix. It now treats one as source text when that
+exact bracketed token already occurs in the evidence text. It leaves such a
+token in place and cites nothing.
+
+**Unchanged:**
+* A prefixed `[C3]`, which never occurs in source text, is always a marker.
+* A bare `[1]` that the evidence does not contain still resolves to block 1.
+
+**The readers.** Two readers of a *resolved* answer now count only the
+canonical `[Cn]` form the resolver emits:
+* the verifier's `cited_numbers` (`src/agents/text.py`);
+* citation completeness (`src/evaluation/metrics.py`).
+
+Leaving the bare token in the answer is not enough on its own. Both readers
+used the resolver's old permissive pattern, so the verifier would still have
+read "shrinking[3]" as a citation of block 3.
+
+**Scope limit.** Stripping markers before counting terms or numbers
+(`content_terms`, `numbers_in`, `content_tokens`) is unchanged.
+
+**Version.** `SCORING_RULES_VERSION` → `2026-09-24.1`.
+* It is declared score-compatible with `2026-09-23.2`. Before this change the
+  resolver rewrote or removed every bare group, so no stored answer contains
+  one, and completeness scores every stored record as before. A test checks
+  this claim against every stored `per_question.json`.
+* `scores_comparable` now accepts any two versions that are each
+  score-compatible with the current one, because they all score identically.
+
+### Reason
+
+DD-060 finding 4 is q065. The verifier rejected a correct draft that was a
+verbatim passage from block C1:
+1. The passage carries the paper's own reference, "shrinking[3]".
+2. The resolver rewrote that reference to `[C3]`.
+3. The verifier checked the claim against block C3, a licence notice, and
+   failed it.
+
+### Alternative rejected
+
+Stop accepting a bare `[n]` altogether. That breaks citation for any model
+that drops the prefix, which small models do. The evidence-text test separates
+the two cases directly.
+
+### Limitation
+
+A bare `[n]` that the model meant as a citation, and that also happens to
+occur verbatim in the evidence, is now left uncited. Quoting is the far more
+likely reading of such a token.
+
+---
+
+# DD-063 — The Evidence Controller's Number Rule: Decided on Dev, by a Rule Written First
+
+**Status:** Rule declared 2026-09-24, before any run under DD-061 and DD-062.
+The outcome is appended below it. Issue #15.
+
+### Background
+
+The rule-based evidence controller refuses unless every number in the question
+appears in the context (DD-052). In Phase 6, 5 of its 13 refusals involved this
+rule. Three of the five (q001, q002, q005) trace to the DD-061 chunking defect,
+because "2027" never reached the context. The GPU run uses the LLM controller,
+which does not have this rule, so a change affects the offline stack only.
+
+### Rule, declared before looking
+
+1. **Run.** `python -m src.cli run-benchmark --system agentic --offline --split
+   dev` on the DD-061 and DD-062 code, at the default threshold 0.5, into a
+   scratch directory. Eval is not run and not read for this decision.
+2. **Count.** A refusal is *number-only* when all of the following hold:
+   * `abstention_source` is `evidence_controller`;
+   * the question is answerable;
+   * the final round's `evidence_decision` has a non-empty `missing_numbers`;
+   * every query's coverage is at or above the threshold.
+3. **Decide.**
+   * **0 number-only refusals:** no change. The rule is recorded and kept.
+   * **1 or more:** make exactly one change: numbers of a single digit (0-9)
+     are exempt from the rule. Years, quantities and multi-digit identifiers
+     stay checked. Then re-run dev and record the before-and-after counts. No
+     second change is tried.
+
+### Disclosure
+
+The candidate change was chosen with q069 ("iPhone 6") in mind, and q069 is an
+eval question. DD-060 already inspected it. Choosing the candidate is therefore
+informed by one eval failure. Applying the candidate is decided by dev counts
+alone.
+
+### Outcome (appended after the dev run)
+
+**Offline stand-in stack, `--split dev` (33 questions), threshold 0.5.**
+
+| Controller refusals on dev | Phase 6 reference | Under DD-061 and DD-062 |
+| --- | ---: | ---: |
+| total | 7 | 5 |
+| number-only, answerable | 0 | **0** |
+| both rules (number and coverage) | 2 (q001 answerable, q007 unanswerable), both missing "2027" | 0 |
+| coverage-only | 5 (q051, q053, q055, q057, q061) | 5 (the same) |
+
+**Decision: no change.** No number-only refusal of an answerable dev question
+remains, so the declared rule keeps the number rule as it is.
+
+What moved:
+* **"2027" now reaches the context.** Neither q001 nor q007 trips the number
+  rule any more.
+* **q007 is no longer refused.** It is an unanswerable dev question that the
+  reference refused only because "2027" was missing. That was a right refusal
+  for a wrong reason, and it is gone. It is reported here rather than hidden,
+  because it will show up in the regenerated abstention numbers (DD-069).
+
+The number-only refusals DD-060 listed, q005 and q069, are eval questions. They
+were neither counted nor looked at for this decision.
+
+---
+
+# DD-064 — Resumable Benchmark Runs, Refused Across Configurations
+
+**Status:** Accepted. Issue #16.
+
+### Decision
+
+**The checkpoint now runs from the command line.** `run_benchmark_cli` passes
+its output directory to `run_benchmark` as `checkpoint_dir`, so
+`per_question.json` is rewritten after every question. Before this, only a
+caller that passed `out_dir` got checkpoints, and the CLI did not pass it.
+`EXPERIMENT_PLAN.md` section 4's "checkpoint per-question results" was
+therefore true of the library but not of the command people actually run. The
+other three files are still written once, at the end.
+
+**`run-benchmark --resume`** works as follows:
+1. It loads the records already in `--out`.
+2. It refuses to start if any record's `config_fingerprint` differs from the
+   current configuration's, or if a record answers a question outside the
+   current `--questions` / `--split` / `--limit` selection.
+3. A record whose run raised (`system-runtime`) is dropped, so its question is
+   asked again. A crash is usually the session that died, not the question.
+4. Kept records stay in the position their question takes in a normal run.
+   Their scores are rebuilt with `QuestionScore.from_record`.
+5. A document whose questions are all done is not indexed again.
+6. The four files are written as for any run.
+
+`--resume` with `--judge` is refused, because the judge's summary would cover
+only this session's questions. With nothing stored, `--resume` is a fresh run.
+
+### Guarantee and its test
+
+`tests/test_resume.py` interrupts an offline agentic run after 9 of 10
+questions and resumes it. That leaves one document finished and one half done.
+The resumed `per_question.json` equals an uninterrupted run's record for
+record, excluding the timing fields (`latency`, `*_s`).
+
+Headline means agree to 1e-4. Kept records carry their stored scores, rounded
+to 4 decimal places as written. That is the same view the confidence intervals
+and `compare-runs` already read.
+
+A changed chunk size is refused, and so is an out-of-selection record.
+
+### Limitation
+
+In a resumed run's `results.json`, two figures cover only the resumed session:
+* `index_seconds_total`;
+* `documents_indexed`.
+
+The summary says so with `resumed_records`, which appears only in a resumed
+run. The records' own timings are kept as they were measured.
+
+### Consequence
+
+The fingerprint hashes every configuration field (`RAGConfig.fingerprint`), so
+a resume across code that added a field is refused too. That is the right
+default for a run meant to be one experiment.
+
+---
+
+# DD-065 — Follow-Up Questions: A Rewriting Layer Above the Pipeline
+
+**Status:** Accepted. Issue #17.
+
+### Decision
+
+`src/chat/session.py` adds `ChatSession(pipeline, rewriter=None, max_turns=5)`:
+
+1. It keeps the last `max_turns` turns: question, standalone question, answer.
+2. Before calling `pipeline.ask`, it rewrites the new question into a
+   standalone one. The pipeline sees only that standalone question, never the
+   history.
+3. It records `metadata["conversation"]` on the result. The record holds:
+   * the turn number;
+   * the original and standalone questions;
+   * whether the question was rewritten;
+   * which rewriter ran;
+   * whether it fell back;
+   * the rewriter's model calls.
+
+Two rewriters, chosen by `build_rewriter` from what the pipeline has loaded:
+
+* **`LLMRewriter`** asks the pipeline's own generation backend, through the new
+  read-only `pipeline.backend` property. No second model is loaded
+  (ARCHITECTURE.md section 21).
+  * A reply that is empty, the refusal sentence, or more than
+    `3 × len(question) + 200` characters is unusable. The rules then answer,
+    and the rewrite is marked `fallback`, in the spirit of DD-055.
+  * The first turn makes no model call.
+* **`RuleBasedRewriter`**, offline. A question is a follow-up when it:
+  * contains a referring word ("it", "that", "those", ...);
+  * opens with a continuation ("and", "what about", ...);
+  * or has fewer than three content terms.
+
+  A follow-up becomes `"<question> (<previous standalone question>)"`.
+
+### Why above the pipeline
+
+The benchmark measures one self-contained question at a time, and the stored
+results depend on that. A layer that only calls `pipeline.ask` cannot change
+what a single question retrieves or how it is answered:
+* the first turn of a chat is passed through unchanged;
+* the harness never constructs a `ChatSession`.
+
+`tests/test_architecture.py::TestChatLayer` asserts that ingestion, chunking,
+retrieval, reranking, generation, agents, evaluation, benchmark and
+`pipeline.py` never import `src/chat`. `tests/test_chat.py` checks that a first
+turn equals a bare `pipeline.ask`.
+
+### Alternatives rejected
+
+* **Passing the history into the prompt.** It changes the generator's input for
+  every question, so single-turn answers would no longer be the benchmarked
+  ones.
+* **A second, small rewriting model.** ARCHITECTURE.md section 21 forbids
+  loading several generation models, and a T4 has no room for one.
+
+### Limitation
+
+The rule rewriter is crude:
+* it cannot resolve "the second one";
+* it treats a short standalone question ("What is RAG?") as a follow-up.
+
+Appending the previous question only widens retrieval, so the cost is a
+noisier query, not a wrong answer. It exists so the chat runs and is tested
+offline. It is not a measured component: no benchmark question is multi-turn,
+so no follow-up rewrite has a number attached, on either stack.
+
+---
+
+# DD-066 — The Chat Interface: Gradio, Imported Lazily, Over Plain Functions
+
+**Status:** Accepted. Issue #18.
+
+### Decision
+
+`src/chat/ui.py` builds the notebook's chat app as a Gradio `Blocks`. The app
+lets the user:
+* upload one or more PDFs;
+* choose dense, hybrid or agentic;
+* press **Index**;
+* chat.
+
+Each answer shows its page citations, and the source file when more than one
+PDF is loaded. A refusal is shown as **Refused:** followed by the canonical
+sentence. A collapsible "Agent trace" panel shows:
+* the follow-up rewrite, if any (DD-065);
+* the question type and sub-queries;
+* each round's queries and evidence-controller verdict;
+* the stop reason, the verifier status, and who refused.
+
+The behaviour lives in plain functions over a `ChatState`: `load_documents`,
+`respond`, `format_answer`, `format_trace`, `format_error` and `format_status`.
+`build_app` only wires them to components, and it is the one place gradio is
+imported. `tests/test_architecture.py` checks that.
+
+`tests/test_chat.py` covers indexing, multiple PDFs, errors, answering, traces
+and refusals without gradio. One test builds the real app, and it is skipped
+when gradio is absent.
+
+**Multiple PDFs.** A new `index_documents(paths, on_error=None)` on the
+pipeline parses and chunks every file into one index. Chunk ids carry the
+document id, so they cannot collide. `index` is untouched, so the benchmark
+still indexes one document at a time.
+
+**Errors.** A file that fails to parse (encrypted, corrupt, image-only without
+OCR) is reported by name with its whole message, which already carries its
+remedy (`src/errors.py`), and skipped. The remaining files are still indexed.
+
+**Status table.** After indexing, the status table shows pages, chunks and
+OCR'd pages per file. Offline mode says "offline stand-in stack" in the table.
+
+**Dependencies.** `requirements-colab.txt` is `-r requirements-models.txt` plus
+gradio (`>=5,<7`) and pytesseract. The Tesseract binary is a system package the
+notebook installs with `apt-get`.
+* gradio, pytesseract and Tesseract are all Apache-2.0. They are recorded like
+  every other licence: a trailing comment in the requirements file, a NOTICE
+  table and README section 20.
+* A new architecture test requires every requirement line to carry a licence
+  comment and to appear in NOTICE.
+
+### Reason
+
+The brief asks for a chatbot, and Gradio is the standard way to serve one from
+Colab: `launch(share=True)` gives a public link with no server to run. Keeping
+the logic outside the library means the suite does not need a web framework,
+and the interface cannot drift from what is tested.
+
+### Limitation
+
+Gradio's own dependency tree was not audited licence by licence. It is an
+optional, Colab-only extra and is never imported by the library outside
+`ui.py`. NOTICE says so.
+
+---
+
+# DD-067 — OCR Is On by Default, for Pages With No Text Layer Only
+
+**Status:** Accepted. Issue #19.
+
+### Decision
+
+The brief says "any uploaded PDF", and scanned PDFs are PDFs. So OCR is a core
+feature, not an option.
+
+**Configuration.** `IngestionConfig` gains three fields:
+
+| Field | Default |
+| --- | --- |
+| `ocr` | `True` |
+| `ocr_languages` | `"eng"` |
+| `ocr_resolution` | 300 DPI |
+
+Every preset, `offline()` included, inherits `ocr=True`, and a test checks all
+three presets. `describe()` records `ocr`, so it appears in every run's
+`config.json`. The CLI's `--no-ocr` turns it off, for speed or to reproduce
+the old refusal.
+
+**Which pages.**
+* A page is OCR'd when its extracted text is empty and it carries at least one
+  image. That covers fully scanned PDFs and the scanned pages of an otherwise
+  digital one.
+* Pages with a text layer are never OCR'd, however short that layer is.
+
+**How.**
+* The page is rendered with the existing pdfplumber → pypdfium2 path
+  (`render_page_images` in `src/ingestion/render.py`). There is no PyMuPDF,
+  which is AGPL and test-only (DD-033).
+* The image is read by `TesseractOcr` (`src/ingestion/ocr.py`, pytesseract over
+  the Tesseract binary).
+* The recognised text goes through the same character normalization and
+  hyphen joining as extracted text. It is split into paragraph blocks with no
+  font size, so the chunker treats it as body text.
+
+**Recording.**
+* An OCR'd page records `metadata["ocr"] = True` and the engine's name.
+* The document records `ocr_pages`.
+* A chunk drawn from an OCR'd page records `ocr: True`, which is `meta_ocr` in
+  records.
+* The keys are added only when OCR ran, so a text PDF's pages, document and
+  chunks are exactly what they were.
+
+**Missing engine.** If a page needs OCR and pytesseract or the binary is
+missing, `OCRUnavailableError` is raised. Its message gives:
+* `apt-get install -y tesseract-ocr` for Colab/Debian, plus brew and Windows;
+* `pip install pytesseract`;
+* `--no-ocr`.
+
+A document is never returned with the page silently empty. The check runs only
+when a page needs OCR, so text PDFs never import pytesseract.
+
+**`ScannedPDFError` stays.** It now has two messages:
+* **OCR on:** OCR ran but the document is still near-empty. The message names
+  the likely causes: faint, handwritten, or another language, with
+  `ocr_languages`.
+* **OCR off:** OCR was not tried, and the message says how to turn it on.
+
+**Confinement.** pytesseract and pypdfium2 join the libraries
+`tests/test_architecture.py` confines to `src/ingestion/`.
+
+### Stored results are unaffected by this DD alone
+
+`tests/test_ocr.py::TestTextPagesAreNeverOcrd` parses each of the five
+benchmark PDFs twice:
+* once with OCR on and an engine that fails the test if called;
+* once with OCR off.
+
+The two parses have identical pages, blocks, metadata and document metadata.
+No benchmark page lacks a text layer, so OCR never runs on the benchmark.
+
+The configuration fingerprint does change, because it hashes every field.
+Results are regenerated under DD-069 regardless.
+
+### Cost, measured offline on this machine
+
+The rendering half of OCR at 300 DPI, 5 pages × 3 repeats, on this CPU
+(Intel64 Family 6 Model 154, Python 3.13):
+
+| Page | Median per page | Image |
+| --- | ---: | --- |
+| an image-only A4 page (test fixture) | 0.127 s | 2480 × 3509 px |
+| a text A4 page (`doc5.pdf`), for scale | 0.221 s | 2482 × 3508 px |
+
+**The Tesseract half was not measured here,** because this machine has no
+Tesseract binary. The notebook's scanned-PDF demo prints the measured seconds
+per OCR'd page on Colab. That figure, not an estimate, is what the Colab run
+reports. For a text PDF the cost is zero: nothing is rendered.
+
+### Tests
+
+`tests/test_ocr.py` uses a fake engine, so the suite runs without Tesseract.
+It covers:
+* a fully scanned PDF;
+* a mixed PDF, where only page 2 is OCR'd and pages 1 and 3 are identical to an
+  OCR-off parse;
+* chunk `meta_ocr`;
+* OCR that reads nothing;
+* a scanned PDF answered with page citations through the pipeline;
+* missing pytesseract;
+* a missing binary.
+
+One test runs the real Tesseract on a rendered page, and it is skipped where
+the binary is absent, as it is here. The old scanned-PDF tests now use
+`--no-ocr` / `ocr=False`.
+
+### Limitations
+
+* **A page with a short text layer** (a stamped page number over a scanned
+  image) is not OCR'd, because pages with a text layer never are. Such a
+  document may still be refused as scanned, with the remedy in the message.
+* **Text drawn as vector outlines** (no image, no text layer) is not OCR'd. It
+  fails as `EmptyDocumentError`, as before.
+* **OCR text has no font sizes,** so headings on scanned pages are found only by
+  numbering or capitals.
+
+---
+
+# DD-068 — Two Notebooks, Generated by a Script, Tested by Running One
+
+**Status:** Accepted. Issue #20.
+
+### Decision
+
+`notebooks/build_notebooks.py --ref <tag>` generates both notebooks with
+nbformat. The default ref is `v0.7-gpu-run`. Neither is edited by hand.
+
+**`agentic_pdf_rag.ipynb`, the deliverable** (DD-002). It follows PROJECT_SPEC
+section 12's fifteen items in order, and every code cell has a markdown cell
+before it. The cells cover:
+1. **Setup.** It finds the checkout, or clones the pinned tag (DD-034) and
+   prints the commit. In Colab it runs `apt-get install -y tesseract-ocr`
+   (always, because OCR is on by default) and installs
+   `requirements-colab.txt`.
+2. **Mode switch.** `OFFLINE = not torch.cuda.is_available()`, announced in a
+   banner. The model-stack configuration is validated here, and weights load
+   on the first question.
+3. **Config.** `config.describe()`.
+4. **Upload.** `UPLOAD = True` for your own file. Otherwise it uses bundled
+   `doc5.pdf` (CC-BY-4.0), so *Run all* is unattended.
+5. **Parse, chunk and index,** with page, chunk and OCR'd-page counts and
+   timings.
+6. **A scanned-PDF demo.** It draws text into an image, saves an image-only PDF
+   with Pillow and parses it. It prints the OCR'd page's text and seconds per
+   page, or the install remedy where Tesseract is missing.
+7. **Dense and agentic, side by side,** on the benchmark's own questions for
+   that PDF, read from `questions.json`. Refusals are marked.
+8. **The agent trace.**
+9. **The chat UI.** `share=True` in Colab; built but not launched elsewhere.
+10. **An optional benchmark cell,** `--limit 5` by default, into a temporary
+    directory, never `results/`.
+11. **Metrics and ablations,** rendered from `results/final/REPORT.md` and from
+    `model_stack/results/final/REPORT.md` when present, each with its stack
+    caveat.
+12. **Latency, and peak VRAM,** printed as null offline.
+13. **A three-turn `ChatSession` demo.**
+
+Pipelines are built one at a time and freed in between (`del`, `gc`,
+`torch.cuda.empty_cache`), so a T4 never holds two copies of the weights
+(ARCHITECTURE.md section 21).
+
+**`gpu_benchmark_run.ipynb`, the runner for the Colab T4.** In order:
+1. A GPU check.
+2. Drive mounted, `HF_HOME` on Drive, a clone at `REF`, Tesseract, the install.
+3. `COMMIT.txt`, which asserts that HEAD is the tag.
+4. A smoke test: one `ask`, then `run-benchmark --limit 3`. It prints a
+   paste-back block: the answer and pages, `peak_vram_gb`,
+   `llm_parse_failure_rate`, seconds per question, and an estimated full run
+   (agentic latency × 859 question-runs, an upper bound).
+5. One cell per run, each with `--resume` and output under
+   `<Drive>/model_stack/results/`:
+   * dense, hybrid, hybrid `--no-rerank`;
+   * agentic and its six arms (DD-057);
+   * `--max-iterations 1/2/3` on `--split dev`.
+6. The Phase 4-6 `compare-runs` pairs.
+7. `final-table --root <Drive>/model_stack`.
+8. A zip of `model_stack/` to bring home.
+
+**No threshold sweep, and a corrected reason.** Earlier documents said
+`sufficiency_threshold` is read only by the rule controller. That is
+incomplete. It also decides which queries `MissingTermsRefiner` rewrites
+(`src/agents/refinement.py`). It also acts inside the LLM controller, which
+always computes the rule result and falls back to it on a parse failure
+(`src/agents/evidence.py`).
+
+The sweep is still left out, as the run plan specifies. The LLM controller
+makes the sufficiency decision itself. The threshold's remaining effect on the
+GPU run is limited to refinement targets and to parse-failure fallbacks, and
+the smoke test's parse-failure rate bounds the fallbacks. The default 0.5 is
+used, unchanged.
+
+### Tests (`tests/test_notebooks.py`)
+
+* **Drift.** Each committed notebook equals the script's output, compared with
+  line endings normalized.
+* **Validity.** Both notebooks are valid nbformat 4.
+* **Explained cells.** Every deliverable code cell is preceded by markdown.
+* **Pinned tag.** REF is a tag, and `main`, `master` or a branch name is
+  refused by the builder.
+* **Imports.** Every `src.` import in either notebook exists.
+* **The runner's structure.**
+  * every run resumes under the model-stack root, and none writes to
+    `results/`;
+  * every arm and the dev sweep are present;
+  * no `--sufficiency-threshold`;
+  * every comparison, `final-table --root`, COMMIT.txt, `HF_HOME`, Tesseract;
+  * the fields of the paste-back block.
+* **No typed-in numbers.** No three-decimal number appears in the deliverable.
+* **Execution.** The whole deliverable is executed with nbclient in offline
+  mode, with no errors, the OFFLINE banner, and a null peak VRAM. It takes
+  about 30 s on this machine, so it stays in the default suite. The CI job's
+  20-minute budget has room for it. `SKIP_NOTEBOOK_EXECUTION=1` skips it, and
+  it skips itself on a machine with a GPU, where it would not be testing the
+  offline path.
+
+nbformat, nbclient and ipykernel (all BSD-3-Clause) join `requirements-dev.txt`
+and NOTICE. gradio and pytesseract become the `colab` extra in
+`pyproject.toml`.
+
+### Limitations
+
+* **Colab itself is not tested here.** The Colab-only branches (the clone,
+  `apt-get`, `files.upload`, `share=True`, Drive) cannot run on this machine.
+  "Run all in a fresh Colab runtime" remains a manual check, in `NEXT_STEPS.md`.
+* **The tag does not exist yet.** The notebooks pin `v0.7-gpu-run`. Until that
+  tag is pushed, a fresh Colab clone fails at step 1 with git's "Remote branch
+  not found".
+
+---
+
+# DD-069 — Offline Results Regenerated After DD-061 to DD-063; Threshold Re-Chosen on Dev, Eval Looked at a Second Time
+
+**Status:** Part 1 was written and committed with the dev results, before the eval
+run. Part 2, the eval outcome, is appended after it. Issue #21.
+
+> **Offline stand-in stack throughout**, as in STATUS.md 9.1-9.4: hashing
+> embedder, scripted extractive generator, term-overlap reranker and rule-based
+> agents. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
+
+### Why everything was regenerated
+
+DD-061 changes chunk text on every benchmark PDF, and DD-062 changes citation
+resolution. Every stored result therefore measured a system that no longer
+exists. DD-063 changed no code, and DD-067's OCR provably changes nothing for
+the benchmark PDFs (`tests/test_ocr.py`).
+
+The following were re-run with the commands in the previous `NEXT_STEPS.md`
+step 1e:
+* `results/baseline`, `hybrid` and `agentic`;
+* all seven ablation arms (DD-057);
+* all eleven comparisons;
+* the dev threshold sweep and the dev iteration-cap sweep.
+
+**One arm was resumed.** `ablations/refinement_off` stopped at question 54 of
+76 when Windows refused a checkpoint rewrite (fixed: result files are now
+written atomically, with retries, DD-064). It was finished with
+`run-benchmark --resume`, which carried over the 54 stored records under the
+same configuration fingerprint. Its `results.json` records
+`resumed_records: 54`.
+
+### Part 1 — the threshold, re-chosen on dev by DD-058's rule, unchanged
+
+`--split dev`, 33 questions, dev-only numbers:
+
+| threshold | 0.2 | 0.3 | 0.4 | 0.5 | **0.6** |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| accuracy (all) | 0.242 | 0.273 | 0.273 | 0.273 | **0.303** |
+| citation any-correct | 0.667 | 0.633 | 0.633 | 0.633 | **0.533** |
+| over-abstention | 0.067 | 0.100 | 0.133 | 0.133 | **0.233** |
+
+**The rule chooses 0.6.** DD-058's first criterion is the highest dev accuracy
+(all), and 0.6 has it alone, 0.303. No tie-break applies.
+
+This choice is recorded as the rule makes it, not as it looks. 0.6 also has the
+lowest dev citation any-correct and the highest over-abstention of the five
+values. The accuracy lead is one question in 33. A rule that ranks accuracy
+first chose a threshold that refuses more answerable questions. The eval run
+below will show whether that holds up. Changing the rule after seeing this
+table would be the tuning-on-the-result that DD-058 exists to prevent.
+
+The previous choice, 0.3 (DD-059), was made on the pre-DD-061 system and is
+superseded. The code default stays 0.5, and 0.6 exists only as the tuned arm.
+
+**Iteration cap (descriptive, DD-058):**
+
+| `--max-iterations` | 1 | 2 | 3 |
+| --- | ---: | ---: | ---: |
+| accuracy (all) | 0.273 | 0.273 | 0.273 |
+| citation any-correct | 0.600 | 0.633 | 0.633 |
+| over-abstention | 0.167 | 0.133 | 0.133 |
+
+A cap of 3 is identical to 2 on these figures, and the cap stays 2, as in
+DD-059.
+
+### Disclosure (EVALUATION_PROTOCOL.md 5.2)
+
+**Eval is about to be looked at a second time.** The first time was DD-059's
+0.3 run on the old system. Two consequences follow:
+* this eval run is not a clean first look;
+* the DD-061 to DD-063 defects it measures were themselves found partly by
+  inspecting eval failures (q065, q069 in DD-060).
+
+The threshold value was chosen on dev alone. The eval run is made once, at 0.6,
+and it is reported whatever it shows.
+
+### Part 2 — the eval run and the regenerated verdicts (appended after the eval run)
+
+**Eval, run once at 0.6** (`results/experiments/threshold/eval_0.6/`). The
+stale `eval_0.3/` from the pre-fix system was removed rather than left beside
+it. Against Baseline B on eval (43 questions):
+
+| Metric | B | 0.6 | 0.6 − B, 95% CI | Verdict |
+| --- | ---: | ---: | --- | --- |
+| accuracy (all) | 0.209 | 0.140 | −0.070 [−0.163, +0.023] | n.s. |
+| faithfulness | 0.953 | 0.774 | −0.179 [−0.302, −0.070] | significant regression |
+| citation any-correct | 0.675 | 0.525 | −0.150 [−0.275, −0.050] | significant regression |
+| over-abstention | 0.050 | 0.225 | +0.175 [+0.075, +0.300] | significant regression |
+| abstention accuracy (n=3) | 0.000 | 0.333 | +0.333 [0.000, +1.000] | n.s. |
+
+**Not kept**, by the rule DD-056 applied. Against the 0.5 reference, 0.6 also
+significantly regresses faithfulness, citation and over-abstention. Dev's lead
+was one question in 33. On eval the higher threshold does what its dev
+citation and over-abstention figures warned: it refuses more answerable
+questions. It is the first system to refuse an eval unanswerable question
+(1 of 3), and that CI spans [0, 1].
+
+**Regenerated headline (offline, all 76).** Agentic against B:
+* faithfulness −0.079 [−0.145, −0.026];
+* citation any-correct −0.057 [−0.114, −0.014];
+* over-abstention +0.071 [+0.014, +0.129].
+
+All three are significant regressions, and smaller than Phase 5's (−0.132,
+−0.143, +0.129). Accuracy is n.s. **The agentic system is still not kept, and
+no component earned its cost.** The evidence controller is still the only arm
+that recovers faithfulness (+0.079) and citation (+0.057).
+
+The fixes change two things:
+* the controller's refusals fall from 13 to 9, 8 of them answerable;
+* the verifier is inert. It passed all 67 answers it checked, and removing it
+  changes no answer.
+
+**What moved, by defect.**
+* **q001** is correct for every system (DD-061).
+* **q065** is correct, and passes verification (DD-062).
+* **q002 and q005** are no longer refused, but are wrong (the generator's
+  ceiling).
+* **q069** is still refused by the number rule, as DD-063 left it.
+* **Dense abstention accuracy fell from 0.167 to 0.000.** The unanswerable q007,
+  once refused only because "2027" was hidden, is now answered from the
+  visible title line.
+
+STATUS.md section 9.4 has every table.
+
+**Contrasts.**
+* The regenerated Phase 6 files hold 168 contrasts:
+  * 126 in the arms, 11 of them significant. Six of the 11 are a
+    between-session latency effect;
+  * 42 in the eval files, 10 of them significant.
+* With Phases 4-5's 105, the regenerated results make 273, and every one is
+  counted in STATUS.md.
+
+**The report now names its stack.** `final-table` used to print the offline
+caveat unconditionally. It now reads the stack from the stored `config.json`
+(`report.stack_note`), so `final-table --root model_stack` labels model-stack
+numbers as the model stack. The tuned arm's path is one constant,
+`report.TUNED_DIRECTORY`.
+
+**Disclosure, restated.** Eval has been run twice for the tuned arm:
+* DD-059's 0.3 on the old system;
+* this 0.6 on the new one.
+
+Each value was chosen on dev alone. The headline table carries this caveat
+(STATUS.md 9.4).

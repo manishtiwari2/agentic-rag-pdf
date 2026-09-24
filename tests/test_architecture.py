@@ -9,6 +9,7 @@ controllable.
 from __future__ import annotations
 
 import ast
+import re
 import pathlib
 
 import pytest
@@ -69,7 +70,7 @@ class TestLayerBoundaries:
     )
     def test_downstream_layers_do_not_import_a_pdf_library(self, path):
         imported = _imports(path)
-        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
             assert banned not in imported, (
                 f"{path.name} imports {banned}. PDF handling belongs in the "
                 "ingestion layer."
@@ -128,7 +129,7 @@ class TestEvaluationLayerBoundaries:
     @pytest.mark.parametrize("path", _modules("evaluation"), ids=lambda p: p.name)
     def test_the_harness_does_not_import_a_pdf_library(self, path):
         imported = _imports(path)
-        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
             assert banned not in imported, (
                 f"{path.name} imports {banned}. PDF handling belongs in the "
                 "ingestion layer; the harness reaches it through the pipeline."
@@ -212,7 +213,7 @@ class TestEvaluationLayerBoundaries:
             imported = _imports(path)
             for banned in ("pipeline", "parser", "evaluation", "ingestion"):
                 assert not any(banned in name for name in imported), (path.name, banned)
-            for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+            for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
                 assert banned not in imported, (path.name, banned)
 
     def test_baseline_a_still_lacks_every_phase_4_component(self):
@@ -261,7 +262,10 @@ class TestParserSwappability:
             if path.parent.name == "ingestion":
                 continue
             source = path.read_text(encoding="utf-8")
-            for library in ("import pdfplumber", "import pymupdf", "import fitz"):
+            for library in (
+                "import pdfplumber", "import pymupdf", "import fitz",
+                "import pypdfium2", "import pytesseract",
+            ):
                 if library in source:
                     offenders.append(f"{path.relative_to(SRC)} does `{library}`")
         assert not offenders, "\n".join(offenders)
@@ -469,3 +473,78 @@ class TestEmbeddingProfiles:
         profile = embedding_profile("some-org/unknown-encoder")
         assert profile.query_prefix == ""
         assert profile.pooling == "mean"
+
+
+class TestChatLayer:
+    """DD-065: the conversation layer sits above the pipeline, never inside it.
+
+    If a layer below imported ``src/chat``, a chat feature could reach into
+    what the benchmark measures. Keeping every arrow pointing up is what makes
+    "single-turn behaviour is unchanged" a structural fact rather than a hope.
+    """
+
+    BELOW = ("ingestion", "chunking", "retrieval", "reranking", "generation",
+             "agents", "evaluation", "benchmark")
+
+    @staticmethod
+    def _imports_chat(path: pathlib.Path) -> bool:
+        return any(
+            name == "chat" or name.startswith("chat.") or name.startswith("src.chat")
+            for name in _imports(path)
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [p for package in BELOW for p in _modules(package)] + [SRC / "pipeline.py"],
+        ids=lambda p: f"{p.parent.name}/{p.name}",
+    )
+    def test_nothing_below_the_chat_layer_imports_it(self, path):
+        assert not self._imports_chat(path), (
+            f"{path.relative_to(SRC)} imports src/chat. The conversation layer "
+            "wraps the pipeline; nothing the benchmark runs may depend on it."
+        )
+
+    def test_the_chat_layer_does_not_parse_pdfs_itself(self):
+        for path in _modules("chat"):
+            source = path.read_text(encoding="utf-8")
+            for library in ("pdfplumber", "pymupdf", "fitz", "pypdfium2", "pytesseract"):
+                assert f"import {library}" not in source, (path.name, library)
+
+
+class TestDependencyLicences:
+    """Every dependency's licence is recorded where a reader will look (DD-033).
+
+    Each requirement line carries its licence as a trailing comment, and each
+    package is listed in NOTICE. A dependency added without either is how a
+    copyleft licence slips into a permissive project unnoticed.
+    """
+
+    ROOT = SRC.parent
+    REQUIREMENTS = sorted(ROOT.glob("requirements*.txt"))
+
+    @staticmethod
+    def _requirements(path: pathlib.Path) -> list[str]:
+        return [
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith(("#", "-r"))
+        ]
+
+    @pytest.mark.parametrize("path", REQUIREMENTS, ids=lambda p: p.name)
+    def test_every_requirement_line_names_its_licence(self, path):
+        for line in self._requirements(path):
+            assert "#" in line and line.split("#", 1)[1].strip(), (
+                f"{path.name}: {line.strip()!r} has no licence comment"
+            )
+
+    @pytest.mark.parametrize("path", REQUIREMENTS, ids=lambda p: p.name)
+    def test_every_requirement_is_listed_in_notice(self, path):
+        notice = (self.ROOT / "NOTICE").read_text(encoding="utf-8").lower()
+        for line in self._requirements(path):
+            package = re.split(r"[<>=!~\[\s]", line.strip(), maxsplit=1)[0].lower()
+            assert package in notice, f"{path.name}: {package} is not in NOTICE"
+
+    def test_gradio_is_imported_only_by_the_chat_interface(self):
+        for path in SRC.rglob("*.py"):
+            if path.relative_to(SRC).as_posix() == "chat/ui.py":
+                continue
+            assert "import gradio" not in path.read_text(encoding="utf-8"), path

@@ -8,6 +8,8 @@ off-by-one looks like a retrieval bug".
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from src.chunking.base import Chunk, build_chunker
@@ -18,9 +20,10 @@ from src.chunking.segmentation import (
     slice_page_offsets,
 )
 from src.chunking.structure import StructureAwareChunker
-from src.config import ChunkingConfig
+from src.config import ChunkingConfig, IngestionConfig
 from src.errors import ChunkingError
-from src.ingestion.document import Block, Document, Page
+from src.ingestion.document import Block, BlockKind, Document, Page
+from src.ingestion.parser import build_parser
 
 from . import pdf_fixtures as pdfs
 
@@ -154,7 +157,9 @@ class TestStructureAware:
         tables = [c for c in chunks if c.metadata.get("kind") == "table"]
         assert len(tables) == 1
         table = tables[0]
-        assert table.text.startswith("| System | Recall | Latency |")
+        # The section heading leads it (DD-061), then the table from its header.
+        assert table.section and table.text.startswith(table.section)
+        assert table.text.split("\n\n")[-1].startswith("| System | Recall | Latency |")
         # Even with a chunk size large enough to swallow the document, the table
         # is not merged with the prose around it.
         assert "Accuracy improved" not in table.text
@@ -301,6 +306,88 @@ class TestFixedSize:
         ).chunk(document)
         spans = [c.metadata["char_span"] for c in chunks]
         assert all(b[0] >= a[1] for a, b in zip(spans, spans[1:]))
+
+
+# ---------------------------------------------------------------------------
+# No page text is hidden from retrieval (DD-061)
+# ---------------------------------------------------------------------------
+
+BENCHMARK_PDFS = sorted(pathlib.Path("benchmark/documents").glob("*.pdf"))
+
+
+def _squash(text: str) -> str:
+    return " ".join(text.split())
+
+
+class TestNoPageTextIsLost:
+    """Every line a page shows must reach ``chunk.text``.
+
+    ``chunk.text`` is all the embedder, BM25, the reranker, the generator and
+    every agent ever read. Text kept only in ``chunk.section`` or cut off a
+    table is invisible to all of them (DD-061). Whitespace is compared
+    collapsed, because segmentation joins a paragraph's lines with spaces.
+    """
+
+    @pytest.mark.skipif(not BENCHMARK_PDFS, reason="benchmark PDFs not present")
+    @pytest.mark.parametrize("path", BENCHMARK_PDFS, ids=lambda p: p.name)
+    def test_every_page_line_appears_in_some_chunk(self, path):
+        document = build_parser(IngestionConfig()).parse(path)
+        chunks = StructureAwareChunker(ChunkingConfig()).chunk(document)
+        texts = [_squash(c.text) for c in chunks]
+        missing = [
+            (page.page_number, line)
+            for page in document.pages
+            for line in page.text.splitlines()
+            if line.strip() and not any(_squash(line) in text for text in texts)
+        ]
+        assert missing == []
+
+    def test_a_heading_followed_only_by_a_table_reaches_the_text(self):
+        # doc1.pdf's layout: a bold title line, then nothing but tables.
+        heading = Block(text="GATE 2027 IIT Madras", font_size=10.0, is_bold=True, order=0)
+        tables = tuple(
+            Block(text=f"| a | b |\n| --- | --- |\n| {i} | 2 |", font_size=10.0,
+                  order=i, kind=BlockKind.TABLE)
+            for i in (1, 2)
+        )
+        blocks = (heading, *tables)
+        page = Page(1, text="\n\n".join(b.text for b in blocks), blocks=blocks)
+        document = Document(document_id="doc_test", source_name="t.pdf", pages=(page,))
+        chunks = StructureAwareChunker(ChunkingConfig()).chunk(document)
+        assert chunks and all(c.text.startswith("GATE 2027 IIT Madras") for c in chunks)
+        assert all(c.section == "GATE 2027 IIT Madras" for c in chunks)
+
+    def test_every_chunk_under_a_heading_carries_it_within_the_size(self):
+        body = " ".join(f"Sentence number {i} is about the method." for i in range(60))
+        document = _document_from_blocks([(1, "2 Method", 16.0), (1, body, 10.0)])
+        config = ChunkingConfig(chunk_size=300, chunk_overlap=0)
+        chunks = StructureAwareChunker(config).chunk(document)
+        assert len(chunks) > 2
+        assert all(c.text.startswith("2 Method") for c in chunks)
+        assert all(c.section == "2 Method" for c in chunks)
+        assert all(len(c.text) <= config.chunk_size for c in chunks)
+
+    def test_an_oversized_table_is_split_by_rows_with_its_header(self):
+        rows = [f"| row {i} | value {i} |" for i in range(200)]
+        text = "\n".join(["| name | value |", "| --- | --- |", *rows])
+        table = Block(text=text, font_size=10.0, order=0, kind=BlockKind.TABLE)
+        document = Document(
+            document_id="doc_test", source_name="t.pdf",
+            pages=(Page(1, text=text, blocks=(table,)),),
+        )
+        config = ChunkingConfig(max_table_chars=1000)
+        chunks = StructureAwareChunker(config).chunk(document)
+        assert len(chunks) > 1
+        assert all(c.metadata["kind"] == "table" for c in chunks)
+        assert all(c.text.startswith("| name | value |\n| --- | --- |") for c in chunks)
+        assert all(len(c.text) <= config.max_table_chars for c in chunks)
+        joined = "\n".join(c.text for c in chunks)
+        assert "[table truncated]" not in joined
+        assert all(row in joined for row in rows)
+
+    def test_the_fixed_size_chunker_still_records_no_section(self, structured_document):
+        chunks = FixedSizeChunker(ChunkingConfig(strategy="fixed")).chunk(structured_document)
+        assert all(c.section is None for c in chunks)
 
 
 # ---------------------------------------------------------------------------

@@ -13,17 +13,17 @@
       "declared_metrics": {
         "full_recall_at_5_multi_hop_comparison": {
           "reference": 0.8,
-          "arm": 0.866667,
-          "difference": 0.066667,
+          "arm": 0.8,
+          "difference": 0.0,
           "ci_low": 0.0,
-          "ci_high": 0.2,
+          "ci_high": 0.0,
           "n": 15,
-          "questions_changed": 1,
+          "questions_changed": 0,
           "higher_is_better": true
         },
         "accuracy_multi_hop_comparison": {
-          "reference": 0.266667,
-          "arm": 0.266667,
+          "reference": 0.333333,
+          "arm": 0.333333,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -34,8 +34,8 @@
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.802632,
+          "reference": 0.881579,
+          "arm": 0.881579,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -44,20 +44,20 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.557143,
-          "difference": 0.028571,
+          "reference": 0.628571,
+          "arm": 0.628571,
+          "difference": 0.0,
           "ci_low": 0.0,
-          "ci_high": 0.071429,
+          "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 2,
+          "questions_changed": 0,
           "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.184211,
+          "reference": 0.210526,
+          "arm": 0.210526,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -66,8 +66,8 @@
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.802632,
+          "reference": 0.881579,
+          "arm": 0.881579,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -76,18 +76,18 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.557143,
-          "difference": 0.028571,
+          "reference": 0.628571,
+          "arm": 0.628571,
+          "difference": 0.0,
           "ci_low": 0.0,
-          "ci_high": 0.071429,
+          "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 2,
+          "questions_changed": 0,
           "higher_is_better": true
         },
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.333333,
+          "reference": 0.166667,
+          "arm": 0.166667,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -98,28 +98,26 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": 0.001572,
-          "ci_low": -0.000188,
-          "ci_high": 0.003432,
+          "difference": 0.00326,
+          "ci_low": 0.0023,
+          "ci_high": 0.004313,
           "n": 76
         },
         "model_calls_mean": {
-          "difference": 0.013158,
+          "difference": 0.0,
           "ci_low": 0.0,
-          "ci_high": 0.039474,
+          "ci_high": 0.0,
           "n": 76
         }
       },
       "reranker_calls": {
-        "reference_mean": 1.3158,
-        "arm_mean": 1.0395
+        "reference_mean": 1.3026,
+        "arm_mean": 1.0263
       },
       "benefit": [],
       "harm": [],
-      "undeclared_significant": [
-        "ndcg_at_10"
-      ],
-      "answers_changed": 4,
+      "undeclared_significant": [],
+      "answers_changed": 5,
       "inert": false,
       "n_comparisons": 21,
       "n_significant": 1,
@@ -135,52 +133,52 @@
       "comparison": "results/ablations/hybrid_off/comparison.json",
       "declared_metrics": {
         "recall_at_5": {
-          "reference": 0.928571,
-          "arm": 0.928571,
+          "reference": 0.942857,
+          "arm": 0.914286,
+          "difference": -0.028571,
+          "ci_low": -0.071429,
+          "ci_high": 0.0,
+          "n": 70,
+          "questions_changed": 2,
+          "higher_is_better": true
+        },
+        "mrr_at_10": {
+          "reference": 0.819921,
+          "arm": 0.813827,
+          "difference": -0.006094,
+          "ci_low": -0.020975,
+          "ci_high": 0.004025,
+          "n": 70,
+          "questions_changed": 5,
+          "higher_is_better": true
+        }
+      },
+      "attribution_metrics": {
+        "faithfulness": {
+          "reference": 0.881579,
+          "arm": 0.894737,
+          "difference": 0.013158,
+          "ci_low": 0.0,
+          "ci_high": 0.039474,
+          "n": 76,
+          "questions_changed": 1,
+          "higher_is_better": true
+        },
+        "citation_any_correct": {
+          "reference": 0.628571,
+          "arm": 0.628571,
           "difference": 0.0,
           "ci_low": -0.042857,
           "ci_high": 0.042857,
           "n": 70,
           "questions_changed": 2,
           "higher_is_better": true
-        },
-        "mrr_at_10": {
-          "reference": 0.813968,
-          "arm": 0.816684,
-          "difference": 0.002715,
-          "ci_low": -0.00953,
-          "ci_high": 0.016072,
-          "n": 70,
-          "questions_changed": 6,
-          "higher_is_better": true
-        }
-      },
-      "attribution_metrics": {
-        "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.789474,
-          "difference": -0.013158,
-          "ci_low": -0.039474,
-          "ci_high": 0.0,
-          "n": 76,
-          "questions_changed": 1,
-          "higher_is_better": true
-        },
-        "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.514286,
-          "difference": -0.014286,
-          "ci_low": -0.042857,
-          "ci_high": 0.0,
-          "n": 70,
-          "questions_changed": 1,
-          "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.197368,
+          "reference": 0.210526,
+          "arm": 0.223684,
           "difference": 0.013158,
           "ci_low": 0.0,
           "ci_high": 0.039474,
@@ -189,28 +187,28 @@
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.789474,
-          "difference": -0.013158,
-          "ci_low": -0.039474,
-          "ci_high": 0.0,
+          "reference": 0.881579,
+          "arm": 0.894737,
+          "difference": 0.013158,
+          "ci_low": 0.0,
+          "ci_high": 0.039474,
           "n": 76,
           "questions_changed": 1,
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.514286,
-          "difference": -0.014286,
+          "reference": 0.628571,
+          "arm": 0.628571,
+          "difference": 0.0,
           "ci_low": -0.042857,
-          "ci_high": 0.0,
+          "ci_high": 0.042857,
           "n": 70,
-          "questions_changed": 1,
+          "questions_changed": 2,
           "higher_is_better": true
         },
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.333333,
+          "reference": 0.166667,
+          "arm": 0.166667,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -221,29 +219,29 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": 0.000601,
-          "ci_low": -0.000993,
-          "ci_high": 0.002072,
+          "difference": 0.004095,
+          "ci_low": 0.003242,
+          "ci_high": 0.004974,
           "n": 76
         },
         "model_calls_mean": {
-          "difference": 0.013158,
-          "ci_low": 0.0,
-          "ci_high": 0.039474,
+          "difference": -0.013158,
+          "ci_low": -0.039474,
+          "ci_high": 0.0,
           "n": 76
         }
       },
       "reranker_calls": {
-        "reference_mean": 1.3158,
-        "arm_mean": 1.3158
+        "reference_mean": 1.3026,
+        "arm_mean": 1.2763
       },
       "benefit": [],
       "harm": [],
       "undeclared_significant": [],
-      "answers_changed": 7,
+      "answers_changed": 8,
       "inert": false,
       "n_comparisons": 21,
-      "n_significant": 0,
+      "n_significant": 1,
       "verdict": "did not earn its cost"
     },
     {
@@ -256,52 +254,30 @@
       "comparison": "results/ablations/reranker_off_agentic/comparison.json",
       "declared_metrics": {
         "mrr_at_10": {
-          "reference": 0.813968,
-          "arm": 0.802993,
-          "difference": -0.010975,
-          "ci_low": -0.066828,
-          "ci_high": 0.038964,
+          "reference": 0.819921,
+          "arm": 0.797381,
+          "difference": -0.02254,
+          "ci_low": -0.07778,
+          "ci_high": 0.027788,
           "n": 70,
-          "questions_changed": 16,
+          "questions_changed": 17,
           "higher_is_better": true
         },
         "accuracy_all": {
-          "reference": 0.184211,
+          "reference": 0.210526,
           "arm": 0.197368,
-          "difference": 0.013158,
-          "ci_low": 0.0,
-          "ci_high": 0.039474,
+          "difference": -0.013158,
+          "ci_low": -0.065789,
+          "ci_high": 0.026316,
           "n": 76,
-          "questions_changed": 1,
+          "questions_changed": 3,
           "higher_is_better": true
         }
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.81767,
-          "difference": 0.015038,
-          "ci_low": -0.022555,
-          "ci_high": 0.054512,
-          "n": 76,
-          "questions_changed": 3,
-          "higher_is_better": true
-        },
-        "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.514286,
-          "difference": -0.014286,
-          "ci_low": -0.057143,
-          "ci_high": 0.028571,
-          "n": 70,
-          "questions_changed": 3,
-          "higher_is_better": true
-        }
-      },
-      "keep_or_drop_metrics": {
-        "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.197368,
+          "reference": 0.881579,
+          "arm": 0.894737,
           "difference": 0.013158,
           "ci_low": 0.0,
           "ci_high": 0.039474,
@@ -309,29 +285,51 @@
           "questions_changed": 1,
           "higher_is_better": true
         },
-        "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.81767,
-          "difference": 0.015038,
-          "ci_low": -0.022555,
-          "ci_high": 0.054512,
+        "citation_any_correct": {
+          "reference": 0.628571,
+          "arm": 0.628571,
+          "difference": 0.0,
+          "ci_low": -0.071429,
+          "ci_high": 0.071429,
+          "n": 70,
+          "questions_changed": 6,
+          "higher_is_better": true
+        }
+      },
+      "keep_or_drop_metrics": {
+        "accuracy_all": {
+          "reference": 0.210526,
+          "arm": 0.197368,
+          "difference": -0.013158,
+          "ci_low": -0.065789,
+          "ci_high": 0.026316,
           "n": 76,
           "questions_changed": 3,
           "higher_is_better": true
         },
+        "faithfulness": {
+          "reference": 0.881579,
+          "arm": 0.894737,
+          "difference": 0.013158,
+          "ci_low": 0.0,
+          "ci_high": 0.039474,
+          "n": 76,
+          "questions_changed": 1,
+          "higher_is_better": true
+        },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.514286,
-          "difference": -0.014286,
-          "ci_low": -0.057143,
-          "ci_high": 0.028571,
+          "reference": 0.628571,
+          "arm": 0.628571,
+          "difference": 0.0,
+          "ci_low": -0.071429,
+          "ci_high": 0.071429,
           "n": 70,
-          "questions_changed": 3,
+          "questions_changed": 6,
           "higher_is_better": true
         },
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.333333,
+          "reference": 0.166667,
+          "arm": 0.166667,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -342,29 +340,31 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": 0.000916,
-          "ci_low": -0.000298,
-          "ci_high": 0.002102,
+          "difference": 0.005205,
+          "ci_low": 0.004293,
+          "ci_high": 0.006194,
           "n": 76
         },
         "model_calls_mean": {
-          "difference": 0.0,
+          "difference": -0.013158,
           "ci_low": -0.039474,
-          "ci_high": 0.039474,
+          "ci_high": 0.0,
           "n": 76
         }
       },
       "reranker_calls": {
-        "reference_mean": 1.3158,
+        "reference_mean": 1.3026,
         "arm_mean": 0.0
       },
       "benefit": [],
       "harm": [],
-      "undeclared_significant": [],
-      "answers_changed": 31,
+      "undeclared_significant": [
+        "recall_at_3"
+      ],
+      "answers_changed": 32,
       "inert": false,
       "n_comparisons": 21,
-      "n_significant": 0,
+      "n_significant": 2,
       "verdict": "did not earn its cost"
     },
     {
@@ -377,8 +377,8 @@
       "comparison": "results/ablations/refinement_off/comparison.json",
       "declared_metrics": {
         "over_abstention_rate": {
-          "reference": 0.185714,
-          "arm": 0.2,
+          "reference": 0.114286,
+          "arm": 0.128571,
           "difference": 0.014286,
           "ci_low": 0.0,
           "ci_high": 0.042857,
@@ -399,8 +399,8 @@
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.789474,
+          "reference": 0.881579,
+          "arm": 0.868421,
           "difference": -0.013158,
           "ci_low": -0.039474,
           "ci_high": 0.0,
@@ -409,20 +409,20 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.528571,
-          "difference": 0.0,
-          "ci_low": 0.0,
+          "reference": 0.628571,
+          "arm": 0.614286,
+          "difference": -0.014286,
+          "ci_low": -0.042857,
           "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 0,
+          "questions_changed": 1,
           "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.184211,
+          "reference": 0.210526,
+          "arm": 0.210526,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -431,8 +431,8 @@
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.789474,
+          "reference": 0.881579,
+          "arm": 0.868421,
           "difference": -0.013158,
           "ci_low": -0.039474,
           "ci_high": 0.0,
@@ -441,18 +441,18 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.528571,
-          "difference": 0.0,
-          "ci_low": 0.0,
+          "reference": 0.628571,
+          "arm": 0.614286,
+          "difference": -0.014286,
+          "ci_low": -0.042857,
           "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 0,
+          "questions_changed": 1,
           "higher_is_better": true
         },
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.333333,
+          "reference": 0.166667,
+          "arm": 0.166667,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -463,20 +463,20 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": -0.00027,
-          "ci_low": -0.002737,
-          "ci_high": 0.002062,
+          "difference": 0.003577,
+          "ci_low": 0.002726,
+          "ci_high": 0.004466,
           "n": 76
         },
         "model_calls_mean": {
-          "difference": 0.026316,
+          "difference": 0.013158,
           "ci_low": 0.0,
-          "ci_high": 0.078947,
+          "ci_high": 0.039474,
           "n": 76
         }
       },
       "reranker_calls": {
-        "reference_mean": 1.3158,
+        "reference_mean": 1.3026,
         "arm_mean": 1.2632
       },
       "benefit": [],
@@ -485,7 +485,7 @@
       "answers_changed": 1,
       "inert": false,
       "n_comparisons": 21,
-      "n_significant": 0,
+      "n_significant": 1,
       "verdict": "did not earn its cost"
     },
     {
@@ -498,8 +498,8 @@
       "comparison": "results/ablations/evidence_controller_off/comparison.json",
       "declared_metrics": {
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.166667,
+          "reference": 0.166667,
+          "arm": 0.0,
           "difference": -0.166667,
           "ci_low": -0.5,
           "ci_high": 0.0,
@@ -508,72 +508,72 @@
           "higher_is_better": true
         },
         "over_abstention_rate": {
-          "reference": 0.185714,
-          "arm": 0.085714,
-          "difference": -0.1,
-          "ci_low": -0.171786,
-          "ci_high": -0.028571,
+          "reference": 0.114286,
+          "arm": 0.042857,
+          "difference": -0.071429,
+          "ci_low": -0.128571,
+          "ci_high": -0.014286,
           "n": 70,
-          "questions_changed": 7,
+          "questions_changed": 5,
           "higher_is_better": false
         }
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.907895,
-          "difference": 0.105263,
-          "ci_low": 0.039474,
-          "ci_high": 0.171053,
+          "reference": 0.881579,
+          "arm": 0.960526,
+          "difference": 0.078947,
+          "ci_low": 0.026316,
+          "ci_high": 0.144737,
           "n": 76,
-          "questions_changed": 8,
+          "questions_changed": 6,
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.614286,
-          "difference": 0.085714,
-          "ci_low": 0.028571,
-          "ci_high": 0.157143,
+          "reference": 0.628571,
+          "arm": 0.685714,
+          "difference": 0.057143,
+          "ci_low": 0.014286,
+          "ci_high": 0.114286,
           "n": 70,
-          "questions_changed": 6,
+          "questions_changed": 4,
           "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.184211,
-          "difference": 0.0,
-          "ci_low": -0.039474,
-          "ci_high": 0.039474,
+          "reference": 0.210526,
+          "arm": 0.223684,
+          "difference": 0.013158,
+          "ci_low": -0.026316,
+          "ci_high": 0.065789,
           "n": 76,
-          "questions_changed": 2,
+          "questions_changed": 3,
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.907895,
-          "difference": 0.105263,
-          "ci_low": 0.039474,
-          "ci_high": 0.171053,
+          "reference": 0.881579,
+          "arm": 0.960526,
+          "difference": 0.078947,
+          "ci_low": 0.026316,
+          "ci_high": 0.144737,
           "n": 76,
-          "questions_changed": 8,
-          "higher_is_better": true
-        },
-        "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.614286,
-          "difference": 0.085714,
-          "ci_low": 0.028571,
-          "ci_high": 0.157143,
-          "n": 70,
           "questions_changed": 6,
           "higher_is_better": true
         },
+        "citation_any_correct": {
+          "reference": 0.628571,
+          "arm": 0.685714,
+          "difference": 0.057143,
+          "ci_low": 0.014286,
+          "ci_high": 0.114286,
+          "n": 70,
+          "questions_changed": 4,
+          "higher_is_better": true
+        },
         "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.166667,
+          "reference": 0.166667,
+          "arm": 0.0,
           "difference": -0.166667,
           "ci_low": -0.5,
           "ci_high": 0.0,
@@ -584,20 +584,20 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": 0.000557,
-          "ci_low": -0.000635,
-          "ci_high": 0.001656,
+          "difference": 0.005062,
+          "ci_low": 0.004297,
+          "ci_high": 0.005927,
           "n": 76
         },
         "model_calls_mean": {
-          "difference": -0.171053,
-          "ci_low": -0.263158,
-          "ci_high": -0.092105,
+          "difference": -0.118421,
+          "ci_low": -0.197368,
+          "ci_high": -0.052632,
           "n": 76
         }
       },
       "reranker_calls": {
-        "reference_mean": 1.3158,
+        "reference_mean": 1.3026,
         "arm_mean": 1.2632
       },
       "benefit": [],
@@ -606,10 +606,10 @@
         "citation_any_correct"
       ],
       "undeclared_significant": [],
-      "answers_changed": 8,
+      "answers_changed": 7,
       "inert": false,
       "n_comparisons": 21,
-      "n_significant": 4,
+      "n_significant": 5,
       "verdict": "did not earn its cost (removing it improves faithfulness, citation_any_correct)"
     },
     {
@@ -632,129 +632,8 @@
           "higher_is_better": false
         },
         "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.828947,
-          "difference": 0.026316,
-          "ci_low": 0.0,
-          "ci_high": 0.065789,
-          "n": 76,
-          "questions_changed": 2,
-          "higher_is_better": true
-        }
-      },
-      "attribution_metrics": {
-        "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.828947,
-          "difference": 0.026316,
-          "ci_low": 0.0,
-          "ci_high": 0.065789,
-          "n": 76,
-          "questions_changed": 2,
-          "higher_is_better": true
-        },
-        "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.557143,
-          "difference": 0.028571,
-          "ci_low": 0.0,
-          "ci_high": 0.071429,
-          "n": 70,
-          "questions_changed": 2,
-          "higher_is_better": true
-        }
-      },
-      "keep_or_drop_metrics": {
-        "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.197368,
-          "difference": 0.013158,
-          "ci_low": 0.0,
-          "ci_high": 0.039474,
-          "n": 76,
-          "questions_changed": 1,
-          "higher_is_better": true
-        },
-        "faithfulness": {
-          "reference": 0.802632,
-          "arm": 0.828947,
-          "difference": 0.026316,
-          "ci_low": 0.0,
-          "ci_high": 0.065789,
-          "n": 76,
-          "questions_changed": 2,
-          "higher_is_better": true
-        },
-        "citation_any_correct": {
-          "reference": 0.528571,
-          "arm": 0.557143,
-          "difference": 0.028571,
-          "ci_low": 0.0,
-          "ci_high": 0.071429,
-          "n": 70,
-          "questions_changed": 2,
-          "higher_is_better": true
-        },
-        "abstention_accuracy": {
-          "reference": 0.333333,
-          "arm": 0.333333,
-          "difference": 0.0,
-          "ci_low": 0.0,
-          "ci_high": 0.0,
-          "n": 6,
-          "questions_changed": 0,
-          "higher_is_better": true
-        }
-      },
-      "cost_added": {
-        "latency_s": {
-          "difference": -2e-05,
-          "ci_low": -0.002487,
-          "ci_high": 0.002139,
-          "n": 76
-        },
-        "model_calls_mean": {
-          "difference": 0.039474,
-          "ci_low": 0.0,
-          "ci_high": 0.092105,
-          "n": 76
-        }
-      },
-      "reranker_calls": {
-        "reference_mean": 1.3158,
-        "arm_mean": 1.3158
-      },
-      "benefit": [],
-      "harm": [],
-      "undeclared_significant": [],
-      "answers_changed": 3,
-      "inert": false,
-      "n_comparisons": 21,
-      "n_significant": 0,
-      "verdict": "did not earn its cost"
-    },
-    {
-      "arm": "reranker_off",
-      "component": "reranker",
-      "reference": "results/hybrid",
-      "directory": "results/ablations/reranker_off",
-      "decides": false,
-      "counted_as_arm": true,
-      "comparison": "results/hybrid/comparison_vs_reranker_off.json",
-      "declared_metrics": {
-        "accuracy_all": {
-          "reference": 0.197368,
-          "arm": 0.184211,
-          "difference": -0.013158,
-          "ci_low": -0.052632,
-          "ci_high": 0.026316,
-          "n": 76,
-          "questions_changed": 3,
-          "higher_is_better": true
-        },
-        "faithfulness": {
-          "reference": 0.934211,
-          "arm": 0.934211,
+          "reference": 0.881579,
+          "arm": 0.881579,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -765,8 +644,8 @@
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.934211,
-          "arm": 0.934211,
+          "reference": 0.881579,
+          "arm": 0.881579,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -775,30 +654,30 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.671429,
+          "reference": 0.628571,
           "arm": 0.628571,
-          "difference": -0.042857,
-          "ci_low": -0.1,
+          "difference": 0.0,
+          "ci_low": 0.0,
           "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 3,
+          "questions_changed": 0,
           "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.197368,
-          "arm": 0.184211,
-          "difference": -0.013158,
-          "ci_low": -0.052632,
-          "ci_high": 0.026316,
+          "reference": 0.210526,
+          "arm": 0.210526,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
           "n": 76,
-          "questions_changed": 3,
+          "questions_changed": 0,
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.934211,
-          "arm": 0.934211,
+          "reference": 0.881579,
+          "arm": 0.881579,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -807,13 +686,13 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.671429,
+          "reference": 0.628571,
           "arm": 0.628571,
-          "difference": -0.042857,
-          "ci_low": -0.1,
+          "difference": 0.0,
+          "ci_low": 0.0,
           "ci_high": 0.0,
           "n": 70,
-          "questions_changed": 3,
+          "questions_changed": 0,
           "higher_is_better": true
         },
         "abstention_accuracy": {
@@ -829,10 +708,137 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": 0.001882,
-          "ci_low": 0.001198,
-          "ci_high": 0.002565,
+          "difference": 0.00444,
+          "ci_low": 0.003684,
+          "ci_high": 0.00524,
           "n": 76
+        },
+        "model_calls_mean": {
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 76
+        }
+      },
+      "reranker_calls": {
+        "reference_mean": 1.3026,
+        "arm_mean": 1.3026
+      },
+      "benefit": [],
+      "harm": [],
+      "undeclared_significant": [],
+      "answers_changed": 0,
+      "inert": true,
+      "n_comparisons": 21,
+      "n_significant": 1,
+      "verdict": "did not earn its cost (inert on this stack)"
+    },
+    {
+      "arm": "reranker_off",
+      "component": "reranker",
+      "reference": "results/hybrid",
+      "directory": "results/ablations/reranker_off",
+      "decides": false,
+      "counted_as_arm": true,
+      "comparison": "results/hybrid/comparison_vs_reranker_off.json",
+      "declared_metrics": {
+        "accuracy_all": {
+          "reference": 0.223684,
+          "arm": 0.197368,
+          "difference": -0.026316,
+          "ci_low": -0.078947,
+          "ci_high": 0.026316,
+          "n": 76,
+          "questions_changed": 4,
+          "higher_is_better": true
+        },
+        "faithfulness": {
+          "reference": 0.960526,
+          "arm": 0.960526,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 76,
+          "questions_changed": 0,
+          "higher_is_better": true
+        }
+      },
+      "attribution_metrics": {
+        "faithfulness": {
+          "reference": 0.960526,
+          "arm": 0.960526,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 76,
+          "questions_changed": 0,
+          "higher_is_better": true
+        },
+        "citation_any_correct": {
+          "reference": 0.685714,
+          "arm": 0.657143,
+          "difference": -0.028571,
+          "ci_low": -0.085714,
+          "ci_high": 0.028571,
+          "n": 70,
+          "questions_changed": 4,
+          "higher_is_better": true
+        }
+      },
+      "keep_or_drop_metrics": {
+        "accuracy_all": {
+          "reference": 0.223684,
+          "arm": 0.197368,
+          "difference": -0.026316,
+          "ci_low": -0.078947,
+          "ci_high": 0.026316,
+          "n": 76,
+          "questions_changed": 4,
+          "higher_is_better": true
+        },
+        "faithfulness": {
+          "reference": 0.960526,
+          "arm": 0.960526,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 76,
+          "questions_changed": 0,
+          "higher_is_better": true
+        },
+        "citation_any_correct": {
+          "reference": 0.685714,
+          "arm": 0.657143,
+          "difference": -0.028571,
+          "ci_low": -0.085714,
+          "ci_high": 0.028571,
+          "n": 70,
+          "questions_changed": 4,
+          "higher_is_better": true
+        },
+        "abstention_accuracy": {
+          "reference": 0.0,
+          "arm": 0.0,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 6,
+          "questions_changed": 0,
+          "higher_is_better": true
+        }
+      },
+      "cost_added": {
+        "latency_s": {
+          "difference": 0.001198,
+          "ci_low": 0.000958,
+          "ci_high": 0.001442,
+          "n": 76
+        },
+        "model_calls_mean": {
+          "difference": null,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 0
         }
       },
       "reranker_calls": {
@@ -844,9 +850,9 @@
       "undeclared_significant": [
         "recall_at_3"
       ],
-      "answers_changed": 31,
+      "answers_changed": 34,
       "inert": false,
-      "n_comparisons": 19,
+      "n_comparisons": 21,
       "n_significant": 2,
       "verdict": "did not earn its cost"
     },
@@ -872,8 +878,8 @@
       },
       "attribution_metrics": {
         "faithfulness": {
-          "reference": 0.934211,
-          "arm": 0.934211,
+          "reference": 0.960526,
+          "arm": 0.960526,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -882,30 +888,30 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.628571,
-          "arm": 0.642857,
-          "difference": 0.014286,
-          "ci_low": -0.028571,
-          "ci_high": 0.057143,
+          "reference": 0.657143,
+          "arm": 0.657143,
+          "difference": 0.0,
+          "ci_low": -0.042857,
+          "ci_high": 0.042857,
           "n": 70,
-          "questions_changed": 3,
+          "questions_changed": 2,
           "higher_is_better": true
         }
       },
       "keep_or_drop_metrics": {
         "accuracy_all": {
-          "reference": 0.184211,
-          "arm": 0.171053,
+          "reference": 0.197368,
+          "arm": 0.184211,
           "difference": -0.013158,
-          "ci_low": -0.052961,
-          "ci_high": 0.026316,
+          "ci_low": -0.039474,
+          "ci_high": 0.0,
           "n": 76,
-          "questions_changed": 3,
+          "questions_changed": 1,
           "higher_is_better": true
         },
         "faithfulness": {
-          "reference": 0.934211,
-          "arm": 0.934211,
+          "reference": 0.960526,
+          "arm": 0.960526,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -914,18 +920,18 @@
           "higher_is_better": true
         },
         "citation_any_correct": {
-          "reference": 0.628571,
-          "arm": 0.642857,
-          "difference": 0.014286,
-          "ci_low": -0.028571,
-          "ci_high": 0.057143,
+          "reference": 0.657143,
+          "arm": 0.657143,
+          "difference": 0.0,
+          "ci_low": -0.042857,
+          "ci_high": 0.042857,
           "n": 70,
-          "questions_changed": 3,
+          "questions_changed": 2,
           "higher_is_better": true
         },
         "abstention_accuracy": {
-          "reference": 0.166667,
-          "arm": 0.166667,
+          "reference": 0.0,
+          "arm": 0.0,
           "difference": 0.0,
           "ci_low": 0.0,
           "ci_high": 0.0,
@@ -936,10 +942,16 @@
       },
       "cost_added": {
         "latency_s": {
-          "difference": -0.002586,
-          "ci_low": -0.00311,
-          "ci_high": -0.002104,
+          "difference": 0.000239,
+          "ci_low": 9.1e-05,
+          "ci_high": 0.000399,
           "n": 76
+        },
+        "model_calls_mean": {
+          "difference": null,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 0
         }
       },
       "reranker_calls": {
@@ -949,15 +961,13 @@
       "benefit": [],
       "harm": [],
       "undeclared_significant": [
-        "recall_at_1",
-        "full_recall_at_5",
         "mrr_at_10",
         "ndcg_at_10"
       ],
-      "answers_changed": 26,
+      "answers_changed": 22,
       "inert": false,
-      "n_comparisons": 19,
-      "n_significant": 5,
+      "n_comparisons": 21,
+      "n_significant": 3,
       "verdict": "did not earn its cost"
     }
   ],
@@ -1000,7 +1010,7 @@
     "verifier": {
       "decided_by": "verification_off",
       "corroboration": [],
-      "verdict": "did not earn its cost"
+      "verdict": "did not earn its cost (inert on this stack)"
     }
   },
   "n_arms_counted": 7

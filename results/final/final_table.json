@@ -28,27 +28,27 @@
           },
           "mrr_at_10": {
             "n": 40,
-            "mean": 0.732946,
-            "ci_low": 0.611275,
-            "ci_high": 0.847922
+            "mean": 0.740337,
+            "ci_low": 0.613604,
+            "ci_high": 0.853622
           },
           "accuracy_all": {
             "n": 43,
-            "mean": 0.116279,
-            "ci_low": 0.023256,
-            "ci_high": 0.209302
+            "mean": 0.139535,
+            "ci_low": 0.046512,
+            "ci_high": 0.255814
           },
           "faithfulness": {
             "n": 43,
-            "mean": 0.930233,
-            "ci_low": 0.837209,
+            "mean": 0.953488,
+            "ci_low": 0.883721,
             "ci_high": 1.0
           },
           "citation_any_correct": {
             "n": 40,
-            "mean": 0.6,
-            "ci_low": 0.45,
-            "ci_high": 0.75
+            "mean": 0.625,
+            "ci_low": 0.475,
+            "ci_high": 0.775
           },
           "abstention_accuracy": {
             "n": 3,
@@ -59,9 +59,9 @@
         },
         "latency_p95_s": {
           "n": 43,
-          "value": 0.008947,
-          "ci_low": 0.00703,
-          "ci_high": 0.010868
+          "value": 0.002647,
+          "ci_low": 0.00241,
+          "ci_high": 0.003339
         },
         "retrieval_iterations_mean": {
           "n": 0,
@@ -94,27 +94,27 @@
           },
           "mrr_at_10": {
             "n": 40,
-            "mean": 0.850833,
-            "ci_low": 0.759167,
+            "mean": 0.854167,
+            "ci_low": 0.766667,
             "ci_high": 0.933333
           },
           "accuracy_all": {
             "n": 43,
-            "mean": 0.186047,
-            "ci_low": 0.069767,
-            "ci_high": 0.302326
+            "mean": 0.209302,
+            "ci_low": 0.093023,
+            "ci_high": 0.348837
           },
           "faithfulness": {
             "n": 43,
-            "mean": 0.930233,
-            "ci_low": 0.837209,
+            "mean": 0.953488,
+            "ci_low": 0.883721,
             "ci_high": 1.0
           },
           "citation_any_correct": {
             "n": 40,
-            "mean": 0.65,
-            "ci_low": 0.5,
-            "ci_high": 0.775
+            "mean": 0.675,
+            "ci_low": 0.525,
+            "ci_high": 0.825
           },
           "abstention_accuracy": {
             "n": 3,
@@ -125,9 +125,9 @@
         },
         "latency_p95_s": {
           "n": 43,
-          "value": 0.01089,
-          "ci_low": 0.009445,
-          "ci_high": 0.011475
+          "value": 0.004717,
+          "ci_low": 0.00444,
+          "ci_high": 0.005245
         },
         "retrieval_iterations_mean": {
           "n": 0,
@@ -160,27 +160,27 @@
           },
           "mrr_at_10": {
             "n": 40,
-            "mean": 0.84875,
-            "ci_low": 0.754979,
-            "ci_high": 0.933333
+            "mean": 0.855,
+            "ci_low": 0.765813,
+            "ci_high": 0.9375
           },
           "accuracy_all": {
             "n": 43,
-            "mean": 0.139535,
-            "ci_low": 0.046512,
-            "ci_high": 0.255814
+            "mean": 0.162791,
+            "ci_low": 0.069767,
+            "ci_high": 0.27907
           },
           "faithfulness": {
             "n": 43,
-            "mean": 0.813953,
-            "ci_low": 0.697674,
-            "ci_high": 0.930233
+            "mean": 0.906977,
+            "ci_low": 0.813953,
+            "ci_high": 0.976744
           },
           "citation_any_correct": {
             "n": 40,
-            "mean": 0.525,
-            "ci_low": 0.375,
-            "ci_high": 0.675
+            "mean": 0.625,
+            "ci_low": 0.475,
+            "ci_high": 0.775
           },
           "abstention_accuracy": {
             "n": 3,
@@ -191,28 +191,28 @@
         },
         "latency_p95_s": {
           "n": 43,
-          "value": 0.026191,
-          "ci_low": 0.024164,
-          "ci_high": 0.026998
+          "value": 0.02002,
+          "ci_low": 0.015578,
+          "ci_high": 0.022782
         },
         "retrieval_iterations_mean": {
           "n": 43,
-          "mean": 1.069767,
+          "mean": 1.023256,
           "ci_low": 1.0,
-          "ci_high": 1.162791
+          "ci_high": 1.069767
         },
         "model_calls_mean": {
           "n": 43,
           "mean": 0.906977,
-          "ci_low": 0.767442,
-          "ci_high": 1.023256
+          "ci_low": 0.813953,
+          "ci_high": 0.976744
         },
         "peak_vram_gb": null,
         "sufficiency_threshold": 0.5,
         "directory": "results/agentic"
       },
       {
-        "label": "Agentic RAG (threshold 0.3, tuned on dev)",
+        "label": "Agentic RAG (threshold 0.6, tuned on dev)",
         "system": "agentic",
         "split": "eval",
         "restricted_from_split": "eval",
@@ -226,9 +226,9 @@
           },
           "mrr_at_10": {
             "n": 40,
-            "mean": 0.84875,
-            "ci_low": 0.754979,
-            "ci_high": 0.933333
+            "mean": 0.855,
+            "ci_low": 0.765813,
+            "ci_high": 0.9375
           },
           "accuracy_all": {
             "n": 43,
@@ -238,9 +238,9 @@
           },
           "faithfulness": {
             "n": 43,
-            "mean": 0.813953,
-            "ci_low": 0.697674,
-            "ci_high": 0.930233
+            "mean": 0.774086,
+            "ci_low": 0.634551,
+            "ci_high": 0.890365
           },
           "citation_any_correct": {
             "n": 40,
@@ -250,32 +250,32 @@
           },
           "abstention_accuracy": {
             "n": 3,
-            "mean": 0.0,
+            "mean": 0.333333,
             "ci_low": 0.0,
-            "ci_high": 0.0
+            "ci_high": 1.0
           }
         },
         "latency_p95_s": {
           "n": 43,
-          "value": 0.105272,
-          "ci_low": 0.02613,
-          "ci_high": 0.154896
+          "value": 0.010405,
+          "ci_low": 0.007238,
+          "ci_high": 0.017057
         },
         "retrieval_iterations_mean": {
           "n": 43,
-          "mean": 1.069767,
-          "ci_low": 1.0,
-          "ci_high": 1.162791
+          "mean": 1.116279,
+          "ci_low": 1.023256,
+          "ci_high": 1.232558
         },
         "model_calls_mean": {
           "n": 43,
-          "mean": 0.906977,
-          "ci_low": 0.767442,
-          "ci_high": 1.023256
+          "mean": 0.767442,
+          "ci_low": 0.627907,
+          "ci_high": 0.883721
         },
         "peak_vram_gb": null,
-        "sufficiency_threshold": 0.3,
-        "directory": "results/experiments/threshold/eval_0.3"
+        "sufficiency_threshold": 0.6,
+        "directory": "results/experiments/threshold/eval_0.6"
       }
     ],
     "omitted": []
@@ -309,40 +309,40 @@
           },
           "mrr_at_10": {
             "n": 70,
-            "mean": 0.73589,
-            "ci_low": 0.652058,
-            "ci_high": 0.815954
+            "mean": 0.757812,
+            "ci_low": 0.673503,
+            "ci_high": 0.841406
           },
           "accuracy_all": {
             "n": 76,
-            "mean": 0.171053,
-            "ci_low": 0.092105,
-            "ci_high": 0.263158
+            "mean": 0.184211,
+            "ci_low": 0.104934,
+            "ci_high": 0.276316
           },
           "faithfulness": {
             "n": 76,
-            "mean": 0.934211,
-            "ci_low": 0.868421,
-            "ci_high": 0.986842
+            "mean": 0.960526,
+            "ci_low": 0.907895,
+            "ci_high": 1.0
           },
           "citation_any_correct": {
             "n": 70,
-            "mean": 0.642857,
-            "ci_low": 0.528571,
-            "ci_high": 0.742857
+            "mean": 0.657143,
+            "ci_low": 0.542857,
+            "ci_high": 0.757143
           },
           "abstention_accuracy": {
             "n": 6,
-            "mean": 0.166667,
+            "mean": 0.0,
             "ci_low": 0.0,
-            "ci_high": 0.5
+            "ci_high": 0.0
           }
         },
         "latency_p95_s": {
           "n": 76,
-          "value": 0.010032,
-          "ci_low": 0.007386,
-          "ci_high": 0.010868
+          "value": 0.002598,
+          "ci_low": 0.00236,
+          "ci_high": 0.00306
         },
         "retrieval_iterations_mean": {
           "n": 0,
@@ -375,40 +375,40 @@
           },
           "mrr_at_10": {
             "n": 70,
-            "mean": 0.827262,
-            "ci_low": 0.755946,
-            "ci_high": 0.895833
+            "mean": 0.829167,
+            "ci_low": 0.758914,
+            "ci_high": 0.897024
           },
           "accuracy_all": {
             "n": 76,
-            "mean": 0.197368,
-            "ci_low": 0.105263,
-            "ci_high": 0.289474
+            "mean": 0.223684,
+            "ci_low": 0.131579,
+            "ci_high": 0.315789
           },
           "faithfulness": {
             "n": 76,
-            "mean": 0.934211,
-            "ci_low": 0.868421,
-            "ci_high": 0.986842
+            "mean": 0.960526,
+            "ci_low": 0.907895,
+            "ci_high": 1.0
           },
           "citation_any_correct": {
             "n": 70,
-            "mean": 0.671429,
-            "ci_low": 0.557143,
-            "ci_high": 0.771429
+            "mean": 0.685714,
+            "ci_low": 0.571429,
+            "ci_high": 0.785714
           },
           "abstention_accuracy": {
             "n": 6,
-            "mean": 0.166667,
+            "mean": 0.0,
             "ci_low": 0.0,
-            "ci_high": 0.5
+            "ci_high": 0.0
           }
         },
         "latency_p95_s": {
           "n": 76,
-          "value": 0.010519,
-          "ci_low": 0.009539,
-          "ci_high": 0.011051
+          "value": 0.005189,
+          "ci_low": 0.004517,
+          "ci_high": 0.005915
         },
         "retrieval_iterations_mean": {
           "n": 0,
@@ -435,58 +435,58 @@
         "metrics": {
           "recall_at_5": {
             "n": 70,
-            "mean": 0.928571,
-            "ci_low": 0.871429,
-            "ci_high": 0.971786
+            "mean": 0.942857,
+            "ci_low": 0.885714,
+            "ci_high": 0.985714
           },
           "mrr_at_10": {
             "n": 70,
-            "mean": 0.813968,
-            "ci_low": 0.740548,
-            "ci_high": 0.883821
+            "mean": 0.819921,
+            "ci_low": 0.744284,
+            "ci_high": 0.885724
           },
           "accuracy_all": {
             "n": 76,
-            "mean": 0.184211,
-            "ci_low": 0.105263,
-            "ci_high": 0.276316
+            "mean": 0.210526,
+            "ci_low": 0.118421,
+            "ci_high": 0.302632
           },
           "faithfulness": {
             "n": 76,
-            "mean": 0.802632,
-            "ci_low": 0.710526,
-            "ci_high": 0.894737
+            "mean": 0.881579,
+            "ci_low": 0.802632,
+            "ci_high": 0.947368
           },
           "citation_any_correct": {
             "n": 70,
-            "mean": 0.528571,
-            "ci_low": 0.414286,
-            "ci_high": 0.642857
+            "mean": 0.628571,
+            "ci_low": 0.514286,
+            "ci_high": 0.728929
           },
           "abstention_accuracy": {
             "n": 6,
-            "mean": 0.333333,
+            "mean": 0.166667,
             "ci_low": 0.0,
-            "ci_high": 0.666667
+            "ci_high": 0.5
           }
         },
         "latency_p95_s": {
           "n": 76,
-          "value": 0.026191,
-          "ci_low": 0.024447,
-          "ci_high": 0.026947
+          "value": 0.02002,
+          "ci_low": 0.015936,
+          "ci_high": 0.022782
         },
         "retrieval_iterations_mean": {
           "n": 76,
-          "mean": 1.052632,
-          "ci_low": 1.013158,
-          "ci_high": 1.105263
+          "mean": 1.026316,
+          "ci_low": 1.0,
+          "ci_high": 1.065789
         },
         "model_calls_mean": {
           "n": 76,
-          "mean": 0.868421,
-          "ci_low": 0.763158,
-          "ci_high": 0.960526
+          "mean": 0.881579,
+          "ci_low": 0.802632,
+          "ci_high": 0.947368
         },
         "peak_vram_gb": null,
         "sufficiency_threshold": 0.5,
@@ -495,8 +495,8 @@
     ],
     "omitted": [
       {
-        "label": "Agentic RAG (threshold 0.3, tuned on dev)",
-        "directory": "results/experiments/threshold/eval_0.3"
+        "label": "Agentic RAG (threshold 0.6, tuned on dev)",
+        "directory": "results/experiments/threshold/eval_0.6"
       }
     ]
   }
