@@ -273,8 +273,21 @@ class TestEvidenceControllerAndRefinement:
         )
         assert not decision.sufficient and decision.next_action == RETRIEVE_AGAIN
         assert decision.missing_numbers == ("2019",)
-        assert MissingTermsRefiner().refine(question, decision, [question]) == ["latency 2019"] or \
-            MissingTermsRefiner().refine(question, decision, [question])
+        # With at most two covered terms, the refined query ("latency 2019") has
+        # the question's own term set, so DD-053's dedup drops it and the loop
+        # stops with no_new_query rather than re-issuing the same retrieval.
+        assert MissingTermsRefiner().refine(question, decision, [question]) == []
+
+    def test_a_missing_number_with_more_anchors_is_refined(self):
+        question = "What was the median indexing latency on the T4 GPU in 2019?"
+        decision = RuleBasedEvidenceController().assess(
+            question, [question],
+            items("Median indexing latency on the T4 GPU was 4 seconds in 2021."), True,
+        )
+        assert decision.missing_numbers == ("2019",)
+        assert MissingTermsRefiner().refine(question, decision, [question]) == [
+            "median indexing 2019"
+        ]
 
     def test_insufficient_without_budget_abstains(self):
         decision = RuleBasedEvidenceController().assess(
@@ -367,7 +380,11 @@ class TestEveryLoopStopsAtItsCap:
         bounds = result.metadata["agent_trace"]["bounds"]
         assert bounds["max_regenerations"] == cap
         assert bounds["regenerations_used"] <= cap
-        assert verifier.calls == bounds["regenerations_used"] + 1
+        # Every generation is verified except one that abstained: a refusal has
+        # no claims to check (DD-054), and the loop stops on it.
+        generations = result.metadata["agent_trace"]["generations"]
+        assert len(generations) == bounds["regenerations_used"] + 1
+        assert verifier.calls == sum(1 for g in generations if not g["abstained"])
         assert result.answer == ABSTENTION_SENTENCE
         assert result.metadata["abstention_source"] in ("verifier", "generator")
 
