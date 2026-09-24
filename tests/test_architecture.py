@@ -70,7 +70,7 @@ class TestLayerBoundaries:
     )
     def test_downstream_layers_do_not_import_a_pdf_library(self, path):
         imported = _imports(path)
-        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
             assert banned not in imported, (
                 f"{path.name} imports {banned}. PDF handling belongs in the "
                 "ingestion layer."
@@ -129,7 +129,7 @@ class TestEvaluationLayerBoundaries:
     @pytest.mark.parametrize("path", _modules("evaluation"), ids=lambda p: p.name)
     def test_the_harness_does_not_import_a_pdf_library(self, path):
         imported = _imports(path)
-        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+        for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
             assert banned not in imported, (
                 f"{path.name} imports {banned}. PDF handling belongs in the "
                 "ingestion layer; the harness reaches it through the pipeline."
@@ -213,7 +213,7 @@ class TestEvaluationLayerBoundaries:
             imported = _imports(path)
             for banned in ("pipeline", "parser", "evaluation", "ingestion"):
                 assert not any(banned in name for name in imported), (path.name, banned)
-            for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf"):
+            for banned in ("pdfplumber", "pdfminer", "pymupdf", "fitz", "pypdf", "pypdfium2", "pytesseract"):
                 assert banned not in imported, (path.name, banned)
 
     def test_baseline_a_still_lacks_every_phase_4_component(self):
@@ -262,7 +262,10 @@ class TestParserSwappability:
             if path.parent.name == "ingestion":
                 continue
             source = path.read_text(encoding="utf-8")
-            for library in ("import pdfplumber", "import pymupdf", "import fitz"):
+            for library in (
+                "import pdfplumber", "import pymupdf", "import fitz",
+                "import pypdfium2", "import pytesseract",
+            ):
                 if library in source:
                     offenders.append(f"{path.relative_to(SRC)} does `{library}`")
         assert not offenders, "\n".join(offenders)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from ..config import IngestionConfig
 from ..errors import EncryptedPDFError, PDFReadError
+from .ocr import OcrEngine
 from .parser_base import (
     BaseParser,
     RawBlock,
@@ -32,8 +33,10 @@ class PyMuPDFParser(BaseParser):
 
     name = "pymupdf"
 
-    def __init__(self, config: IngestionConfig | None = None) -> None:
-        super().__init__(config)
+    def __init__(
+        self, config: IngestionConfig | None = None, ocr_engine: OcrEngine | None = None
+    ) -> None:
+        super().__init__(config, ocr_engine)
 
     # -- backend hook -------------------------------------------------------
 

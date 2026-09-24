@@ -29,10 +29,19 @@ class EncryptedPDFError(IngestionError):
 
 
 class ScannedPDFError(IngestionError):
-    """The PDF carries images but no extractable text layer.
+    """The PDF carries images but no usable text, even after OCR.
 
     Raised instead of returning a near-empty Document, because an empty
-    document silently produces confident nonsense several layers later.
+    document silently produces confident nonsense several layers later. With
+    OCR on (the default, DD-067) it means OCR found too little text as well;
+    with OCR off, that OCR was not tried.
+    """
+
+
+class OCRUnavailableError(IngestionError):
+    """A page needs OCR, but pytesseract or the Tesseract binary is missing.
+
+    Raised rather than indexing the page as empty (DD-067).
     """
 
 

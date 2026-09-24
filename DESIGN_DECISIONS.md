@@ -2556,3 +2556,124 @@ and the interface cannot drift from what is tested.
 Gradio's own dependency tree was not audited licence by licence. It is an
 optional, Colab-only extra and is never imported by the library outside
 `ui.py`. NOTICE says so.
+
+---
+
+# DD-067 — OCR Is On by Default, for Pages With No Text Layer Only
+
+**Status:** Accepted. Issue #19.
+
+### Decision
+
+The brief says "any uploaded PDF", and scanned PDFs are PDFs. So OCR is a core
+feature, not an option.
+
+**Configuration.** `IngestionConfig` gains three fields:
+
+| Field | Default |
+| --- | --- |
+| `ocr` | `True` |
+| `ocr_languages` | `"eng"` |
+| `ocr_resolution` | 300 DPI |
+
+Every preset, `offline()` included, inherits `ocr=True`, and a test checks all
+three presets. `describe()` records `ocr`, so it appears in every run's
+`config.json`. The CLI's `--no-ocr` turns it off, for speed or to reproduce
+the old refusal.
+
+**Which pages.**
+* A page is OCR'd when its extracted text is empty and it carries at least one
+  image. That covers fully scanned PDFs and the scanned pages of an otherwise
+  digital one.
+* Pages with a text layer are never OCR'd, however short that layer is.
+
+**How.**
+* The page is rendered with the existing pdfplumber → pypdfium2 path
+  (`render_page_images` in `src/ingestion/render.py`). There is no PyMuPDF,
+  which is AGPL and test-only (DD-033).
+* The image is read by `TesseractOcr` (`src/ingestion/ocr.py`, pytesseract over
+  the Tesseract binary).
+* The recognised text goes through the same character normalization and
+  hyphen joining as extracted text. It is split into paragraph blocks with no
+  font size, so the chunker treats it as body text.
+
+**Recording.**
+* An OCR'd page records `metadata["ocr"] = True` and the engine's name.
+* The document records `ocr_pages`.
+* A chunk drawn from an OCR'd page records `ocr: True`, which is `meta_ocr` in
+  records.
+* The keys are added only when OCR ran, so a text PDF's pages, document and
+  chunks are exactly what they were.
+
+**Missing engine.** If a page needs OCR and pytesseract or the binary is
+missing, `OCRUnavailableError` is raised. Its message gives:
+* `apt-get install -y tesseract-ocr` for Colab/Debian, plus brew and Windows;
+* `pip install pytesseract`;
+* `--no-ocr`.
+
+A document is never returned with the page silently empty. The check runs only
+when a page needs OCR, so text PDFs never import pytesseract.
+
+**`ScannedPDFError` stays.** It now has two messages:
+* **OCR on:** OCR ran but the document is still near-empty. The message names
+  the likely causes: faint, handwritten, or another language, with
+  `ocr_languages`.
+* **OCR off:** OCR was not tried, and the message says how to turn it on.
+
+**Confinement.** pytesseract and pypdfium2 join the libraries
+`tests/test_architecture.py` confines to `src/ingestion/`.
+
+### Stored results are unaffected by this DD alone
+
+`tests/test_ocr.py::TestTextPagesAreNeverOcrd` parses each of the five
+benchmark PDFs twice:
+* once with OCR on and an engine that fails the test if called;
+* once with OCR off.
+
+The two parses have identical pages, blocks, metadata and document metadata.
+No benchmark page lacks a text layer, so OCR never runs on the benchmark.
+
+The configuration fingerprint does change, because it hashes every field.
+Results are regenerated under DD-069 regardless.
+
+### Cost, measured offline on this machine
+
+The rendering half of OCR at 300 DPI, 5 pages × 3 repeats, on this CPU
+(Intel64 Family 6 Model 154, Python 3.13):
+
+| Page | Median per page | Image |
+| --- | ---: | --- |
+| an image-only A4 page (test fixture) | 0.127 s | 2480 × 3509 px |
+| a text A4 page (`doc5.pdf`), for scale | 0.221 s | 2482 × 3508 px |
+
+**The Tesseract half was not measured here,** because this machine has no
+Tesseract binary. The notebook's scanned-PDF demo prints the measured seconds
+per OCR'd page on Colab. That figure, not an estimate, is what the Colab run
+reports. For a text PDF the cost is zero: nothing is rendered.
+
+### Tests
+
+`tests/test_ocr.py` uses a fake engine, so the suite runs without Tesseract.
+It covers:
+* a fully scanned PDF;
+* a mixed PDF, where only page 2 is OCR'd and pages 1 and 3 are identical to an
+  OCR-off parse;
+* chunk `meta_ocr`;
+* OCR that reads nothing;
+* a scanned PDF answered with page citations through the pipeline;
+* missing pytesseract;
+* a missing binary.
+
+One test runs the real Tesseract on a rendered page, and it is skipped where
+the binary is absent, as it is here. The old scanned-PDF tests now use
+`--no-ocr` / `ocr=False`.
+
+### Limitations
+
+* **A page with a short text layer** (a stamped page number over a scanned
+  image) is not OCR'd, because pages with a text layer never are. Such a
+  document may still be refused as scanned, with the remedy in the message.
+* **Text drawn as vector outlines** (no image, no text layer) is not OCR'd. It
+  fails as `EmptyDocumentError`, as before.
+* **OCR text has no font sizes,** so headings on scanned pages are found only by
+  numbering or capitals.
