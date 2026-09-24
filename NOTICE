@@ -42,6 +42,9 @@ on 2026-09-24.
 Development and test only, NOT a runtime dependency:
 
   pytest               MIT
+  nbformat             BSD-3-Clause                 builds the notebooks (DD-068)
+  nbclient             BSD-3-Clause                 executes the notebook in a test
+  ipykernel            BSD-3-Clause                 the kernel nbclient runs
   PyMuPDF              AGPL-3.0 or commercial
 
 PyMuPDF is deliberately excluded from the runtime dependencies. It is used only
