@@ -136,8 +136,13 @@ Rule-based stand-ins throughout; `STATUS.md` section 9.3 has the table.
 comparison table, the error analysis, and a statement for each component on
 whether it earned its cost.
 
-**Status: met on the offline stand-in stack, 2026-09-23.** The model-stack
-re-run remains (`STATUS.md` section 9.5).
+**Status: met on the offline stand-in stack, 2026-09-23; regenerated
+2026-09-24 (DD-069)** after the two defects below were fixed (DD-061, DD-062)
+and the number rule was reviewed on dev (DD-063, no change). The verdicts are
+unchanged: no component earned its cost. The dev-tuned threshold became 0.6 and
+regressed on eval, so it is not kept. The model-stack re-run remains
+(`NEXT_STEPS.md`, `STATUS.md` section 9.6). The bullets below are the
+2026-09-23 record; STATUS.md 9.4 has the regenerated numbers.
 
 * **Seven arms.** DD-057 reconciles "seven" with section 24's six components:
   six arms remove one component each from the agentic system, and the seventh
@@ -157,8 +162,9 @@ re-run remains (`STATUS.md` section 9.5).
 * **Error analysis.** Two defects upstream of every system: the structure
   chunker moves heading text into `chunk.section`, which no retriever,
   generator or agent reads (it hides a content line of `doc1.pdf`), and bare `[n]` bibliography
-  references parsed as evidence markers (q065). Both are recorded and not fixed,
-  because fixing them changes every stored baseline.
+  references parsed as evidence markers (q065). Both were recorded and not fixed
+  in Phase 6, because fixing them changes every stored baseline. Both are fixed
+  since (DD-061, DD-062), and every baseline was regenerated (DD-069).
 * **Comparisons.** 168 paired contrasts in Phase 6, 265 in total.
 
 ---
@@ -198,7 +204,7 @@ project should be willing to publish it.
 | Ground-truth page numbers are wrong | medium | high | verify every page against the rendered PDF; a silent off-by-one looks like a retrieval bug |
 | Small model cannot produce reliable structured output | high | medium | every agent decision needs a deterministic fallback; measure the parse failure rate |
 | Agentic pipeline shows no measurable gain | medium | medium | it is a valid result; the plan already accounts for reporting it |
-| Colab session expires mid-run | high | medium | checkpoint per-question results as they are produced, not at the end |
+| Colab session expires mid-run | high | medium | checkpoint per-question results as they are produced, not at the end: delivered by `run-benchmark --resume` with atomic checkpoints (DD-064) |
 | Peak VRAM exceeds the T4 | medium | high | 4-bit quantisation, or sequential model loading |
 | Judge self-preference inflates results | high | medium | DD-027: deterministic cross-check plus manual inspection of disagreements |
 | Tuning against the evaluation set | medium | high | fixed `split` field; dev set only during development |
