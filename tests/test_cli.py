@@ -64,8 +64,26 @@ class TestAsk:
         )
         assert code == 1
         error = capsys.readouterr().err
-        assert "ScannedPDFError" in error
+        # OCR is on by default (DD-067): without Tesseract the error says how to
+        # install it; with it, a blank scan is still refused as unreadable.
+        assert "OCRUnavailableError" in error or "ScannedPDFError" in error
         assert "ocr" in error.lower()
+
+    def test_no_ocr_refuses_a_scanned_pdf_and_names_the_flag(self, tmp_path, capsys):
+        code = main(
+            [
+                "ask",
+                "--pdf",
+                _pdf(tmp_path, pdfs.scanned_pdf(3)),
+                "--question",
+                "anything",
+                "--offline",
+                "--no-ocr",
+            ]
+        )
+        assert code == 1
+        error = capsys.readouterr().err
+        assert "ScannedPDFError" in error and "OCR is switched off" in error
 
 
 class TestValidateBenchmark:

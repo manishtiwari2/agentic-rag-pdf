@@ -25,6 +25,7 @@ _BRACKET = re.compile(r"\[([^\[\]]{1,60})\]")
 #: brackets -- "[see the appendix]" -- is left alone.
 _MARKER_GROUP = re.compile(r"^\s*[Cc]?\s*\d+\s*(?:[,;]\s*[Cc]?\s*\d+\s*)*$")
 _NUMBER = re.compile(r"\d+")
+_PREFIX = re.compile(r"[Cc]")
 #: Page references the model invented. It was shown no page numbers, so any of
 #: these is fabricated. Counted for reporting, not trusted.
 _FABRICATED_PAGE = re.compile(r"\b(?:on|see|in|at|from)?\s*pages?\s*\d+", re.IGNORECASE)
@@ -105,8 +106,15 @@ def resolve_citations(
     Recognises ``[C1]``, ``[C1, C2]``, ``[C1;C2]``, ``[c1]`` and the bare ``[1]``
     that small models produce when they drop the prefix. Bracketed prose --
     ``[see the appendix]`` -- is left alone.
+
+    A bare group is a marker only if that exact bracketed token is not already
+    in the evidence text. Source text carries its own bibliography references
+    ("shrinking[3]"), and an answer that copies one is quoting, not citing
+    block 3 (DD-062). A prefixed ``[C3]`` never occurs in source text, so it is
+    always a marker.
     """
     by_number = {item.number: item for item in evidence}
+    source_text = "\n".join(item.text for item in evidence)
     citations: list[Citation] = []
     dropped: list[int] = []
     seen: set[int] = set()
@@ -114,6 +122,8 @@ def resolve_citations(
     def rewrite(match: re.Match[str]) -> str:
         inner = match.group(1)
         if not _MARKER_GROUP.match(inner):
+            return match.group(0)
+        if not _PREFIX.search(inner) and match.group(0) in source_text:
             return match.group(0)
         valid: list[int] = []
         for number in (int(n) for n in _NUMBER.findall(inner)):

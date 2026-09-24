@@ -46,11 +46,15 @@ class TestIndexing:
         with pytest.raises(IndexNotBuiltError, match="index"):
             DenseRAGPipeline(offline_config).ask("anything")
 
-    def test_scanned_pdf_fails_at_indexing(self, offline_config, tmp_path):
+    def test_scanned_pdf_with_ocr_off_fails_at_indexing(self, offline_config, tmp_path):
         path = tmp_path / "scan.pdf"
         path.write_bytes(pdfs.scanned_pdf(3))
-        with pytest.raises(ScannedPDFError, match="OCR|ocr"):
-            DenseRAGPipeline(offline_config).index(path)
+        config = dataclasses.replace(
+            offline_config,
+            ingestion=dataclasses.replace(offline_config.ingestion, ocr=False),
+        )
+        with pytest.raises(ScannedPDFError, match="OCR is switched off"):
+            DenseRAGPipeline(config).index(path)
 
 
 class TestAnswering:

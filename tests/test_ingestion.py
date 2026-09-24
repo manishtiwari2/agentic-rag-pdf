@@ -60,12 +60,13 @@ class TestEmptyPages:
 
 
 class TestFailureModes:
-    def test_scanned_pdf_raises_with_an_actionable_message(self, parser):
+    def test_scanned_pdf_with_ocr_off_raises_with_an_actionable_message(self, make_parser):
         with pytest.raises(ScannedPDFError) as excinfo:
-            parser.parse_bytes(pdfs.scanned_pdf(3), "scan.pdf")
+            make_parser(ocr=False).parse_bytes(pdfs.scanned_pdf(3), "scan.pdf")
         message = str(excinfo.value)
         assert "scanned" in message.lower() or "image-only" in message.lower()
-        assert "ocr" in message.lower()  # says what to do about it
+        assert "OCR is switched off" in message  # says why nothing was read
+        assert "--no-ocr" in message  # and what to do about it
         assert "3 of 3 pages" in message  # says what it saw
 
     def test_encrypted_pdf_raises_without_a_password(self, parser):

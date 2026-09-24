@@ -1,0 +1,14 @@
+# Everything the Colab notebook needs: the model stack, the chat interface and OCR.
+#
+# Install in Colab, where the GPU is. OCR also needs the Tesseract binary, which
+# pip cannot install:
+#
+#   apt-get install -y tesseract-ocr     # Apache-2.0
+#
+# The notebook runs that line before this file. Every licence below is
+# permissive, like the rest of the chain (DD-033, NOTICE).
+
+-r requirements-models.txt
+
+gradio>=5.0,<7          # Apache-2.0  (chat interface, src/chat/ui.py; DD-066)
+pytesseract>=0.3.10     # Apache-2.0  (OCR for scanned pages, src/ingestion; DD-067)

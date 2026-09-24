@@ -223,3 +223,32 @@ class TestTheFinalReport:
                 encoding="utf-8"
             ), name
         assert set(paths) == {"final_table", "ablations", "error_analysis", "markdown"}
+
+
+class TestTheStackNote:
+    """The report says which stack it measured, read from the runs (DD-069).
+
+    ``final-table --root model_stack`` must not print the offline caveat over
+    model-stack numbers, nor an offline report claim the model stack.
+    """
+
+    def test_the_stored_runs_are_labelled_offline(self):
+        assert report.stack_note(ROOT) == report.OFFLINE_NOTE
+
+    def test_a_model_stack_root_names_its_models(self, tmp_path):
+        run = tmp_path / "results" / "agentic"
+        run.mkdir(parents=True)
+        (run / "config.json").write_text(
+            '{"generation_model": "Qwen/Qwen3-4B-Instruct-2507", "quantization": "4bit",'
+            ' "embedding_model": "BAAI/bge-m3", "reranker_model": "BAAI/bge-reranker-v2-m3",'
+            ' "planner": "llm", "evidence_controller": "llm", "verifier": "llm"}',
+            encoding="utf-8",
+        )
+        note = report.stack_note(tmp_path)
+        assert note.startswith("Model stack: Qwen/Qwen3-4B-Instruct-2507 (4bit)")
+        assert "BAAI/bge-m3" in note and "One greedy run" in note
+        assert "Offline" not in note
+
+    def test_the_tuned_arm_is_the_one_chosen_on_dev(self):
+        assert report.TUNED_DIRECTORY == "results/experiments/threshold/eval_0.6"
+        assert (ROOT / report.TUNED_DIRECTORY / "per_question.json").exists()

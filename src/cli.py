@@ -110,8 +110,17 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
     if threshold is not None:
         agents = replace(agents, sufficiency_threshold=threshold)
 
+    ingestion = config.ingestion
+    if getattr(args, "no_ocr", False):
+        ingestion = replace(ingestion, ocr=False)
+
     return replace(
-        config, chunking=chunking, retrieval=retrieval, reranking=reranking, agents=agents
+        config,
+        ingestion=ingestion,
+        chunking=chunking,
+        retrieval=retrieval,
+        reranking=reranking,
+        agents=agents,
     )
 
 
@@ -301,7 +310,19 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--chunk-overlap", type=int)
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--json", action="store_true", help="Emit a JSON record.")
+    _add_ocr(parser)
     _add_system(parser)
+
+
+def _add_ocr(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help=(
+            "Do not OCR pages that have no text layer (DD-067). Faster, but a "
+            "scanned PDF is then refused and a scanned page indexed as empty."
+        ),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -354,10 +375,20 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("--chunk-size", type=int)
     bench.add_argument("--chunk-overlap", type=int)
     bench.add_argument("--top-k", type=int)
+    _add_ocr(bench)
     bench.add_argument(
         "--split", choices=["dev", "eval"], help="Score one split only."
     )
     bench.add_argument("--limit", type=int, help="Stop after N questions.")
+    bench.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Keep the records already in --out and answer only the remaining "
+            "questions. Refused if they were produced by a different "
+            "configuration (DD-064)."
+        ),
+    )
     bench.add_argument(
         "--judge",
         action="store_true",
@@ -463,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
                 judge=judge,
                 skip_validation=args.skip_validation,
                 progress=_report,
+                resume=args.resume,
             )
         except RAGError as exc:
             print(f"{type(exc).__name__}: {exc}", file=sys.stderr)

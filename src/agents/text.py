@@ -33,6 +33,9 @@ _STOPWORDS: frozenset[str] = frozenset(
 _NUMBER = re.compile(r"^\d+(?:\.\d+)*$")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _MARKER = re.compile(r"\[[Cc]?\s*\d+(?:\s*[,;]\s*[Cc]?\s*\d+)*\]")
+#: The only form ``resolve_citations`` emits. A bare ``[3]`` still in a resolved
+#: answer is source text the answer quoted, not a citation (DD-062).
+_CANONICAL_MARKER = re.compile(r"\[C\d+(?:, C\d+)*\]")
 
 
 def content_terms(text: str) -> list[str]:
@@ -80,7 +83,7 @@ def sentences(text: str) -> list[str]:
 def cited_numbers(sentence: str) -> list[int]:
     """The evidence numbers a sentence's markers point at, in order."""
     found: list[int] = []
-    for group in _MARKER.findall(sentence):
+    for group in _CANONICAL_MARKER.findall(sentence):
         for number in re.findall(r"\d+", group):
             if int(number) not in found:
                 found.append(int(number))

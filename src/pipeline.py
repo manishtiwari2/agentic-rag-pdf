@@ -54,7 +54,7 @@ from .agents.verifier import (
 )
 from .chunking.base import Chunk, build_chunker
 from .config import RAGConfig
-from .errors import ConfigurationError, IndexNotBuiltError
+from .errors import ConfigurationError, IndexNotBuiltError, IngestionError
 from .generation.backends import LLMBackend
 from .generation.citations import Citation
 from .generation.evidence import EvidenceItem, build_evidence
@@ -201,6 +201,7 @@ class _RetrieveThenGenerate:
         self._retriever = self._build_retriever()
         self._generator = GroundedGenerator(self.config.generation)
         self.document: Document | None = None
+        self.documents: tuple[Document, ...] = ()
         self.chunks: tuple[Chunk, ...] = ()
         self.index_stats: dict[str, object] = {}
 
@@ -225,6 +226,7 @@ class _RetrieveThenGenerate:
 
         self._retriever.index(chunks)
         self.document = document
+        self.documents = (document,)
         self.chunks = tuple(chunks)
         self.index_stats = {
             "document_id": document.document_id,
@@ -243,9 +245,68 @@ class _RetrieveThenGenerate:
         }
         return document
 
+    def index_documents(
+        self, pdf_paths: Sequence[str | os.PathLike[str]], on_error: Any = None
+    ) -> list[Document]:
+        """Parse, chunk and index several PDFs into one searchable index.
+
+        For the chat interface, which accepts more than one upload. ``index``
+        is left exactly as it was, so the benchmark (one document at a time)
+        is unaffected. Chunk ids carry the document id, so chunks from
+        different files never collide. With ``on_error``, a file that fails to
+        parse is reported as ``on_error(path, exc)`` and skipped; without it,
+        the error propagates.
+        """
+        started = time.perf_counter()
+        documents: list[Document] = []
+        chunks: list[Chunk] = []
+        for path in pdf_paths:
+            try:
+                document = self._parser.parse(path)
+            except IngestionError as exc:
+                if on_error is None:
+                    raise
+                on_error(path, exc)
+                continue
+            documents.append(document)
+            chunks.extend(self._chunker.chunk(document))
+        if not chunks:
+            return documents
+        self._retriever.index(chunks)
+        self.document = documents[0]
+        self.documents = tuple(documents)
+        self.chunks = tuple(chunks)
+        self.index_stats = {
+            "documents": [
+                {
+                    "document_id": d.document_id,
+                    "source_name": d.source_name,
+                    "pages": d.page_count,
+                    "ocr_pages": [p.page_number for p in d.pages if p.metadata.get("ocr")],
+                    "chunks": sum(1 for c in chunks if c.document_id == d.document_id),
+                }
+                for d in documents
+            ],
+            "chunks": len(chunks),
+            "chunk_strategy": self._chunker.name,
+            "index": self._retriever.index_name,
+            "index_s": round(time.perf_counter() - started, 3),
+            **self.config.describe(),
+        }
+        return documents
+
     @property
     def is_indexed(self) -> bool:
         return self._retriever.is_indexed
+
+    @property
+    def backend(self) -> LLMBackend:
+        """The generation backend, for layers above the pipeline that need the model.
+
+        Shared, never duplicated: a conversation layer rewriting follow-ups asks
+        the model the generator already loaded (ARCHITECTURE.md section 21).
+        """
+        return self._generator.backend
 
     # -- querying -----------------------------------------------------------
 

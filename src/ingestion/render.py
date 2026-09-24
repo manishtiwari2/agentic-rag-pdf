@@ -20,6 +20,33 @@ import os
 from ..errors import PDFReadError
 
 
+def render_page_images(
+    data: bytes,
+    page_numbers: list[int],
+    *,
+    resolution: int = 300,
+    password: str | None = None,
+) -> dict[int, object]:
+    """Render 1-based pages of an in-memory PDF to Pillow images, for OCR (DD-067).
+
+    Opens the file once for all pages. Uses the same pdfplumber -> pypdfium2
+    path as ``render_page_png``, so OCR adds no PDF library.
+    """
+    try:
+        import pdfplumber
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise PDFReadError(
+            "pdfplumber is required to render a page for OCR but is not "
+            "installed. Install it with `pip install pdfplumber`."
+        ) from exc
+
+    with pdfplumber.open(io.BytesIO(data), password=password or "") as pdf:
+        return {
+            number: pdf.pages[number - 1].to_image(resolution=resolution).original
+            for number in page_numbers
+        }
+
+
 def render_page_png(
     path: str | os.PathLike[str],
     page_number: int,

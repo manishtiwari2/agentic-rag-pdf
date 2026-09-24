@@ -7,6 +7,11 @@ instead of being guessed, and a refusal that is recognised as a refusal.
 
 from __future__ import annotations
 
+import dataclasses
+import json
+import pathlib
+import re
+
 import pytest
 
 from src.chunking.base import Chunk
@@ -153,6 +158,52 @@ class TestMarkerSyntax:
         assert resolution.citations == ()
         assert resolution.dropped_markers == ()
         assert "[the appendix]" in resolution.answer  # and is left in place
+
+
+def _evidence_with(text: str):
+    retrieved = _retrieved()
+    retrieved[0] = dataclasses.replace(
+        retrieved[0], chunk=dataclasses.replace(retrieved[0].chunk, text=text)
+    )
+    return build_evidence(retrieved, GenerationConfig())
+
+
+class TestBareBracketsInSourceText:
+    """A bare [n] the evidence itself contains is quoted text, not a marker (DD-062)."""
+
+    SOURCE = "Transistors kept shrinking[3]. Leakage then rose sharply."
+
+    def test_a_copied_bibliography_reference_cites_nothing(self):
+        evidence = _evidence_with(self.SOURCE)
+        resolution = resolve_citations("Transistors kept shrinking[3]. [C1]", evidence)
+        assert [c.evidence_number for c in resolution.citations] == [1]
+        assert "shrinking[3]." in resolution.answer
+        assert resolution.dropped_markers == ()
+
+    def test_a_bare_marker_absent_from_the_evidence_still_resolves(self):
+        evidence = _evidence_with(self.SOURCE)
+        resolution = resolve_citations("Leakage rose sharply [1].", evidence)
+        assert [c.evidence_number for c in resolution.citations] == [1]
+        assert resolution.answer == "Leakage rose sharply [C1]."
+
+    def test_a_prefixed_marker_is_always_a_marker(self):
+        evidence = _evidence_with("Scaling cited [C3] in a footnote.")
+        resolution = resolve_citations("Scaling slowed [C3].", evidence)
+        assert [c.evidence_number for c in resolution.citations] == [3]
+
+    def test_stored_answers_never_contain_a_bare_marker(self):
+        # SCORE_COMPATIBLE_VERSIONS relies on this: before DD-062 the resolver
+        # rewrote or removed every bare group, so citation completeness scores
+        # every stored record as it did.
+        bare = re.compile(r"\[\s*\d+(?:\s*[,;]\s*\d+)*\s*\]")
+        stored = sorted(pathlib.Path("results").rglob("per_question.json"))
+        if not stored:
+            pytest.skip("no stored results")
+        for path in stored:
+            for record in json.loads(path.read_text(encoding="utf-8")):
+                scoring = record.get("metrics", {}).get("scoring_rules_version")
+                if scoring == "2026-09-23.2":
+                    assert not bare.search(record.get("answer") or ""), (path, record["question_id"])
 
 
 class TestCitationResolution:
