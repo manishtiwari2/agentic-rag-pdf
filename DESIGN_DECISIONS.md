@@ -2789,3 +2789,80 @@ and NOTICE. gradio and pytesseract become the `colab` extra in
 * **The tag does not exist yet.** The notebooks pin `v0.7-gpu-run`. Until that
   tag is pushed, a fresh Colab clone fails at step 1 with git's "Remote branch
   not found".
+
+---
+
+# DD-069 — Offline Results Regenerated After DD-061 to DD-063; Threshold Re-Chosen on Dev, Eval Looked at a Second Time
+
+**Status:** Part 1 was written and committed with the dev results, before the eval
+run. Part 2, the eval outcome, is appended after it. Issue #21.
+
+> **Offline stand-in stack throughout**, as in STATUS.md 9.1-9.4: hashing
+> embedder, scripted extractive generator, term-overlap reranker and rule-based
+> agents. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
+
+### Why everything was regenerated
+
+DD-061 changes chunk text on every benchmark PDF, and DD-062 changes citation
+resolution. Every stored result therefore measured a system that no longer
+exists. DD-063 changed no code, and DD-067's OCR provably changes nothing for
+the benchmark PDFs (`tests/test_ocr.py`).
+
+The following were re-run with the commands in the previous `NEXT_STEPS.md`
+step 1e:
+* `results/baseline`, `hybrid` and `agentic`;
+* all seven ablation arms (DD-057);
+* all eleven comparisons;
+* the dev threshold sweep and the dev iteration-cap sweep.
+
+**One arm was resumed.** `ablations/refinement_off` stopped at question 54 of
+76 when Windows refused a checkpoint rewrite (fixed: result files are now
+written atomically, with retries, DD-064). It was finished with
+`run-benchmark --resume`, which carried over the 54 stored records under the
+same configuration fingerprint. Its `results.json` records
+`resumed_records: 54`.
+
+### Part 1 — the threshold, re-chosen on dev by DD-058's rule, unchanged
+
+`--split dev`, 33 questions, dev-only numbers:
+
+| threshold | 0.2 | 0.3 | 0.4 | 0.5 | **0.6** |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| accuracy (all) | 0.242 | 0.273 | 0.273 | 0.273 | **0.303** |
+| citation any-correct | 0.667 | 0.633 | 0.633 | 0.633 | **0.533** |
+| over-abstention | 0.067 | 0.100 | 0.133 | 0.133 | **0.233** |
+
+**The rule chooses 0.6.** DD-058's first criterion is the highest dev accuracy
+(all), and 0.6 has it alone, 0.303. No tie-break applies.
+
+This choice is recorded as the rule makes it, not as it looks. 0.6 also has the
+lowest dev citation any-correct and the highest over-abstention of the five
+values. The accuracy lead is one question in 33. A rule that ranks accuracy
+first chose a threshold that refuses more answerable questions. The eval run
+below will show whether that holds up. Changing the rule after seeing this
+table would be the tuning-on-the-result that DD-058 exists to prevent.
+
+The previous choice, 0.3 (DD-059), was made on the pre-DD-061 system and is
+superseded. The code default stays 0.5, and 0.6 exists only as the tuned arm.
+
+**Iteration cap (descriptive, DD-058):**
+
+| `--max-iterations` | 1 | 2 | 3 |
+| --- | ---: | ---: | ---: |
+| accuracy (all) | 0.273 | 0.273 | 0.273 |
+| citation any-correct | 0.600 | 0.633 | 0.633 |
+| over-abstention | 0.167 | 0.133 | 0.133 |
+
+A cap of 3 is identical to 2 on these figures, and the cap stays 2, as in
+DD-059.
+
+### Disclosure (EVALUATION_PROTOCOL.md 5.2)
+
+**Eval is about to be looked at a second time.** The first time was DD-059's
+0.3 run on the old system. Two consequences follow:
+* this eval run is not a clean first look;
+* the DD-061 to DD-063 defects it measures were themselves found partly by
+  inspecting eval failures (q065, q069 in DD-060).
+
+The threshold value was chosen on dev alone. The eval run is made once, at 0.6,
+and it is reported whatever it shows.
