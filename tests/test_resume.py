@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import pathlib
 
 import pytest
@@ -132,6 +133,25 @@ class TestResume:
                 out_dir=tmp_path, config=_config(), split="eval", limit=3, resume=True,
                 skip_validation=True,
             )
+
+    def test_a_briefly_locked_result_file_is_retried_not_fatal(self, tmp_path, monkeypatch):
+        # Windows and Drive can hold a file open for a moment; the checkpoint
+        # rewrites it after every question, so one refusal must not end a run.
+        from src.evaluation import benchmark
+
+        real, failures = os.replace, []
+
+        def flaky(src, dst):
+            if not failures:
+                failures.append(dst)
+                raise OSError(22, "Invalid argument")
+            real(src, dst)
+
+        monkeypatch.setattr(benchmark.os, "replace", flaky)
+        monkeypatch.setattr(benchmark.time, "sleep", lambda s: None)
+        path = benchmark.write_checkpoint(tmp_path, [{"question_id": "q001"}])
+        assert failures and json.loads(path.read_text(encoding="utf-8")) == [{"question_id": "q001"}]
+        assert not path.with_name(path.name + ".tmp").exists()
 
     def test_resume_with_nothing_stored_is_a_fresh_run(self, tmp_path):
         run = run_benchmark_cli(

@@ -32,6 +32,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import platform
 import sys
 import time
@@ -852,12 +853,31 @@ def summarize_by(scores: Sequence[QuestionScore], key: str) -> dict[str, Any]:
     return {name: summarize(group) for name, group in sorted(groups.items())}
 
 
+#: Attempts at replacing a result file another process briefly holds open.
+_WRITE_ATTEMPTS = 5
+
+
 def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(
-        json.dumps(payload, indent=2, default=str) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    """Write a result file atomically, retrying a transient lock (DD-064).
+
+    The checkpoint rewrites ``per_question.json`` after every question, so a
+    run opens it hundreds of times. On Windows, and on a Drive-backed Colab
+    folder, another process (an indexer, a sync client, an editor) can hold it
+    for a moment and the open fails. Writing a sibling file and renaming it
+    over the target also means a crash mid-write can never leave a truncated
+    file for ``--resume`` to trip over.
+    """
+    text = json.dumps(payload, indent=2, default=str) + "\n"
+    temporary = path.with_name(path.name + ".tmp")
+    for attempt in range(_WRITE_ATTEMPTS):
+        try:
+            temporary.write_text(text, encoding="utf-8", newline="\n")
+            os.replace(temporary, path)
+            return
+        except OSError:
+            if attempt == _WRITE_ATTEMPTS - 1:
+                raise
+            time.sleep(0.2 * (attempt + 1))
 
 
 def _write_summary_csv(path: Path, summary: dict[str, Any]) -> None:
