@@ -324,6 +324,12 @@ class TestVerifier:
         )
         assert result.status == VERIFICATION_FAILED
 
+    def test_a_quoted_bibliography_reference_is_not_read_as_a_citation(self):
+        # q065 (DD-062): the verbatim passage carries the paper's own "[3]".
+        text = "Transistors kept shrinking[3]. Leakage then rose sharply."
+        result = RuleBasedVerifier().verify("q", f"{text} [C1]", self.evidence(text))
+        assert result.status == VERIFICATION_PASSED
+
     def test_llm_garbage_is_unavailable_never_passed(self):
         result = LLMVerifier(Canned("looks fine to me")).verify("q", "A. [C1]", self.evidence("A."))
         assert result.status == VERIFICATION_UNAVAILABLE and result.verdict is None
