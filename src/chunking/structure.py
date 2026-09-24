@@ -11,7 +11,14 @@ Chunks follow the document's own boundaries instead of a character count:
   at a sentence boundary;
 * overlap is applied only when a chunk was closed because it filled up. Carrying
   a tail across a heading boundary would label text with the wrong section, and
-  the section label is metadata DD-010 requires to stay correct.
+  the section label is metadata DD-010 requires to stay correct;
+* every chunk's text starts with its section heading, not only the chunk the
+  heading opened. ``chunk.section`` is read only by citation labels; the
+  embedder, BM25, the reranker, the generator and every agent read
+  ``chunk.text``, so a heading kept only in ``section`` is invisible to all of
+  them (DD-061). The repeated heading counts toward ``chunk_size``;
+* a table longer than ``max_table_chars`` is split into row groups, each
+  repeating the header rows, rather than cut off (DD-061).
 
 Page attribution is exact rather than approximate: each piece of text carries
 the offsets at which each page's contribution begins, so a chunk assembled from
@@ -19,6 +26,8 @@ the end of page 3 and the start of page 4 reports both.
 """
 
 from __future__ import annotations
+
+import re
 
 from ..config import ChunkingConfig
 from ..ingestion.document import Document
@@ -56,23 +65,23 @@ class StructureAwareChunker(Chunker):
                 state.flush()
                 state.push_heading(segment)
                 continue
-            for piece in self._split_oversized(segment):
+            for piece in self._split_oversized(segment, state.room()):
                 state.add(piece)
-        state.flush()
+        state.flush(final=True)
 
         chunks = self._materialize(document, state.pending)
         return chunks or self._fallback_single_chunk(document)
 
     # -- splitting ----------------------------------------------------------
 
-    def _split_oversized(self, segment: Segment) -> list[Segment]:
+    def _split_oversized(self, segment: Segment, size: int) -> list[Segment]:
         """Split a segment that is too large to ever fit in a chunk.
 
+        ``size`` is the room a chunk has once its section heading is counted.
         Terminates by construction: each step either advances to a sentence
         boundary, to a word boundary, or -- if a single unbroken run exceeds the
-        chunk size -- by exactly ``chunk_size`` characters.
+        room -- by exactly ``size`` characters.
         """
-        size = self.config.chunk_size
         text = segment.text
         if len(text) <= size:
             return [segment]
@@ -130,14 +139,20 @@ class _PendingChunk:
         section: str | None,
         section_path: str,
         kind: str,
+        prefix: str | None = None,
     ) -> None:
         self.pieces = pieces
         self.section = section
         self.section_path = section_path
         self.kind = kind
+        #: Heading text repeated at the head of the chunk (DD-061). It is a
+        #: label, not evidence, so it contributes no page to ``pages()``.
+        self.prefix = prefix
 
     def text(self) -> str:
-        return "\n\n".join(piece.text.strip() for piece in self.pieces if piece.text.strip())
+        parts = [self.prefix] if self.prefix else []
+        parts.extend(piece.text.strip() for piece in self.pieces if piece.text.strip())
+        return "\n\n".join(parts)
 
     def pages(self) -> tuple[int, ...]:
         return tuple(sorted({page for piece in self.pieces for page in piece.pages}))
@@ -171,6 +186,22 @@ class _BuildState:
     def section_path(self) -> str:
         return " > ".join(title for _, title in self.stack)
 
+    def prefix(self) -> str | None:
+        """The heading a new chunk must repeat, unless a heading already leads it."""
+        if self.buffer and self.buffer[0].kind is SegmentKind.HEADING:
+            return None
+        return self.section
+
+    def room(self) -> int:
+        """Characters left for content in a chunk that starts now.
+
+        Never less than half the chunk size, so an unusually long heading
+        cannot shrink the pieces to nothing.
+        """
+        prefix = self.prefix()
+        taken = len(prefix) + 2 if prefix else 0
+        return max(self.config.chunk_size - taken, self.config.chunk_size // 2)
+
     def push_heading(self, segment: Segment) -> None:
         while self.stack and self.stack[-1][0] >= segment.level:
             self.stack.pop()
@@ -184,33 +215,42 @@ class _BuildState:
 
     def add(self, segment: Segment) -> None:
         addition = len(segment.text)
-        if self.buffer and self.buffer_chars + addition > self.config.chunk_size:
+        prefix = self.prefix()
+        taken = len(prefix) + 2 if prefix else 0
+        if self.buffer and taken + self.buffer_chars + addition > self.config.chunk_size:
             self.flush(size_triggered=True)
         self.buffer.append(segment)
         self.buffer_chars += addition
 
     def emit_table(self, segment: Segment) -> None:
-        text = segment.text
-        if len(text) > self.config.max_table_chars:
-            text = text[: self.config.max_table_chars].rstrip() + "\n[table truncated]"
-            segment = Segment(
-                text=text, kind=segment.kind, page_offsets=segment.page_offsets
+        # Headings still waiting in the buffer lead the table: when a heading
+        # is followed only by tables, this is the one place its text can reach
+        # a chunk. They are consumed, and the next prose chunk repeats the
+        # section heading instead.
+        if self.buffer:
+            prefix = "\n\n".join(piece.text.strip() for piece in self.buffer)
+            self.buffer = []
+            self.buffer_chars = 0
+        else:
+            prefix = self.section
+        for part in _split_table(segment, prefix, self.config.max_table_chars):
+            self.pending.append(
+                _PendingChunk([part], self.section, self.section_path, "table", prefix)
             )
-        self.pending.append(
-            _PendingChunk([segment], self.section, self.section_path, "table")
-        )
 
-    def flush(self, size_triggered: bool = False) -> None:
+    def flush(self, size_triggered: bool = False, final: bool = False) -> None:
         if not self.buffer:
             return
         # A buffer holding nothing but headings is not a chunk; keep the
-        # headings so they lead the next chunk that has content.
-        if all(piece.kind is SegmentKind.HEADING for piece in self.buffer):
+        # headings so they lead the next chunk that has content. At the end of
+        # the document there is no next chunk, so they become one rather than
+        # disappear.
+        if not final and all(piece.kind is SegmentKind.HEADING for piece in self.buffer):
             return
 
         pieces = list(self.buffer)
         self.pending.append(
-            _PendingChunk(pieces, self.section, self.section_path, "text")
+            _PendingChunk(pieces, self.section, self.section_path, "text", self.prefix())
         )
         self.buffer = []
         self.buffer_chars = 0
@@ -220,6 +260,44 @@ class _BuildState:
             if tail is not None:
                 self.buffer.append(tail)
                 self.buffer_chars = len(tail.text)
+
+
+_TABLE_RULE = re.compile(r"^\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
+
+
+def _split_table(segment: Segment, prefix: str | None, limit: int) -> list[Segment]:
+    """Split a table into row groups that each fit ``limit`` with their header.
+
+    The header is every line up to and including the ``| --- |`` rule, or the
+    first line when there is none. It is repeated in every group, because rows
+    without the header that says what the numbers mean are the reason tables
+    get their own chunk. A single row longer than the limit is kept whole: a
+    chunk over the cap is better than a row cut in half. A table comes from one
+    page, so every group keeps that page.
+    """
+    taken = len(prefix) + 2 if prefix else 0
+    if taken + len(segment.text) <= limit:
+        return [segment]
+
+    lines = segment.text.split("\n")
+    rule = next((i for i, line in enumerate(lines) if _TABLE_RULE.match(line.strip())), 0)
+    header, rows = lines[: rule + 1], lines[rule + 1 :]
+    budget = limit - taken - len("\n".join(header)) - 1
+
+    groups: list[list[str]] = []
+    size = 0
+    for row in rows:
+        if groups and size + 1 + len(row) <= budget:
+            groups[-1].append(row)
+            size += 1 + len(row)
+        else:
+            groups.append([row])
+            size = len(row)
+    page = segment.first_page
+    return [
+        Segment(text="\n".join(header + group), kind=segment.kind, page_offsets=((0, page),))
+        for group in groups
+    ] or [segment]
 
 
 def _overlap_tail(segment: Segment, overlap: int) -> Segment | None:
