@@ -810,7 +810,9 @@ default model stack. It was unblocked by DD-033, which moved the default PDF
 backend from PyMuPDF (AGPL-3.0) to pdfplumber (MIT); the whole runtime
 dependency chain is now permissive — pdfplumber MIT, pdfminer.six MIT,
 pypdfium2 BSD-3-Clause/Apache-2.0, Pillow MIT-CMU, numpy BSD-3-Clause,
-faiss-cpu MIT.
+faiss-cpu MIT. The Colab extras in `requirements-colab.txt` are permissive too:
+gradio (chat interface), pytesseract and the Tesseract engine (OCR), all
+Apache-2.0.
 
 Two licence facts worth stating plainly:
 

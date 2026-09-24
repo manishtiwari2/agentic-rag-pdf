@@ -27,6 +27,18 @@ Optional, for running the open-weight models:
   bitsandbytes         MIT
   sentencepiece        Apache-2.0
 
+Optional, for the Colab notebook's chat interface and OCR (requirements-colab.txt):
+
+  gradio               Apache-2.0                   chat interface (DD-066)
+  pytesseract          Apache-2.0                   OCR wrapper (DD-067)
+  Tesseract OCR        Apache-2.0                   OCR engine, system package
+                                                    (apt-get install tesseract-ocr)
+
+Gradio's own dependency tree is large; its licences were not audited one by one
+and it is never imported outside src/chat/ui.py. Verified for the three entries
+above against the installed distribution metadata and the Tesseract repository
+on 2026-09-24.
+
 Development and test only, NOT a runtime dependency:
 
   pytest               MIT
