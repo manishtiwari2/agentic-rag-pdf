@@ -8,17 +8,17 @@
 
 | System | n | Recall@5 | MRR@10 | Accuracy | Faithfulness | Citation any-correct | Abstention accuracy | P95 latency (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Dense RAG (Baseline A) | 43 | 0.850 [0.725, 0.950] | 0.733 [0.611, 0.848] | 0.116 [0.023, 0.209] | 0.930 [0.837, 1.000] | 0.600 [0.450, 0.750] | 0.000 [0.000, 0.000] | 0.009 [0.007, 0.011] |
-| Hybrid RAG (Baseline B) | 43 | 0.950 [0.875, 1.000] | 0.851 [0.759, 0.933] | 0.186 [0.070, 0.302] | 0.930 [0.837, 1.000] | 0.650 [0.500, 0.775] | 0.000 [0.000, 0.000] | 0.011 [0.009, 0.011] |
-| Agentic RAG (threshold 0.5) | 43 | 0.950 [0.875, 1.000] | 0.849 [0.755, 0.933] | 0.140 [0.047, 0.256] | 0.814 [0.698, 0.930] | 0.525 [0.375, 0.675] | 0.000 [0.000, 0.000] | 0.026 [0.024, 0.027] |
-| Agentic RAG (threshold 0.3, tuned on dev) | 43 | 0.950 [0.875, 1.000] | 0.849 [0.755, 0.933] | 0.140 [0.047, 0.256] | 0.814 [0.698, 0.930] | 0.525 [0.375, 0.675] | 0.000 [0.000, 0.000] | 0.105 [0.026, 0.155] |
+| Dense RAG (Baseline A) | 43 | 0.850 [0.725, 0.950] | 0.740 [0.614, 0.854] | 0.140 [0.047, 0.256] | 0.953 [0.884, 1.000] | 0.625 [0.475, 0.775] | 0.000 [0.000, 0.000] | 0.003 [0.002, 0.003] |
+| Hybrid RAG (Baseline B) | 43 | 0.950 [0.875, 1.000] | 0.854 [0.767, 0.933] | 0.209 [0.093, 0.349] | 0.953 [0.884, 1.000] | 0.675 [0.525, 0.825] | 0.000 [0.000, 0.000] | 0.005 [0.004, 0.005] |
+| Agentic RAG (threshold 0.5) | 43 | 0.950 [0.875, 1.000] | 0.855 [0.766, 0.938] | 0.163 [0.070, 0.279] | 0.907 [0.814, 0.977] | 0.625 [0.475, 0.775] | 0.000 [0.000, 0.000] | 0.020 [0.016, 0.023] |
+| Agentic RAG (threshold 0.6, tuned on dev) | 43 | 0.950 [0.875, 1.000] | 0.855 [0.766, 0.938] | 0.140 [0.047, 0.256] | 0.774 [0.635, 0.890] | 0.525 [0.375, 0.675] | 0.333 [0.000, 1.000] | 0.010 [0.007, 0.017] |
 
 | System | Avg retrieval iterations | Avg model calls | Peak VRAM (GB) |
 | --- | ---: | ---: | ---: |
 | Dense RAG (Baseline A) | null | null | null (no GPU; not measured) |
 | Hybrid RAG (Baseline B) | null | null | null (no GPU; not measured) |
-| Agentic RAG (threshold 0.5) | 1.070 [1.000, 1.163] | 0.907 [0.767, 1.023] | null (no GPU; not measured) |
-| Agentic RAG (threshold 0.3, tuned on dev) | 1.070 [1.000, 1.163] | 0.907 [0.767, 1.023] | null (no GPU; not measured) |
+| Agentic RAG (threshold 0.5) | 1.023 [1.000, 1.070] | 0.907 [0.814, 0.977] | null (no GPU; not measured) |
+| Agentic RAG (threshold 0.6, tuned on dev) | 1.116 [1.023, 1.233] | 0.767 [0.628, 0.884] | null (no GPU; not measured) |
 
 Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000 resamples, seed 42). P95 latency is nearest-rank, with a bootstrap CI of the same statistic. Iterations and model calls are null for the baselines, which report neither (DD-055). Latencies are milliseconds on a stack that loads no weights, and were measured in different sessions.
 
@@ -28,19 +28,19 @@ Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000
 
 | System | n | Recall@5 | MRR@10 | Accuracy | Faithfulness | Citation any-correct | Abstention accuracy | P95 latency (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Dense RAG (Baseline A) | 76 | 0.886 [0.814, 0.957] | 0.736 [0.652, 0.816] | 0.171 [0.092, 0.263] | 0.934 [0.868, 0.987] | 0.643 [0.529, 0.743] | 0.167 [0.000, 0.500] | 0.010 [0.007, 0.011] |
-| Hybrid RAG (Baseline B) | 76 | 0.943 [0.886, 0.986] | 0.827 [0.756, 0.896] | 0.197 [0.105, 0.289] | 0.934 [0.868, 0.987] | 0.671 [0.557, 0.771] | 0.167 [0.000, 0.500] | 0.011 [0.010, 0.011] |
-| Agentic RAG (threshold 0.5) | 76 | 0.929 [0.871, 0.972] | 0.814 [0.741, 0.884] | 0.184 [0.105, 0.276] | 0.803 [0.711, 0.895] | 0.529 [0.414, 0.643] | 0.333 [0.000, 0.667] | 0.026 [0.024, 0.027] |
+| Dense RAG (Baseline A) | 76 | 0.886 [0.814, 0.957] | 0.758 [0.674, 0.841] | 0.184 [0.105, 0.276] | 0.961 [0.908, 1.000] | 0.657 [0.543, 0.757] | 0.000 [0.000, 0.000] | 0.003 [0.002, 0.003] |
+| Hybrid RAG (Baseline B) | 76 | 0.943 [0.886, 0.986] | 0.829 [0.759, 0.897] | 0.224 [0.132, 0.316] | 0.961 [0.908, 1.000] | 0.686 [0.571, 0.786] | 0.000 [0.000, 0.000] | 0.005 [0.005, 0.006] |
+| Agentic RAG (threshold 0.5) | 76 | 0.943 [0.886, 0.986] | 0.820 [0.744, 0.886] | 0.211 [0.118, 0.303] | 0.882 [0.803, 0.947] | 0.629 [0.514, 0.729] | 0.167 [0.000, 0.500] | 0.020 [0.016, 0.023] |
 
 | System | Avg retrieval iterations | Avg model calls | Peak VRAM (GB) |
 | --- | ---: | ---: | ---: |
 | Dense RAG (Baseline A) | null | null | null (no GPU; not measured) |
 | Hybrid RAG (Baseline B) | null | null | null (no GPU; not measured) |
-| Agentic RAG (threshold 0.5) | 1.053 [1.013, 1.105] | 0.868 [0.763, 0.961] | null (no GPU; not measured) |
+| Agentic RAG (threshold 0.5) | 1.026 [1.000, 1.066] | 0.882 [0.803, 0.947] | null (no GPU; not measured) |
 
 Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000 resamples, seed 42). P95 latency is nearest-rank, with a bootstrap CI of the same statistic. Iterations and model calls are null for the baselines, which report neither (DD-055). Latencies are milliseconds on a stack that loads no weights, and were measured in different sessions.
 
-Omitted (no stored run for this split): Agentic RAG (threshold 0.3, tuned on dev)
+Omitted (no stored run for this split): Agentic RAG (threshold 0.6, tuned on dev)
 
 ### Ablations (DD-057 arms, DD-058 rule)
 
@@ -50,14 +50,14 @@ Differences are arm − reference with 95% CIs; a component *helps* when removin
 
 | Arm | Reference | Declared metrics (arm − ref) | Faithfulness / citation (attribution) | Cost added (latency s; model calls) | Answers changed | Verdict |
 | --- | --- | --- | --- | --- | ---: | --- |
-| planner_off | results/agentic | full_recall_at_5_multi_hop_comparison +0.067 [+0.000, +0.200]; accuracy_multi_hop_comparison +0.000 [+0.000, +0.000] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct +0.029 [+0.000, +0.071] | +0.002 [-0.000, +0.003]; +0.013 [+0.000, +0.039] | 4 | did not earn its cost |
-| hybrid_off | results/agentic | recall_at_5 +0.000 [-0.043, +0.043]; mrr_at_10 +0.003 [-0.010, +0.016] | faithfulness -0.013 [-0.039, +0.000]; citation_any_correct -0.014 [-0.043, +0.000] | +0.001 [-0.001, +0.002]; +0.013 [+0.000, +0.039] | 7 | did not earn its cost |
-| reranker_off_agentic | results/agentic | mrr_at_10 -0.011 [-0.067, +0.039]; accuracy_all +0.013 [+0.000, +0.039] | faithfulness +0.015 [-0.023, +0.055]; citation_any_correct -0.014 [-0.057, +0.029] | +0.001 [-0.000, +0.002]; +0.000 [-0.039, +0.039] | 31 | did not earn its cost |
-| refinement_off | results/agentic | over_abstention_rate +0.014 [+0.000, +0.043]; full_recall_at_5 +0.000 [+0.000, +0.000] | faithfulness -0.013 [-0.039, +0.000]; citation_any_correct +0.000 [+0.000, +0.000] | -0.000 [-0.003, +0.002]; +0.026 [+0.000, +0.079] | 1 | did not earn its cost |
-| evidence_controller_off | results/agentic | abstention_accuracy -0.167 [-0.500, +0.000]; over_abstention_rate -0.100 [-0.172, -0.029] | faithfulness +0.105 [+0.039, +0.171]; citation_any_correct +0.086 [+0.029, +0.157] | +0.001 [-0.001, +0.002]; -0.171 [-0.263, -0.092] | 8 | did not earn its cost (removing it improves faithfulness, citation_any_correct) |
-| verification_off | results/agentic | unsupported_answer_rate +0.000 [+0.000, +0.000]; faithfulness +0.026 [+0.000, +0.066] | faithfulness +0.026 [+0.000, +0.066]; citation_any_correct +0.029 [+0.000, +0.071] | -0.000 [-0.002, +0.002]; +0.039 [+0.000, +0.092] | 3 | did not earn its cost |
-| reranker_off (arm 7, Baseline B; corroboration) | results/hybrid | accuracy_all -0.013 [-0.053, +0.026]; faithfulness +0.000 [+0.000, +0.000] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct -0.043 [-0.100, +0.000] | +0.002 [+0.001, +0.003] | 31 | (did not earn its cost, if it decided) |
-| baseline_a_vs_reranker_off (RQ1 corroboration, not an arm) | results/ablations/reranker_off | recall_at_5 -0.043 [-0.114, +0.029] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct +0.014 [-0.029, +0.057] | -0.003 [-0.003, -0.002] | 26 | (did not earn its cost, if it decided) |
+| planner_off | results/agentic | full_recall_at_5_multi_hop_comparison +0.000 [+0.000, +0.000]; accuracy_multi_hop_comparison +0.000 [+0.000, +0.000] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct +0.000 [+0.000, +0.000] | +0.003 [+0.002, +0.004]; +0.000 [+0.000, +0.000] | 5 | did not earn its cost |
+| hybrid_off | results/agentic | recall_at_5 -0.029 [-0.071, +0.000]; mrr_at_10 -0.006 [-0.021, +0.004] | faithfulness +0.013 [+0.000, +0.039]; citation_any_correct +0.000 [-0.043, +0.043] | +0.004 [+0.003, +0.005]; -0.013 [-0.039, +0.000] | 8 | did not earn its cost |
+| reranker_off_agentic | results/agentic | mrr_at_10 -0.023 [-0.078, +0.028]; accuracy_all -0.013 [-0.066, +0.026] | faithfulness +0.013 [+0.000, +0.039]; citation_any_correct +0.000 [-0.071, +0.071] | +0.005 [+0.004, +0.006]; -0.013 [-0.039, +0.000] | 32 | did not earn its cost |
+| refinement_off | results/agentic | over_abstention_rate +0.014 [+0.000, +0.043]; full_recall_at_5 +0.000 [+0.000, +0.000] | faithfulness -0.013 [-0.039, +0.000]; citation_any_correct -0.014 [-0.043, +0.000] | +0.004 [+0.003, +0.004]; +0.013 [+0.000, +0.039] | 1 | did not earn its cost |
+| evidence_controller_off | results/agentic | abstention_accuracy -0.167 [-0.500, +0.000]; over_abstention_rate -0.071 [-0.129, -0.014] | faithfulness +0.079 [+0.026, +0.145]; citation_any_correct +0.057 [+0.014, +0.114] | +0.005 [+0.004, +0.006]; -0.118 [-0.197, -0.053] | 7 | did not earn its cost (removing it improves faithfulness, citation_any_correct) |
+| verification_off | results/agentic | unsupported_answer_rate +0.000 [+0.000, +0.000]; faithfulness +0.000 [+0.000, +0.000] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct +0.000 [+0.000, +0.000] | +0.004 [+0.004, +0.005]; +0.000 [+0.000, +0.000] | 0 | did not earn its cost (inert on this stack) |
+| reranker_off (arm 7, Baseline B; corroboration) | results/hybrid | accuracy_all -0.026 [-0.079, +0.026]; faithfulness +0.000 [+0.000, +0.000] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct -0.029 [-0.086, +0.029] | +0.001 [+0.001, +0.001]; n/a | 34 | (did not earn its cost, if it decided) |
+| baseline_a_vs_reranker_off (RQ1 corroboration, not an arm) | results/ablations/reranker_off | recall_at_5 -0.043 [-0.114, +0.029] | faithfulness +0.000 [+0.000, +0.000]; citation_any_correct +0.000 [-0.043, +0.043] | +0.000 [+0.000, +0.000]; n/a | 22 | (did not earn its cost, if it decided) |
 
 Verdict per component (decided by its agentic arm, DD-058):
 
@@ -66,40 +66,40 @@ Verdict per component (decided by its agentic arm, DD-058):
 * **reranker** — did not earn its cost (arm: reranker_off_agentic)
 * **refinement** — did not earn its cost (arm: refinement_off)
 * **evidence controller** — did not earn its cost (removing it improves faithfulness, citation_any_correct) (arm: evidence_controller_off)
-* **verifier** — did not earn its cost (arm: verification_off)
+* **verifier** — did not earn its cost (inert on this stack) (arm: verification_off)
 
 ### Error categories (section 23)
 
 > Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
 
-| Category | dense | hybrid | agentic | reranker_off (B) | planner_off | hybrid_off | reranker_off_agentic | refinement_off | evidence_controller_off | verification_off | tuned 0.3 (eval only) |
+| Category | dense | hybrid | agentic | reranker_off (B) | planner_off | hybrid_off | reranker_off_agentic | refinement_off | evidence_controller_off | verification_off | tuned 0.6 (eval only) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | system-runtime | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| retrieval | 8 | 4 | 4 | 5 | 4 | 3 | 5 | 4 | 4 | 4 | 2 |
-| reranking | 0 | 0 | 1 | 0 | 0 | 2 | 0 | 0 | 0 | 1 | 0 |
-| context-selection | 1 | 2 | 2 | 2 | 2 | 1 | 1 | 2 | 2 | 2 | 1 |
-| abstention | 9 | 9 | 16 | 9 | 16 | 17 | 16 | 17 | 10 | 15 | 10 |
+| retrieval | 8 | 4 | 4 | 5 | 4 | 4 | 5 | 4 | 4 | 4 | 2 |
+| reranking | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| context-selection | 0 | 1 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 1 | 0 |
+| abstention | 9 | 9 | 13 | 9 | 13 | 12 | 12 | 14 | 9 | 13 | 11 |
 | hallucination | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| citation | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
-| verification | 0 | 0 | 1 | 0 | 1 | 1 | 0 | 1 | 1 | 0 | 1 |
-| generation | 46 | 47 | 39 | 48 | 40 | 39 | 41 | 39 | 46 | 40 | 23 |
-| **failures / n** | 65 / 76 | 63 / 76 | 64 / 76 | 65 / 76 | 64 / 76 | 64 / 76 | 64 / 76 | 64 / 76 | 64 / 76 | 63 / 76 | 38 / 43 |
+| citation | 1 | 1 | 1 | 0 | 1 | 1 | 0 | 1 | 1 | 1 | 1 |
+| verification | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| generation | 46 | 46 | 43 | 48 | 43 | 43 | 46 | 42 | 46 | 43 | 24 |
+| **failures / n** | 64 / 76 | 61 / 76 | 62 / 76 | 63 / 76 | 62 / 76 | 62 / 76 | 63 / 76 | 62 / 76 | 61 / 76 | 62 / 76 | 38 / 43 |
 
 ### Accuracy by question type, hardest first (all 76 questions)
 
 | Question type | n | dense | hybrid | agentic | best |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| ambiguous | 5 | 0.000 | 0.000 | 0.000 | 0.000 |
 | summary | 3 | 0.000 | 0.000 | 0.000 | 0.000 |
 | definition | 8 | 0.125 | 0.125 | 0.125 | 0.125 |
-| explanation | 8 | 0.000 | 0.125 | 0.000 | 0.125 |
-| multi_hop | 7 | 0.143 | 0.000 | 0.000 | 0.143 |
+| explanation | 8 | 0.000 | 0.125 | 0.125 | 0.125 |
+| multi_hop | 7 | 0.143 | 0.143 | 0.143 | 0.143 |
 | table | 7 | 0.143 | 0.143 | 0.143 | 0.143 |
+| unanswerable | 6 | 0.000 | 0.000 | 0.167 | 0.167 |
+| ambiguous | 5 | 0.200 | 0.200 | 0.000 | 0.200 |
 | numerical | 11 | 0.182 | 0.273 | 0.182 | 0.273 |
-| factual | 13 | 0.231 | 0.308 | 0.308 | 0.308 |
-| unanswerable | 6 | 0.167 | 0.167 | 0.333 | 0.333 |
+| factual | 13 | 0.308 | 0.385 | 0.385 | 0.385 |
 | comparison | 8 | 0.500 | 0.500 | 0.500 | 0.500 |
 
-Never answered correctly by dense, hybrid or agentic: 58 of 76 questions.
+Never answered correctly by dense, hybrid or agentic: 57 of 76 questions.
 
-Inspection sample (agentic reference, first 3 per category): retrieval: q020, q023, q028; reranking: q073; context-selection: q009, q022; abstention: q001, q002, q005; citation: q011; verification: q065; generation: q003, q004, q006
+Inspection sample (agentic reference, first 3 per category): retrieval: q020, q023, q028; context-selection: q009; abstention: q007, q008, q024; citation: q011; generation: q002, q003, q004
