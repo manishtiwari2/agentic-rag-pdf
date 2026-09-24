@@ -2490,3 +2490,69 @@ Appending the previous question only widens retrieval, so the cost is a
 noisier query, not a wrong answer. It exists so the chat runs and is tested
 offline. It is not a measured component: no benchmark question is multi-turn,
 so no follow-up rewrite has a number attached, on either stack.
+
+---
+
+# DD-066 — The Chat Interface: Gradio, Imported Lazily, Over Plain Functions
+
+**Status:** Accepted. Issue #18.
+
+### Decision
+
+`src/chat/ui.py` builds the notebook's chat app as a Gradio `Blocks`. The app
+lets the user:
+* upload one or more PDFs;
+* choose dense, hybrid or agentic;
+* press **Index**;
+* chat.
+
+Each answer shows its page citations, and the source file when more than one
+PDF is loaded. A refusal is shown as **Refused:** followed by the canonical
+sentence. A collapsible "Agent trace" panel shows:
+* the follow-up rewrite, if any (DD-065);
+* the question type and sub-queries;
+* each round's queries and evidence-controller verdict;
+* the stop reason, the verifier status, and who refused.
+
+The behaviour lives in plain functions over a `ChatState`: `load_documents`,
+`respond`, `format_answer`, `format_trace`, `format_error` and `format_status`.
+`build_app` only wires them to components, and it is the one place gradio is
+imported. `tests/test_architecture.py` checks that.
+
+`tests/test_chat.py` covers indexing, multiple PDFs, errors, answering, traces
+and refusals without gradio. One test builds the real app, and it is skipped
+when gradio is absent.
+
+**Multiple PDFs.** A new `index_documents(paths, on_error=None)` on the
+pipeline parses and chunks every file into one index. Chunk ids carry the
+document id, so they cannot collide. `index` is untouched, so the benchmark
+still indexes one document at a time.
+
+**Errors.** A file that fails to parse (encrypted, corrupt, image-only without
+OCR) is reported by name with its whole message, which already carries its
+remedy (`src/errors.py`), and skipped. The remaining files are still indexed.
+
+**Status table.** After indexing, the status table shows pages, chunks and
+OCR'd pages per file. Offline mode says "offline stand-in stack" in the table.
+
+**Dependencies.** `requirements-colab.txt` is `-r requirements-models.txt` plus
+gradio (`>=5,<7`) and pytesseract. The Tesseract binary is a system package the
+notebook installs with `apt-get`.
+* gradio, pytesseract and Tesseract are all Apache-2.0. They are recorded like
+  every other licence: a trailing comment in the requirements file, a NOTICE
+  table and README section 20.
+* A new architecture test requires every requirement line to carry a licence
+  comment and to appear in NOTICE.
+
+### Reason
+
+The brief asks for a chatbot, and Gradio is the standard way to serve one from
+Colab: `launch(share=True)` gives a public link with no server to run. Keeping
+the logic outside the library means the suite does not need a web framework,
+and the interface cannot drift from what is tested.
+
+### Limitation
+
+Gradio's own dependency tree was not audited licence by licence. It is an
+optional, Colab-only extra and is never imported by the library outside
+`ui.py`. NOTICE says so.

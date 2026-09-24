@@ -9,6 +9,7 @@ controllable.
 from __future__ import annotations
 
 import ast
+import re
 import pathlib
 
 import pytest
@@ -505,3 +506,42 @@ class TestChatLayer:
             source = path.read_text(encoding="utf-8")
             for library in ("pdfplumber", "pymupdf", "fitz", "pypdfium2", "pytesseract"):
                 assert f"import {library}" not in source, (path.name, library)
+
+
+class TestDependencyLicences:
+    """Every dependency's licence is recorded where a reader will look (DD-033).
+
+    Each requirement line carries its licence as a trailing comment, and each
+    package is listed in NOTICE. A dependency added without either is how a
+    copyleft licence slips into a permissive project unnoticed.
+    """
+
+    ROOT = SRC.parent
+    REQUIREMENTS = sorted(ROOT.glob("requirements*.txt"))
+
+    @staticmethod
+    def _requirements(path: pathlib.Path) -> list[str]:
+        return [
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith(("#", "-r"))
+        ]
+
+    @pytest.mark.parametrize("path", REQUIREMENTS, ids=lambda p: p.name)
+    def test_every_requirement_line_names_its_licence(self, path):
+        for line in self._requirements(path):
+            assert "#" in line and line.split("#", 1)[1].strip(), (
+                f"{path.name}: {line.strip()!r} has no licence comment"
+            )
+
+    @pytest.mark.parametrize("path", REQUIREMENTS, ids=lambda p: p.name)
+    def test_every_requirement_is_listed_in_notice(self, path):
+        notice = (self.ROOT / "NOTICE").read_text(encoding="utf-8").lower()
+        for line in self._requirements(path):
+            package = re.split(r"[<>=!~\[\s]", line.strip(), maxsplit=1)[0].lower()
+            assert package in notice, f"{path.name}: {package} is not in NOTICE"
+
+    def test_gradio_is_imported_only_by_the_chat_interface(self):
+        for path in SRC.rglob("*.py"):
+            if path.relative_to(SRC).as_posix() == "chat/ui.py":
+                continue
+            assert "import gradio" not in path.read_text(encoding="utf-8"), path

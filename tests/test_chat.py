@@ -10,6 +10,7 @@ import dataclasses
 
 import pytest
 
+from src.chat import ui
 from src.chat.session import (
     ChatSession,
     LLMRewriter,
@@ -19,7 +20,9 @@ from src.chat.session import (
     is_follow_up,
 )
 from src.generation.prompts import ABSTENTION_SENTENCE
-from src.pipeline import build_pipeline
+from src.pipeline import RAGResult, build_pipeline
+
+from . import pdf_fixtures as pdfs
 
 
 class Canned:
@@ -152,3 +155,109 @@ def test_results_stay_frozen(pipeline):
     result = ChatSession(pipeline).ask(FIRST)
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.answer = "changed"
+
+
+# ---------------------------------------------------------------------------
+# Chat interface logic (DD-066), without gradio
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def uploads(tmp_path):
+    def write(name, data):
+        path = tmp_path / name
+        path.write_bytes(data)
+        return str(path)
+
+    return write
+
+
+class TestIndexing:
+    def test_nothing_uploaded_asks_for_a_file(self):
+        state, status = ui.load_documents([], "agentic", ui.ChatState())
+        assert not state.ready and "Upload" in status
+
+    def test_a_pdf_is_indexed_with_its_counts(self, uploads):
+        path = uploads("structured.pdf", pdfs.structured_pdf())
+        state, status = ui.load_documents([path], "agentic", ui.ChatState())
+        assert state.ready and state.system == "agentic"
+        (doc,) = state.documents
+        assert doc["source_name"] == "structured.pdf" and doc["pages"] == 2
+        assert doc["chunks"] >= 1 and doc["ocr_pages"] == []
+        assert "| structured.pdf | 2 | 0 |" in status
+        assert "offline stand-in stack" in status
+
+    def test_several_pdfs_share_one_index(self, uploads):
+        paths = [
+            uploads("structured.pdf", pdfs.structured_pdf()),
+            uploads("multipage.pdf", pdfs.multipage_pdf(3)),
+        ]
+        state, _ = ui.load_documents(paths, "hybrid", ui.ChatState())
+        assert [d["source_name"] for d in state.documents] == ["structured.pdf", "multipage.pdf"]
+        assert len(state.pipeline.chunks) == sum(d["chunks"] for d in state.documents)
+
+    def test_an_encrypted_pdf_is_reported_with_its_remedy_and_skipped(self, uploads):
+        paths = [
+            uploads("locked.pdf", pdfs.encrypted_pdf()),
+            uploads("structured.pdf", pdfs.structured_pdf()),
+        ]
+        state, status = ui.load_documents(paths, "dense", ui.ChatState())
+        assert [d["source_name"] for d in state.documents] == ["structured.pdf"]
+        assert "locked.pdf: EncryptedPDFError" in status and "password" in status
+
+    def test_only_unreadable_pdfs_leave_nothing_to_ask(self, uploads):
+        path = uploads("locked.pdf", pdfs.encrypted_pdf())
+        state, status = ui.load_documents([path], "dense", ui.ChatState())
+        assert not state.ready and "Nothing was indexed" in status
+        history, _, _ = ui.respond("Anything?", [], state)
+        assert "Index" in history[-1]["content"]
+
+
+class TestResponding:
+    def test_asking_before_indexing_says_what_to_do(self):
+        history, _, trace = ui.respond("What recall?", [], ui.ChatState())
+        assert history[0] == {"role": "user", "content": "What recall?"}
+        assert "Upload a PDF" in history[1]["content"] and trace == ""
+
+    def test_an_empty_message_changes_nothing(self):
+        history, _, _ = ui.respond("   ", [], ui.ChatState())
+        assert history == []
+
+    def test_an_answer_carries_page_citations_and_a_trace(self, uploads):
+        path = uploads("structured.pdf", pdfs.structured_pdf())
+        state, _ = ui.load_documents([path], "agentic", ui.ChatState())
+        history, state, trace = ui.respond(FIRST, [], state)
+        answer = history[-1]["content"]
+        assert history[-1]["role"] == "assistant"
+        assert "**Sources**" in answer and "page" in answer
+        assert "**Round 1:**" in trace and "**Verifier:**" in trace
+        history, state, trace = ui.respond("What about its latency?", history, state)
+        assert len(history) == 4 and "Follow-up rewritten" in trace
+
+    def test_a_baseline_trace_says_there_is_no_agent_loop(self, uploads):
+        path = uploads("structured.pdf", pdfs.structured_pdf())
+        state, _ = ui.load_documents([path], "dense", ui.ChatState())
+        _, _, trace = ui.respond(FIRST, [], state)
+        assert "no agent loop" in trace
+
+
+class TestFormatting:
+    def test_a_refusal_is_shown_as_one(self):
+        result = RAGResult(
+            question="q", answer=ABSTENTION_SENTENCE, citations=(), evidence=(),
+            retrieved=(), abstained=True,
+        )
+        assert ui.format_answer(result) == f"**Refused:** {ABSTENTION_SENTENCE}"
+
+    def test_an_error_names_the_file_and_keeps_the_remedy(self):
+        text = ui.format_error("/tmp/x/scan.pdf", RuntimeError("Run OCR first: install it."))
+        assert text == "**scan.pdf: RuntimeError.** Run OCR first: install it."
+
+    def test_an_unknown_system_is_refused(self):
+        with pytest.raises(ValueError):
+            ui.make_config("magic", offline=True)
+
+
+def test_the_gradio_app_builds_when_gradio_is_installed():
+    gradio = pytest.importorskip("gradio")
+    app = ui.build_app(offline=True)
+    assert isinstance(app, gradio.Blocks)
