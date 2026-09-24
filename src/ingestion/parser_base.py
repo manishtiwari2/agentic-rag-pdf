@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from ..config import IngestionConfig
 from ..errors import EmptyDocumentError, PDFReadError, ScannedPDFError
 from .document import Block, BlockKind, Document, Page, make_document_id
+from .ocr import OcrEngine, build_ocr_engine
+from .render import render_page_images
 from .normalization import (
     collapse_blank_lines,
     count_running_keys,
@@ -80,8 +82,12 @@ class BaseParser(ABC):
 
     name: str = "base"
 
-    def __init__(self, config: IngestionConfig | None = None) -> None:
+    def __init__(
+        self, config: IngestionConfig | None = None, ocr_engine: OcrEngine | None = None
+    ) -> None:
         self.config = config or IngestionConfig()
+        #: Built on first need, so a text PDF never touches Tesseract (DD-067).
+        self._ocr_engine = ocr_engine
 
     # -- backend hook -------------------------------------------------------
 
@@ -110,20 +116,77 @@ class BaseParser(ABC):
     def parse_bytes(self, data: bytes, source_name: str) -> Document:
         raw_pages, pdf_metadata = self._extract(data, source_name)
         pages, removed = self._finalize_pages(raw_pages)
+        ocr_pages: list[int] = []
+        if self.config.ocr:
+            pages, ocr_pages = self._ocr_pages(data, pages)
+        metadata: dict[str, object] = {
+            "parser": self.name,
+            "page_count": len(pages),
+            "pdf_title": str(pdf_metadata.get("title") or ""),
+            "removed_running_lines": sorted(removed),
+            "total_chars": sum(len(p.text) for p in pages),
+        }
+        if ocr_pages:
+            # Only when OCR ran: a text PDF's metadata is exactly what it was.
+            metadata["ocr_pages"] = ocr_pages
         document = Document(
             document_id=make_document_id(data),
             source_name=source_name,
             pages=tuple(pages),
+            metadata=metadata,
+        )
+        self._check_extractable(document, raw_pages, ocr_pages)
+        return document
+
+    # -- OCR (DD-067) -------------------------------------------------------
+
+    def _ocr_pages(self, data: bytes, pages: list[Page]) -> tuple[list[Page], list[int]]:
+        """Replace every page that has images but no text layer with its OCR text.
+
+        A page with any extracted text is never OCR'd, so a text PDF comes out
+        exactly as it would with OCR off, and nothing is rendered or imported.
+        """
+        needed = [p.page_number for p in pages if not p.text.strip() and p.image_count > 0]
+        if not needed:
+            return pages, []
+        if self._ocr_engine is None:
+            self._ocr_engine = build_ocr_engine(self.config)
+        images = render_page_images(
+            data, needed, resolution=self.config.ocr_resolution, password=self.config.password
+        )
+        replaced = {
+            p.page_number: self._ocr_page(p, images[p.page_number])
+            for p in pages
+            if p.page_number in images
+        }
+        return [replaced.get(p.page_number, p) for p in pages], needed
+
+    def _ocr_page(self, page: Page, image: object) -> Page:
+        text = normalize_text(self._ocr_engine.image_to_text(image), self.config)
+        if self.config.join_hyphenated_linebreaks:
+            text = join_hyphenated_linebreaks(text)
+        paragraphs = [
+            "\n".join(line.strip() for line in part.splitlines() if line.strip())
+            for part in collapse_blank_lines(text).split("\n\n")
+        ]
+        # OCR reports no font sizes, so every block is body text to the chunker;
+        # a numbered or all-caps line can still read as a heading.
+        blocks = tuple(
+            Block(text=paragraph, order=order)
+            for order, paragraph in enumerate(p for p in paragraphs if p)
+        )
+        return Page(
+            page_number=page.page_number,
+            text="\n\n".join(b.text for b in blocks),
+            blocks=blocks,
+            image_count=page.image_count,
             metadata={
-                "parser": self.name,
-                "page_count": len(pages),
-                "pdf_title": str(pdf_metadata.get("title") or ""),
-                "removed_running_lines": sorted(removed),
-                "total_chars": sum(len(p.text) for p in pages),
+                **page.metadata,
+                "block_count": len(blocks),
+                "ocr": True,
+                "ocr_engine": self._ocr_engine.name,
             },
         )
-        self._check_extractable(document, raw_pages)
-        return document
 
     # -- assembly -----------------------------------------------------------
 
@@ -204,11 +267,15 @@ class BaseParser(ABC):
 
     # -- failure boundaries -------------------------------------------------
 
-    def _check_extractable(self, document: Document, raw_pages: list[RawPage]) -> None:
+    def _check_extractable(
+        self, document: Document, raw_pages: list[RawPage], ocr_pages: list[int] = ()
+    ) -> None:
         """Fail loudly on a scanned or blank PDF.
 
         EXPERIMENT_PLAN.md section 2 makes this a Phase 1 exit criterion: a
-        scanned PDF must produce a clear error, not garbage.
+        scanned PDF must produce a clear error, not garbage. With OCR on, a
+        scanned PDF reaches here already OCR'd, so the error means OCR found
+        too little text as well (DD-067).
         """
         cfg = self.config
         page_count = document.page_count
@@ -225,14 +292,26 @@ class BaseParser(ABC):
             and len(image_only) / page_count >= cfg.scanned_page_fraction
             and total_chars < cfg.min_document_chars
         ):
+            if ocr_pages:
+                raise ScannedPDFError(
+                    f"{document.source_name} appears to be a scanned or image-only "
+                    f"PDF, and OCR could not read it: OCR ran on {len(ocr_pages)} of "
+                    f"{page_count} pages but the whole document yielded only "
+                    f"{total_chars} characters. The scan may be too faint or too "
+                    "low-resolution, handwritten, or in a language other than "
+                    f"{cfg.ocr_languages!r} (set IngestionConfig.ocr_languages, and "
+                    "install that language's Tesseract data). Indexing it would "
+                    "produce empty or nonsensical answers."
+                )
             raise ScannedPDFError(
                 f"{document.source_name} appears to be a scanned or image-only "
                 f"PDF: {len(image_only)} of {page_count} pages contain images but "
                 f"no extractable text layer (the whole document yielded "
-                f"{total_chars} characters). This system reads text, not pixels, "
-                "so indexing it would produce empty or nonsensical answers. Run "
-                "OCR first, for example `ocrmypdf input.pdf output.pdf`, then "
-                "ingest the OCR'd file."
+                f"{total_chars} characters), and OCR is switched off. This system "
+                "reads text, not pixels, so indexing it would produce empty or "
+                "nonsensical answers. Turn OCR back on (drop --no-ocr, or "
+                "IngestionConfig(ocr=True), the default), or run OCR first, for "
+                "example `ocrmypdf input.pdf output.pdf`, then ingest the OCR'd file."
             )
 
         if total_chars == 0:

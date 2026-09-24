@@ -23,6 +23,7 @@ from typing import Protocol, runtime_checkable
 from ..config import IngestionConfig
 from ..errors import PDFReadError
 from .document import Document
+from .ocr import OcrEngine
 from .parser_base import BaseParser, RawBlock, RawPage
 from .pdfplumber_parser import PdfPlumberParser
 from .pymupdf_parser import PyMuPDFParser
@@ -56,8 +57,11 @@ PARSERS: dict[str, type[BaseParser]] = {
 }
 
 
-def build_parser(config: IngestionConfig) -> PdfParser:
-    """Construct the parser named by the configuration (DD-017)."""
+def build_parser(config: IngestionConfig, ocr_engine: OcrEngine | None = None) -> PdfParser:
+    """Construct the parser named by the configuration (DD-017).
+
+    ``ocr_engine`` replaces Tesseract, for tests that run without it (DD-067).
+    """
     try:
         parser_class = PARSERS[config.parser]
     except KeyError:
@@ -65,4 +69,4 @@ def build_parser(config: IngestionConfig) -> PdfParser:
             f"Unknown parser {config.parser!r}. Available: "
             f"{', '.join(sorted(PARSERS))}."
         ) from None
-    return parser_class(config)
+    return parser_class(config, ocr_engine)

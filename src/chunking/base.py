@@ -125,6 +125,10 @@ class Chunker(ABC):
         section: str | None = None,
         **metadata: object,
     ) -> Chunk:
+        # A chunk drawn from an OCR'd page says so (``meta_ocr`` in records,
+        # DD-067). The key is added only then, so text-PDF chunks are unchanged.
+        if any(document.page(p).metadata.get("ocr") for p in pages):
+            metadata = {**metadata, "ocr": True}
         return Chunk(
             chunk_id=make_chunk_id(document.document_id, self.name, index),
             document_id=document.document_id,

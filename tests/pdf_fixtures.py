@@ -111,6 +111,41 @@ def scanned_pdf(pages: int = 3) -> bytes:
     return _write(doc)
 
 
+def mixed_pdf(scanned_pages: tuple[int, ...] = (2,), pages: int = 3) -> bytes:
+    """Text pages with some image-only pages among them (DD-067).
+
+    The text pages carry ``PAGE_MARKER`` like ``multipage_pdf``; the scanned
+    ones carry only a picture, as a page scanned into an otherwise digital
+    document does.
+    """
+    png = _grey_png()
+    doc = _new()
+    for number in range(1, pages + 1):
+        page = doc.new_page()
+        if number in scanned_pages:
+            page.insert_image(pymupdf.Rect(0, 0, 595, 842), stream=png)
+        else:
+            page.insert_text((72, 72), PAGE_MARKER.format(n=number), fontsize=11)
+            page.insert_textbox(pymupdf.Rect(72, 100, 523, 400), _BODY, fontsize=11)
+    return _write(doc)
+
+
+def scanned_text_pdf(text: str) -> bytes:
+    """An image-only page whose picture shows ``text``, for a real OCR run.
+
+    The text is drawn onto a page, rasterized, and the raster placed on a fresh
+    page with no text layer, so only OCR can recover it.
+    """
+    source = _new()
+    page = source.new_page()
+    page.insert_textbox(pymupdf.Rect(72, 72, 523, 300), text, fontsize=28)
+    png = page.get_pixmap(dpi=200).tobytes("png")
+    source.close()
+    doc = _new()
+    doc.new_page().insert_image(pymupdf.Rect(0, 0, 595, 842), stream=png)
+    return _write(doc)
+
+
 def blank_pdf(pages: int = 2) -> bytes:
     """Pages with neither text nor images."""
     doc = _new()
