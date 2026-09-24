@@ -1586,6 +1586,18 @@ counterfactual is how open question 3 ("does iteration 2 ever change an
 answer?") is answered, independently of what the controller or verifier then
 did with the answer.
 
+### Clarification (2026-09-24, issue #12)
+
+A missing question number does not always produce a new query. The refined
+query is at most two covered terms, then the missing terms, then the missing
+numbers. For a question with two or fewer covered terms, that is the
+question's own term set, so the dedup rule above drops it and the loop stops
+with `no_new_query`. The code has always done this. A test in
+`tests/test_agentic.py` expected `["latency 2019"]` for such a question, and a
+malformed `or` clause hid the mismatch. The test was wrong, not the code, so
+no stored result changes. The test now asserts `[]` for that case, and a
+second test covers a question with enough anchors to yield a new query.
+
 ---
 
 # DD-054 — Verification: Claim-Level Rules, One Bounded Regeneration, and a Counterfactual Taxonomy Rule
@@ -1638,6 +1650,17 @@ fixed for `reranking`, fixed the same way.
 `SCORING_RULES_VERSION` and `ERROR_TAXONOMY_VERSION` → `2026-09-23.2`. No
 formula or threshold changed. For a record declaring no verification stage
 every rule is as before, and `2026-09-23.1` is recorded as score-compatible.
+
+### Clarification (2026-09-24, issue #12)
+
+"Re-verify" applies to an answer, not to a refusal. A regeneration whose draft
+abstains counts toward `regenerations_used`: it was a generator call. The loop
+then stops without calling the verifier, because a refusal has no claims to
+check. So the verifier is called once per generation that did not abstain,
+which is not always `regenerations_used + 1`. The code has always done this. A
+test assumed the `+ 1` formula and failed at a cap of 2, where the second
+regeneration abstains. The test was wrong, not the code, so no stored result
+changes.
 
 ---
 
