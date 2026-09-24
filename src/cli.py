@@ -359,6 +359,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     bench.add_argument("--limit", type=int, help="Stop after N questions.")
     bench.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Keep the records already in --out and answer only the remaining "
+            "questions. Refused if they were produced by a different "
+            "configuration (DD-064)."
+        ),
+    )
+    bench.add_argument(
         "--judge",
         action="store_true",
         help=(
@@ -463,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
                 judge=judge,
                 skip_validation=args.skip_validation,
                 progress=_report,
+                resume=args.resume,
             )
         except RAGError as exc:
             print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
