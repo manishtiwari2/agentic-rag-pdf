@@ -136,6 +136,11 @@ class TestAgainstTheStoredBaseline:
                 # check runs against a fresh summary in tests/test_agentic.py.
                 continue
             values = list(vectors[spec.name].values())
+            if summary[spec.name] is None:
+                # A figure the baseline does not report, such as retrieval
+                # iterations (DD-055): null in the summary, and no vector.
+                assert values == [], spec.name
+                continue
             assert sum(values) / len(values) == pytest.approx(summary[spec.name], abs=5e-5), spec.name
         assert len(vectors["recall_at_5"]) == summary["n_retrieval_scored"]
         assert len(vectors["abstention_accuracy"]) == summary["n_unanswerable"]
