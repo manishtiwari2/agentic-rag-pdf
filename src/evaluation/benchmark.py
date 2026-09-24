@@ -371,6 +371,8 @@ class BenchmarkRun:
     config: dict[str, Any] = field(default_factory=dict)
     started: float = 0.0
     judge: Any = None
+    #: Records carried over from an interrupted run rather than answered now.
+    resumed: int = 0
 
     @property
     def scores(self) -> list[QuestionScore]:
@@ -390,6 +392,10 @@ class BenchmarkRun:
             3,
         )
         result["documents_indexed"] = len(self.index_stats)
+        if self.resumed:
+            # The index figures above cover this session only; the carried-over
+            # records were answered by an earlier one (DD-064).
+            result["resumed_records"] = self.resumed
         # EVALUATION_PROTOCOL.md section 28's per-system costs, read from what
         # each record reports -- not an agentic special case.
         result.update(run_cost_stats(self.records))
@@ -594,6 +600,8 @@ def run_benchmark(
     out_dir: str | Path | None = None,
     judge: Any = None,
     progress=None,
+    checkpoint_dir: str | Path | None = None,
+    completed: Sequence[dict[str, Any]] = (),
 ) -> BenchmarkRun:
     """Answer every question and score it.
 
@@ -601,6 +609,12 @@ def run_benchmark(
     once. That is not only for speed: re-indexing per question would make the
     reported index time meaningless and would let a per-question index
     difference leak into the answers.
+
+    ``completed`` holds records from an interrupted run (DD-064). Their
+    questions are not asked again: each record is kept, in the position its
+    question would have taken, and a document whose questions are all done is
+    not indexed. ``checkpoint_dir`` receives ``per_question.json`` after every
+    question, without writing the other three files.
     """
     config = (config or RAGConfig.default()).validate()
     documents_dir = Path(documents_dir)
@@ -616,16 +630,22 @@ def run_benchmark(
 
     def _checkpoint(question_run: QuestionRun) -> None:
         """Persist what is finished before attempting the next question."""
-        if out_dir is not None:
-            write_checkpoint(out_dir, run.records)
+        target = checkpoint_dir if checkpoint_dir is not None else out_dir
+        if target is not None:
+            write_checkpoint(target, run.records)
         if progress:
             progress(question_run)
 
+    done = {record["question_id"]: record for record in completed}
     by_document: dict[str, list[Question]] = {}
     for question in questions:
         by_document.setdefault(question.document, []).append(question)
 
     for document, group in by_document.items():
+        if all(question.id in done for question in group):
+            for question in group:
+                _keep(run, question, done[question.id])
+            continue
         pdf_path = documents_dir / document
         try:
             system = factory()
@@ -639,6 +659,9 @@ def run_benchmark(
             continue
 
         for question in group:
+            if question.id in done:
+                _keep(run, question, done[question.id])
+                continue
             started = time.perf_counter()
             try:
                 result = system.ask(question.question)
@@ -673,6 +696,56 @@ def run_benchmark(
     if out_dir is not None:
         write_results(out_dir, run)
     return run
+
+
+def _keep(run: BenchmarkRun, question: Question, record: dict[str, Any]) -> None:
+    """Carry a record from an interrupted run into this one, unchanged."""
+    run.runs.append(
+        QuestionRun(question=question, score=QuestionScore.from_record(record), record=record)
+    )
+    if record.get("latency") is not None:
+        run.latencies.append(float(record["latency"]))
+    run.resumed += 1
+
+
+def load_completed(
+    out_dir: str | Path, config: RAGConfig, questions: Sequence[Question]
+) -> list[dict[str, Any]]:
+    """The records an interrupted run left in ``out_dir``, checked (DD-064).
+
+    Refuses, rather than mixing two experiments in one file, when a stored
+    record was produced by a different configuration or answers a question
+    outside the current selection. A record whose run raised is dropped, so the
+    question is asked again: a crash is usually the session that died, not the
+    question.
+    """
+    path = Path(out_dir) / PER_QUESTION_FILENAME
+    if not path.exists():
+        return []
+    records = json.loads(path.read_text(encoding="utf-8"))
+    selected = {question.id for question in questions}
+    fingerprint = config.fingerprint()
+    kept: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("metrics", {}).get("error_category") == "system-runtime":
+            continue
+        stored = record.get("config_fingerprint")
+        if stored != fingerprint:
+            raise BenchmarkValidationError(
+                f"Refusing to resume {path}: question {record['question_id']} was "
+                f"answered with config fingerprint {stored}, but this run's is "
+                f"{fingerprint}. Resume with the same flags as the interrupted "
+                "run, or write to a new --out directory."
+            )
+        if record["question_id"] not in selected:
+            raise BenchmarkValidationError(
+                f"Refusing to resume {path}: question {record['question_id']} is "
+                "not in this run's selection. Resume with the same --questions, "
+                "--split and --limit as the interrupted run, or write to a new "
+                "--out directory."
+            )
+        kept.append(record)
+    return kept
 
 
 def _probe(system: Any, question: str, result: RAGResult) -> Sequence[Any]:
@@ -891,6 +964,7 @@ def run_benchmark_cli(
     judge: Any = None,
     skip_validation: bool = False,
     progress=None,
+    resume: bool = False,
 ) -> BenchmarkRun:
     """Load, validate, run, score and store, in that order.
 
@@ -898,6 +972,10 @@ def run_benchmark_cli(
     plausible-looking numbers, which BENCHMARK_SPEC.md calls the worst failure
     mode an evaluation harness has; ``require_valid_benchmark`` already exists
     for exactly this and refusing to start beats explaining the numbers later.
+
+    ``per_question.json`` is rewritten after every question. With ``resume``,
+    the records already in ``out_dir`` are kept and only the remaining
+    questions are asked (DD-064).
     """
     questions_path = Path(questions_path)
     documents_dir = Path(documents_dir)
@@ -923,12 +1001,22 @@ def run_benchmark_cli(
         )
 
     config = config or RAGConfig.default()
+    completed: list[dict[str, Any]] = []
+    if resume:
+        if judge is not None:
+            raise BenchmarkValidationError(
+                "--resume cannot be combined with --judge: the judge's summary "
+                "would cover only the questions answered in this session."
+            )
+        completed = load_completed(out_dir, config.validate(), questions)
     run = run_benchmark(
         questions,
         documents_dir=documents_dir,
         config=config,
         judge=judge,
         progress=progress,
+        checkpoint_dir=out_dir,
+        completed=completed,
     )
     run.config = build_config_snapshot(
         config,

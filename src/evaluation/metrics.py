@@ -459,6 +459,73 @@ class QuestionScore:
             "error_taxonomy_version": ERROR_TAXONOMY_VERSION,
         }
 
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> "QuestionScore":
+        """Rebuild a score from a stored per-question record (DD-064).
+
+        A resumed run needs the scores of the questions it does not re-ask.
+        Values are the stored ones, rounded as written: the same figures the
+        confidence intervals and ``compare-runs`` already read.
+        """
+        metrics = record["metrics"]
+        retrieval, answer = metrics["retrieval"], metrics["answer"]
+        citation, abstention = metrics["citation"], metrics["abstention"]
+        return cls(
+            question_id=record["question_id"],
+            question_type=metrics["question_type"],
+            split=metrics["split"],
+            answerable=metrics["answerable"],
+            retrieval=RetrievalScore(
+                scored=retrieval["scored"],
+                excluded_reason=retrieval.get("excluded_reason", ""),
+                gold_pages=tuple(retrieval["gold_pages"]),
+                retrieved_count=retrieval["retrieved_count"],
+                retrieved_pages=tuple(retrieval["retrieved_pages"]),
+                recall={
+                    k: retrieval[f"recall_at_{k}"]
+                    for k in RECALL_KS
+                    if retrieval.get(f"recall_at_{k}") is not None
+                },
+                full_recall={
+                    k: retrieval[f"full_recall_at_{k}"]
+                    for k in FULL_RECALL_KS
+                    if retrieval.get(f"full_recall_at_{k}") is not None
+                },
+                mrr_at_10=retrieval["mrr_at_10"],
+                ndcg_at_10=retrieval["ndcg_at_10"],
+                first_relevant_rank=retrieval["first_relevant_rank"],
+                capped_ks=tuple(retrieval["capped_ks"]),
+            ),
+            answer=AnswerScore(
+                correct=answer["correct"],
+                overlap=answer["token_overlap"],
+                numeric_agreement=answer["numeric_agreement"],
+                faithfulness_numeric=answer["faithfulness_numeric"],
+                faithfulness_token=answer["faithfulness_token"],
+                unsupported=answer["unsupported"],
+                matched_reference=answer["matched_reference"],
+                answer_chars=answer["answer_chars"],
+            ),
+            citation=CitationScore(
+                scored=citation["scored"],
+                cited_pages=tuple(citation["cited_pages"]),
+                precision=citation["precision"],
+                gold_page_recall=citation["gold_page_recall"],
+                any_correct=citation["any_correct"],
+                completeness=citation["completeness"],
+                resolved=citation["resolved"],
+                dropped_markers=citation["dropped_markers"],
+                fabricated_page_mentions=citation["fabricated_page_mentions"],
+            ),
+            abstention=AbstentionScore(
+                answerable=abstention["answerable"], abstained=abstention["abstained"]
+            ),
+            verification_status=record.get("verification_status", VERIFICATION_NOT_RUN),
+            error=metrics["error"],
+            error_category=metrics["error_category"],
+            failed=metrics["failed"],
+        )
+
 
 # ---------------------------------------------------------------------------
 # Retrieval scoring

@@ -2361,3 +2361,62 @@ What moved:
 
 The number-only refusals DD-060 listed, q005 and q069, are eval questions. They
 were neither counted nor looked at for this decision.
+
+---
+
+# DD-064 — Resumable Benchmark Runs, Refused Across Configurations
+
+**Status:** Accepted. Issue #16.
+
+### Decision
+
+**The checkpoint now runs from the command line.** `run_benchmark_cli` passes
+its output directory to `run_benchmark` as `checkpoint_dir`, so
+`per_question.json` is rewritten after every question. Before this, only a
+caller that passed `out_dir` got checkpoints, and the CLI did not pass it.
+`EXPERIMENT_PLAN.md` section 4's "checkpoint per-question results" was
+therefore true of the library but not of the command people actually run. The
+other three files are still written once, at the end.
+
+**`run-benchmark --resume`** works as follows:
+1. It loads the records already in `--out`.
+2. It refuses to start if any record's `config_fingerprint` differs from the
+   current configuration's, or if a record answers a question outside the
+   current `--questions` / `--split` / `--limit` selection.
+3. A record whose run raised (`system-runtime`) is dropped, so its question is
+   asked again. A crash is usually the session that died, not the question.
+4. Kept records stay in the position their question takes in a normal run.
+   Their scores are rebuilt with `QuestionScore.from_record`.
+5. A document whose questions are all done is not indexed again.
+6. The four files are written as for any run.
+
+`--resume` with `--judge` is refused, because the judge's summary would cover
+only this session's questions. With nothing stored, `--resume` is a fresh run.
+
+### Guarantee and its test
+
+`tests/test_resume.py` interrupts an offline agentic run after 9 of 10
+questions and resumes it. That leaves one document finished and one half done.
+The resumed `per_question.json` equals an uninterrupted run's record for
+record, excluding the timing fields (`latency`, `*_s`).
+
+Headline means agree to 1e-4. Kept records carry their stored scores, rounded
+to 4 decimal places as written. That is the same view the confidence intervals
+and `compare-runs` already read.
+
+A changed chunk size is refused, and so is an out-of-selection record.
+
+### Limitation
+
+In a resumed run's `results.json`, two figures cover only the resumed session:
+* `index_seconds_total`;
+* `documents_indexed`.
+
+The summary says so with `resumed_records`, which appears only in a resumed
+run. The records' own timings are kept as they were measured.
+
+### Consequence
+
+The fingerprint hashes every configuration field (`RAGConfig.fingerprint`), so
+a resume across code that added a field is refused too. That is the right
+default for a run meant to be one experiment.
