@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import pathlib
 
 import pytest
@@ -679,6 +680,27 @@ class TestRerankingErrorCategory:
 # ---------------------------------------------------------------------------
 
 
+#: Scores are stored rounded to 6 decimals, and the embedder's float arithmetic
+#: differs in the last bits between platforms (the stored runs were made on
+#: Windows; CI runs Linux). A value on a rounding boundary can then differ by one
+#: unit in the 6th decimal, and an nDCG in its 16th digit. Everything else --
+#: answers, citations, chunk ids, pages, ranks, verdicts -- must match exactly.
+FLOAT_TOLERANCE = 2e-6
+
+
+def _same(new, old) -> bool:
+    """Record equality, with floats equal to within ``FLOAT_TOLERANCE``."""
+    if isinstance(new, bool) or isinstance(old, bool):
+        return type(new) is type(old) and new == old
+    if isinstance(new, (int, float)) and isinstance(old, (int, float)):
+        return math.isclose(new, old, rel_tol=1e-9, abs_tol=FLOAT_TOLERANCE)
+    if isinstance(new, dict) and isinstance(old, dict):
+        return new.keys() == old.keys() and all(_same(new[k], old[k]) for k in new)
+    if isinstance(new, list) and isinstance(old, list):
+        return len(new) == len(old) and all(_same(a, b) for a, b in zip(new, old))
+    return new == old
+
+
 @pytest.mark.skipif(not BENCHMARK.exists(), reason="benchmark/questions.json is not present")
 class TestBaselineAIsUnchanged:
     """Phase 4 refactored the pipeline and changed a taxonomy rule. Baseline A
@@ -711,7 +733,7 @@ class TestBaselineAIsUnchanged:
         fresh = json.loads((tmp_path / "per_question.json").read_text(encoding="utf-8"))
         assert len(fresh) == len(stored)
         for old, new in zip(self._strip(stored), self._strip(fresh)):
-            assert new == old, old["question_id"]
+            assert _same(new, old), (old["question_id"], new, old)
 
 
 @pytest.fixture(scope="module")
@@ -751,7 +773,7 @@ class TestBaselineBIsUnchanged:
         fresh = json.loads((out / "per_question.json").read_text(encoding="utf-8"))
         assert len(fresh) == len(stored)
         for old, new in zip(strip(stored), strip(fresh)):
-            assert new == old, old["question_id"]
+            assert _same(new, old), (old["question_id"], new, old)
 
 
 class TestFullBaselineBSmokeRun:
