@@ -2790,6 +2790,27 @@ and NOTICE. gradio and pytesseract become the `colab` extra in
   tag is pushed, a fresh Colab clone fails at step 1 with git's "Remote branch
   not found".
 
+
+### Correction (2026-09-25): the first GPU run measured the wrong code
+
+The tag `v0.7-gpu-run` was first created on `68cdc9b`, the `main` commit
+before this release was merged. The runner clones the tag by name, so the
+first Colab run measured the pre-release system: none of DD-061 to DD-067.
+`COMMIT.txt` and the stored scoring version (`2026-09-23.2`) show this. The run
+covered dense, hybrid and hybrid without the reranker before it stopped. Its
+results are kept outside the repository, as a pilot, and are not reported as
+the model-stack run.
+
+Three changes:
+* **The tag was moved** to the release's merge commit. It had been used only by
+  this one run.
+* **The runner now asserts** that the cloned code contains
+  `notebooks/gpu_benchmark_run.ipynb`, so a tag on older code fails at cell 3
+  instead of running the wrong system for hours.
+* **`sh()` now streams the command's output into the cell,** unbuffered, in
+  both notebooks. Colab does not display a subprocess's own output, so the
+  first run showed no per-question progress at all.
+
 ---
 
 # DD-069 — Offline Results Regenerated After DD-061 to DD-063; Threshold Re-Chosen on Dev, Eval Looked at a Second Time
