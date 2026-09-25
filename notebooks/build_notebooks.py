@@ -73,9 +73,20 @@ IN_COLAB = "google.colab" in sys.modules
 
 
 def sh(*command):
-    """Run a command, stream its output, and stop the notebook if it fails."""
+    """Run a command, stream its output into this cell, stop the notebook if it fails.
+
+    Colab does not show a subprocess's own output, so each line is read and
+    printed here; that is what makes a long benchmark's progress visible.
+    """
     print("$", " ".join(map(str, command)), flush=True)
-    subprocess.run([str(c) for c in command], check=True)
+    process = subprocess.Popen([str(c) for c in command], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, bufsize=1,
+                               env=dict(os.environ, PYTHONUNBUFFERED="1"))
+    for line in process.stdout:
+        if "FontBBox" not in line:  # a harmless pdfplumber warning, once per page
+            print(line, end="", flush=True)
+    if process.wait() != 0:
+        raise subprocess.CalledProcessError(process.returncode, command)
 
 
 def find_checkout():
@@ -492,8 +503,20 @@ os.environ["HF_HOME"] = str(DRIVE / "hf_cache")
 
 
 def sh(*command):
+    """Run a command, stream its output into this cell, stop the notebook if it fails.
+
+    Colab does not show a subprocess's own output, so each line is read and
+    printed here; that is what makes a long benchmark's progress visible.
+    """
     print("$", " ".join(map(str, command)), flush=True)
-    subprocess.run([str(c) for c in command], check=True)
+    process = subprocess.Popen([str(c) for c in command], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, bufsize=1,
+                               env=dict(os.environ, PYTHONUNBUFFERED="1"))
+    for line in process.stdout:
+        if "FontBBox" not in line:  # a harmless pdfplumber warning, once per page
+            print(line, end="", flush=True)
+    if process.wait() != 0:
+        raise subprocess.CalledProcessError(process.returncode, command)
 
 
 CODE = pathlib.Path("/content/agentic-pdf-rag")
@@ -575,6 +598,9 @@ tag = subprocess.run(["git", "describe", "--tags", "--exact-match"], capture_out
 (ROOT / "COMMIT.txt").write_text(f"{commit}\\n{tag or 'no tag'}\\n")
 print("commit", commit, "tag", tag or "NONE")
 assert tag == REF, f"HEAD is not the pinned tag {REF}"
+# A tag on code older than this notebook would run the wrong system silently.
+assert (CODE / "notebooks" / "gpu_benchmark_run.ipynb").exists(), (
+    f"The tag {REF} points to code older than this notebook: move the tag to the release commit")
 '''),
         _md("""
 ## 4. Smoke test: one question, then three benchmark questions
@@ -599,8 +625,9 @@ per_question = summary["latency_median_s"]
 # Upper bound: agentic latency for every run (dense and hybrid are faster).
 question_runs = 10 * 76 + 3 * 33
 print("=" * 30, "PASTE FROM HERE", "=" * 30)
-print("answer (q1):           ", records[0]["answer"][:300])
-print("citations (q1):        ", records[0]["cited_pages"])
+first = records[0]
+print(f"answer ({first['question_id']}):         ", first["answer"][:300])
+print(f"citations ({first['question_id']}):      ", first["cited_pages"])
 print("peak_vram_gb:          ", summary["peak_vram_gb"])
 print("llm_parse_failure_rate:", summary["llm_parse_failure_rate"])
 print("seconds per question:  ", per_question)
