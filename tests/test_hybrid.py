@@ -688,17 +688,39 @@ class TestRerankingErrorCategory:
 FLOAT_TOLERANCE = 2e-6
 
 
-def _same(new, old) -> bool:
-    """Record equality, with floats equal to within ``FLOAT_TOLERANCE``."""
+def _difference(new, old, path: str = "") -> str | None:
+    """Where two records differ, with floats equal to within ``FLOAT_TOLERANCE``.
+
+    Returns the path and both values of the first difference, or None. A path
+    rather than a bare False, because pytest truncates a whole-record diff.
+    """
     if isinstance(new, bool) or isinstance(old, bool):
-        return type(new) is type(old) and new == old
-    if isinstance(new, (int, float)) and isinstance(old, (int, float)):
-        return math.isclose(new, old, rel_tol=1e-9, abs_tol=FLOAT_TOLERANCE)
-    if isinstance(new, dict) and isinstance(old, dict):
-        return new.keys() == old.keys() and all(_same(new[k], old[k]) for k in new)
-    if isinstance(new, list) and isinstance(old, list):
-        return len(new) == len(old) and all(_same(a, b) for a, b in zip(new, old))
-    return new == old
+        same = type(new) is type(old) and new == old
+    elif isinstance(new, (int, float)) and isinstance(old, (int, float)):
+        same = math.isclose(new, old, rel_tol=1e-9, abs_tol=FLOAT_TOLERANCE)
+    elif isinstance(new, dict) and isinstance(old, dict):
+        if new.keys() != old.keys():
+            return f"{path}: keys {sorted(new.keys() ^ old.keys())}"
+        for key in new:
+            found = _difference(new[key], old[key], f"{path}/{key}")
+            if found:
+                return found
+        return None
+    elif isinstance(new, list) and isinstance(old, list):
+        if len(new) != len(old):
+            return f"{path}: length {len(new)} != {len(old)}"
+        for index, (a, b) in enumerate(zip(new, old)):
+            found = _difference(a, b, f"{path}[{index}]")
+            if found:
+                return found
+        return None
+    else:
+        same = new == old
+    return None if same else f"{path}: fresh {new!r:.200} != stored {old!r:.200}"
+
+
+def _same(new, old) -> bool:
+    return _difference(new, old) is None
 
 
 @pytest.mark.skipif(not BENCHMARK.exists(), reason="benchmark/questions.json is not present")
@@ -733,7 +755,7 @@ class TestBaselineAIsUnchanged:
         fresh = json.loads((tmp_path / "per_question.json").read_text(encoding="utf-8"))
         assert len(fresh) == len(stored)
         for old, new in zip(self._strip(stored), self._strip(fresh)):
-            assert _same(new, old), (old["question_id"], new, old)
+            assert _difference(new, old) is None, (old["question_id"], _difference(new, old))
 
 
 @pytest.fixture(scope="module")
@@ -773,7 +795,7 @@ class TestBaselineBIsUnchanged:
         fresh = json.loads((out / "per_question.json").read_text(encoding="utf-8"))
         assert len(fresh) == len(stored)
         for old, new in zip(strip(stored), strip(fresh)):
-            assert _same(new, old), (old["question_id"], new, old)
+            assert _difference(new, old) is None, (old["question_id"], _difference(new, old))
 
 
 class TestFullBaselineBSmokeRun:
