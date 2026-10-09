@@ -15,6 +15,7 @@ import importlib.util
 import os
 import pathlib
 import re
+import signal
 import sys
 
 import pytest
@@ -132,6 +133,7 @@ class TestDeliverable:
     def test_it_installs_tesseract_and_the_colab_requirements(self):
         assert '"tesseract-ocr"' in self.SOURCE and "requirements-colab.txt" in self.SOURCE
 
+
     @pytest.mark.skipif(
         os.environ.get("SKIP_NOTEBOOK_EXECUTION") == "1", reason="SKIP_NOTEBOOK_EXECUTION=1"
     )
@@ -166,3 +168,47 @@ class TestDeliverable:
             for output in cell.get("outputs", [])
         )
         assert "OFFLINE MODE" in text and "null (no GPU, not measured)" in text
+
+
+class TestRestartAfterInstall:
+    """Cell 2 in Colab: a changed, already-imported package restarts the runtime once.
+
+    Colab imports Pillow before the notebook runs; pip replacing it left the old
+    extension in memory and broke cell 5b ("takes at most 16 arguments").
+    """
+
+    INSTALL = next(s for s in _code(build_notebooks.DELIVERABLE) if "requirements-colab.txt" in s)
+
+    def _run(self, monkeypatch, bump: str | None):
+        import importlib.metadata
+
+        commands, kills = [], []
+        real_version = importlib.metadata.version
+        installed = []
+
+        def fake_sh(*command):
+            commands.append(command)
+            installed.append(True)
+
+        def version(name):
+            value = real_version(name)
+            return value + ".new" if installed and name == bump else value
+
+        monkeypatch.setattr(importlib.metadata, "version", version)
+        monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append(pid))
+        monkeypatch.setattr(signal, "SIGKILL", 9, raising=False)  # absent on Windows
+        exec(self.INSTALL, {"IN_COLAB": True, "sh": fake_sh, "sys": sys, "os": os})
+        return commands, kills
+
+    def test_no_change_means_no_restart(self, monkeypatch, capsys):
+        commands, kills = self._run(monkeypatch, bump=None)
+        assert [c[0] for c in commands] == ["apt-get", sys.executable]
+        assert kills == [] and "no restart needed" in capsys.readouterr().out
+
+    def test_a_changed_imported_package_restarts_once(self, monkeypatch, capsys):
+        import PIL  # noqa: F401 - imported, as Colab has it before cell 2
+
+        _, kills = self._run(monkeypatch, bump="pillow")
+        out = capsys.readouterr().out
+        assert kills == [os.getpid()]
+        assert "pillow:" in out.lower() and "Run all" in out
