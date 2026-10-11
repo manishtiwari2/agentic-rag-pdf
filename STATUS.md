@@ -287,13 +287,19 @@ arm varies them, and no unplanned sweep was added.
   unvalidated.** `EXPERIMENT_PLAN.md` section 5 records them as open pending a
   dev set. The retrieval score threshold is disabled by default for the same
   reason: an untuned threshold is worse than none.
-* **OCR is tested with a fake engine here.** This machine has no Tesseract
-  binary, so the real-engine test is skipped and OCR's per-page time was not
-  measured (DD-067). Its accuracy on real scans is unbenchmarked: no benchmark
-  PDF is scanned.
-* **The Colab-only notebook paths are untested here**: the clone, `apt-get`,
-  uploads, `share=True` and Drive (DD-068). The offline path is executed by the
-  suite.
+* **OCR's accuracy on real scans is unbenchmarked**: no benchmark PDF is
+  scanned. This machine has no Tesseract binary, so the suite uses a fake engine
+  (DD-067). Real Tesseract has run once, in the Colab run below: it read the
+  notebook's generated scanned page correctly in 4.69 s.
+* **The chatbot notebook has run end to end once, on a Colab T4** (2026-10-11,
+  `notebooks/runs/agentic_pdf_rag_colab_t4_2026-10-11.ipynb`). All 16 cells ran
+  in one pass with no error, on the model stack at `v0.7-gpu-run` (8878faf).
+  `tests/test_notebooks.py` checks that record.
+  * **Not exercised by that run:** an uploaded PDF (`UPLOAD = False` used
+    doc5) and a conversation through the Gradio link (the link was created).
+    The run created no Drive path.
+  * **Not results:** its figures (peak VRAM 6.15 GB in-process; 5 benchmark
+    questions) come from one run and are not benchmark results.
 * **The follow-up rewriter has no benchmark** (DD-065): no benchmark question is
   multi-turn.
 
@@ -827,8 +833,8 @@ Honest limits of the release:
   It answers RQ2, RQ3 and RQ4 for the real stack, and fills in peak VRAM, the
   model-call cost of LLM agents and the parse-failure rate. The write-up takes
   DD-070.
-* **"Run all" in a fresh Colab runtime.** This is the last box in
-  EVALUATION_PROTOCOL.md 29.
+* ~~**"Run all" in a fresh Colab runtime.**~~ Done on 2026-10-11: 16 of 16
+  cells, no error, model stack on a T4 (section 8, issue #27).
 * **The LLM judge** has still never been run (out of scope).
 * **Chunk size and fusion weights** remain open (EXPERIMENT_PLAN.md section 5),
   and no unplanned sweep was added.
