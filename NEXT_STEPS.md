@@ -171,8 +171,9 @@ once it exists.
 
 - [ ] RQ2 (reranker), RQ3 (agentic on multi-hop) and RQ4 (verifier) are
   answered or stated as null, with CIs.
-- [ ] *Runtime → Run all* on `notebooks/agentic_pdf_rag.ipynb` works in a fresh
+- [x] *Runtime → Run all* on `notebooks/agentic_pdf_rag.ipynb` works in a fresh
   Colab runtime with a GPU. That is the last box in EVALUATION_PROTOCOL.md 29.
+  Done 2026-10-11; the executed copy is in `notebooks/runs/` (issue #27).
 
 ---
 

@@ -681,7 +681,7 @@ This checklist predates the project's phase numbering; section 19 maps the two.
 
 * [x] Colab notebook, chat interface and follow-up questions
 * [x] Documentation
-* [ ] Reproducibility testing: *Run all* in a fresh Colab runtime
+* [x] Reproducibility testing: *Run all* in a fresh Colab runtime (T4, 2026-10-11; `notebooks/runs/`)
 * [ ] Final benchmark: the model-stack run (NEXT_STEPS.md)
 * [ ] Final release
 
