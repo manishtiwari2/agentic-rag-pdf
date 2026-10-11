@@ -3235,3 +3235,78 @@ questions, so the bucket tallies are counts to read, not effects.
 **If a grid arm is chosen,** it becomes the default only after one eval run,
 which would be the third look at eval, disclosed here and in STATUS.md. If the
 incumbent stays, eval is not run.
+
+### Part 2 — the result (appended after the 14 dev runs)
+
+**Offline stand-in stack, `--split dev`, 33 questions.** Generated tables:
+[`results/experiments/fusion/TABLE.md`](results/experiments/fusion/TABLE.md)
+(`sweep-table --study fusion`) and
+[`results/experiments/fusion/WINS.md`](results/experiments/fusion/WINS.md)
+(`fusion-wins`). The figures below are copied from them.
+
+**Decision: no arm qualifies, and the incumbent `k60_c20` stays.** No eval
+run was made, so eval has still been looked at twice.
+
+**Finding 1: with the reranker on, RRF k and candidate depth are inert.**
+* All 12 grid arms match the incumbent on every metric and every question:
+  every contrast is +0.000 [+0.000, +0.000].
+* The fusion setting does change the fused list. k = 10 and k = 100 order the
+  pre-rerank top 5 differently on 6 of 33 questions (pre-rerank MRR 0.786 at
+  k = 10 vs 0.783 at k = 60).
+* The reranker then re-sorts the fused top 20 (DD-046), so every setting ends
+  at the same final ranking.
+* Candidate depth changes nothing either. Each benchmark document is indexed
+  on its own, and its candidate pools are small enough that the fused top 20
+  holds the same chunks at depth 10, 20 or 40.
+
+So on this system RRF k is a parameter of an intermediate list that the next
+stage overwrites. Fusion settings would matter with the reranker off, or with
+a pool larger than the reranker's window. Neither was swept, and sweeping
+either now would be a second search on the same 33 questions.
+
+**Finding 2: fusion beats either retriever alone, by one question each.**
+* `dense_only` and `bm25_only` both reach Recall@5 0.900 against fusion's
+  0.933 (−0.033 [−0.100, +0.000]), each missing one question fusion finds.
+* MRR@10: BM25-only 0.762, dense-only 0.789, fused 0.796.
+* None of these is significant. This agrees with the 76-question Phase 4
+  result, where hybrid's only significant gain over dense was MRR@10.
+
+**Which retriever wins where** (incumbent arm, pre-rerank lists,
+descriptive):
+
+| bucket | n | dense wins | ties | BM25 wins |
+| --- | ---: | ---: | ---: | ---: |
+| lexical | 8 | 0 | 8 | 0 |
+| mixed | 5 | 0 | 4 | 1 |
+| numeric | 8 | 2 | 5 | 1 |
+| paraphrase | 9 | 2 | 5 | 2 |
+
+* **Lexical questions are all ties.** When the question's words are on the
+  page, both retrievers rank it the same.
+* **The disagreements are in numeric and paraphrase questions,** split almost
+  evenly: 4 dense wins and 3 BM25 wins out of 17.
+* q043 (table) and q014 (explanation) are found at rank 1 by BM25 only, or far
+  higher by BM25.
+* q020 (table) and q051 (paraphrase) are found by dense only. q051 has
+  question-page overlap 0.000, so BM25 cannot find it at all.
+* That split is the case for keeping both retrievers, even though neither
+  single-retriever loss is significant.
+
+**Caveats, stated with the result.**
+* The stored candidate lists hold the top 5 of each retriever, so the wins
+  table compares ranks 1-5 only. A page "not found" may sit at rank 6-20.
+* This stack's "dense" retriever is a hashing embedder: hashed term counts
+  with IDF weighting. It is close to a second lexical retriever, which is why
+  lexical questions tie. With bge-m3, the paraphrase bucket is where dense
+  should pull ahead, and that is the first thing to check on the model stack.
+* Each bucket has 5-9 questions, so these are counts, not effects.
+
+**What I would do at scale.**
+* Sweep fusion with the reranker off, and with a reranker window smaller than
+  the fused pool, so that the fusion setting decides what the reranker sees.
+* Measure the reranker's latency per pair. If fusion order is overwritten
+  anyway, the cheaper lever is the reranker window (`reranking.candidates`),
+  which sets how many pairs the cross-encoder scores.
+
+**What stands.** Defaults unchanged: RRF k = 60, `candidate_k` = 20.
+EXPERIMENT_PLAN.md section 5.2 is closed for the offline stack.
