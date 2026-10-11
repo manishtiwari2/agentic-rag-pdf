@@ -98,6 +98,27 @@ class TestEachAblationFlagChangesOneField:
         ):
             _config(*self.REFERENCE, flag).validate()
 
+    @pytest.mark.parametrize(
+        "flags, changed",
+        [
+            (("--lexical-only",), {"retrieval.retrievers": (("dense", "lexical"), ("lexical",))}),
+            (("--rrf-k", "10"), {"retrieval.rrf_k": (60, 10)}),
+            (("--candidate-k", "40"), {"retrieval.candidate_k": (20, 40)}),
+        ],
+    )
+    def test_each_fusion_flag_changes_its_field_alone(self, flags, changed):
+        # DD-072's arms, on Baseline B.
+        reference = ("--system", "hybrid")
+        arm = _config(*reference, *flags)
+        assert _changed(_config(*reference), arm) == changed
+        arm.validate()
+
+    def test_fusion_flags_are_refused_on_the_dense_baseline(self):
+        with pytest.raises(ConfigurationError, match="--rrf-k"):
+            _config("--system", "dense", "--rrf-k", "10")
+        with pytest.raises(ConfigurationError, match="--lexical-only"):
+            _config("--system", "dense", "--lexical-only")
+
     def test_hybrid_off_is_refused_on_the_dense_baseline(self):
         with pytest.raises(ConfigurationError, match="--no-hybrid"):
             _config("--system", "dense", "--no-hybrid")
