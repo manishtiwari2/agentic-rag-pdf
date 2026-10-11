@@ -584,6 +584,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Print the buckets and cut points only; read no run (DD-072 Part 1).",
     )
 
+    rerank_cmd = sub.add_parser(
+        "reranker-table",
+        help="Reranker cost/benefit from the stored ablations: no new run (A3).",
+    )
+    rerank_cmd.add_argument("--root", default=".")
+    rerank_cmd.add_argument("--out", default="results/experiments/reranker")
+
     chat_cmd = sub.add_parser(
         "chat",
         help="Serve the web chat app: upload PDFs, ask, follow up (DD-065, DD-066).",
@@ -646,6 +653,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "fusion-wins":
         return _fusion_wins(args)
+
+    if args.command == "reranker-table":
+        from .evaluation import tradeoffs  # noqa: PLC0415
+
+        try:
+            paths = tradeoffs.write(tradeoffs.reranker_tradeoff(args.root), args.out)
+        except (OSError, RAGError, ValueError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(errors="replace")
+        print(paths["table"].read_text(encoding="utf-8"))
+        print("Wrote " + ", ".join(str(p) for p in paths.values()))
+        return 0
 
     if args.command == "compare-runs":
         from .evaluation.benchmark import compare_runs  # noqa: PLC0415
