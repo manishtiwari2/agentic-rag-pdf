@@ -14,7 +14,7 @@ every judgment call, including the ones where the fancier component lost.
 > hashing embedder, a scripted extractive generator, a term-overlap reranker
 > and rule-based agents, run on a CPU. None is a Qwen3-4B / bge-m3 /
 > bge-reranker-v2-m3 result. **The GPU model-stack run has not been done**
-> ([NEXT_STEPS.md](NEXT_STEPS.md)). The offline numbers are real measurements
+> ([NEXT_STEPS.md](docs/NEXT_STEPS.md)). The offline numbers are real measurements
 > of a real, weak system. They test the harness and the engineering, not the
 > models.
 
@@ -51,7 +51,7 @@ flowchart LR
 The modules are independent, and each is switchable by one config field
 (`src/config.py`, DD-017). The dense, hybrid and agentic systems share every
 layer they have in common, so a comparison between them changes one thing at a
-time ([ARCHITECTURE.md](ARCHITECTURE.md)).
+time ([ARCHITECTURE.md](docs/ARCHITECTURE.md)).
 
 ---
 
@@ -60,7 +60,7 @@ time ([ARCHITECTURE.md](ARCHITECTURE.md)).
 Each subsection covers the decision, the alternatives I considered, why I
 chose as I did, the measured evidence (offline stand-in stack, 95% CI), what I
 would do at scale, and the DD. Depth lives in [docs/TRADEOFFS.md](docs/TRADEOFFS.md)
-and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
+and [DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
 
 ### 1. Chunking
 
@@ -83,7 +83,7 @@ and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
   * Table: [results/experiments/chunking/TABLE.md](results/experiments/chunking/TABLE.md).
 * **At scale:** merge adjacent short sections up to the size cap, attach each
   table's caption to its chunk, and re-sweep with a real embedder.
-* **DDs:** [DD-009](DESIGN_DECISIONS.md), DD-030, DD-061, **DD-071**.
+* **DDs:** [DD-009](docs/DESIGN_DECISIONS.md), DD-030, DD-061, **DD-071**.
 
 ### 2. Hybrid search
 
@@ -250,7 +250,7 @@ and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 ## Evaluation harness
 
 Details: [docs/EVALUATION.md](docs/EVALUATION.md) and
-[EVALUATION_PROTOCOL.md](EVALUATION_PROTOCOL.md).
+[EVALUATION_PROTOCOL.md](docs/EVALUATION_PROTOCOL.md).
 
 * **Dataset:**
   * 76 questions over 5 PDFs (56 pages), spanning 10 question types: factual,
@@ -401,5 +401,5 @@ Further commands and the Python API: [docs/PROJECT_README_ARCHIVE.md](docs/PROJE
 ---
 
 **Licence:** Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)) ·
-**Status record:** [STATUS.md](STATUS.md) ·
-**All decisions:** [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
+**Status record:** [STATUS.md](docs/STATUS.md) ·
+**All decisions:** [DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)
