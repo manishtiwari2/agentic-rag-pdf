@@ -3086,7 +3086,7 @@ the incumbent stays, eval is not run.
 
 **Offline stand-in stack, `--split dev`, 33 questions.** The full generated
 table, with every arm and every contrast, is
-[`results/experiments/chunking/TABLE.md`](results/experiments/chunking/TABLE.md)
+[`results/experiments/chunking/TABLE.md`](../results/experiments/chunking/TABLE.md)
 (`table.json` beside it). Figures quoted below are copied from it.
 
 **Sanity check passed.** The `structure_1200_150` arm reproduces all 33 dev
@@ -3239,9 +3239,9 @@ incumbent stays, eval is not run.
 ### Part 2 — the result (appended after the 14 dev runs)
 
 **Offline stand-in stack, `--split dev`, 33 questions.** Generated tables:
-[`results/experiments/fusion/TABLE.md`](results/experiments/fusion/TABLE.md)
+[`results/experiments/fusion/TABLE.md`](../results/experiments/fusion/TABLE.md)
 (`sweep-table --study fusion`) and
-[`results/experiments/fusion/WINS.md`](results/experiments/fusion/WINS.md)
+[`results/experiments/fusion/WINS.md`](../results/experiments/fusion/WINS.md)
 (`fusion-wins`). The figures below are copied from them.
 
 **Decision: no arm qualifies, and the incumbent `k60_c20` stays.** No eval
