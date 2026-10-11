@@ -27,6 +27,7 @@ import dataclasses
 import json
 import os
 import sys
+from pathlib import Path
 
 from .benchmark.inspect import inspect_page
 from .benchmark.manifest import DEFAULT_MANIFEST_PATH
@@ -89,6 +90,28 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
             )
         # The "Hybrid retrieval OFF" ablation: this one field, nothing else.
         retrieval = replace(retrieval, retrievers=("dense",))
+    if getattr(args, "lexical_only", False):
+        if system not in ("hybrid", "agentic"):
+            raise ConfigurationError(
+                "--lexical-only applies to --system hybrid or agentic, whose "
+                "fusion and reranker it keeps."
+            )
+        if getattr(args, "no_hybrid", False):
+            raise ConfigurationError("--lexical-only and --no-hybrid each keep one retriever; pick one.")
+        # The BM25-only reference of DD-072: the other one-retriever arm.
+        retrieval = replace(retrieval, retrievers=("lexical",))
+    fusion_flags = {
+        "rrf_k": getattr(args, "rrf_k", None),
+        "candidate_k": getattr(args, "candidate_k", None),
+    }
+    fusion_flags = {k: v for k, v in fusion_flags.items() if v is not None}
+    if fusion_flags:
+        if system not in ("hybrid", "agentic"):
+            raise ConfigurationError(
+                "--rrf-k and --candidate-k apply to --system hybrid or agentic; "
+                "the dense baseline fuses nothing."
+            )
+        retrieval = replace(retrieval, **fusion_flags)
 
     agents: AgentConfig = config.agents
     requested = [flag for flag in AGENT_SWITCHES if getattr(args, flag, False)]
@@ -125,6 +148,46 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
     )
 
 
+def _fusion_wins(args: argparse.Namespace) -> int:
+    """DD-072's descriptive analysis: buckets, then per-retriever gold ranks."""
+    from .benchmark.schema import load_questions  # noqa: PLC0415
+    from .evaluation import fusion_analysis as fa  # noqa: PLC0415
+    from .evaluation.benchmark import load_results  # noqa: PLC0415
+    from .evaluation.report import note_for_config  # noqa: PLC0415
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    config = RAGConfig.offline()
+    dev = [q for q in load_questions(args.questions) if q.split == "dev"]
+    buckets = fa.question_buckets(dev, args.pdf_dir, config)
+    if args.buckets_only:
+        print(json.dumps({"cuts": buckets["cuts"], "counts": buckets["counts"]}, indent=2))
+        for qid, row in buckets["questions"].items():
+            print(f"{qid}  {row['bucket']:<10} {row['overlap']:.3f}  {row['question_type']}")
+        return 0
+    loaded = load_results(args.arm)
+    run_config = loaded.get("config") or {}
+    if run_config.get("split") != "dev":
+        print("fusion-wins reads a --split dev run only (DD-072).", file=sys.stderr)
+        return 1
+    chunking = dataclasses.replace(
+        config.chunking,
+        strategy=run_config.get("chunking_strategy", config.chunking.strategy),
+        chunk_size=run_config.get("chunk_size", config.chunking.chunk_size),
+        chunk_overlap=run_config.get("chunk_overlap", config.chunking.chunk_overlap),
+    )
+    pages = fa.chunk_pages(
+        [q.document for q in dev], args.pdf_dir, dataclasses.replace(config, chunking=chunking)
+    )
+    result = fa.retriever_wins(loaded.get("per_question") or [], buckets, pages)
+    result["buckets"] = buckets
+    markdown = fa.render_wins(result, note_for_config(run_config), Path(args.arm).name)
+    paths = fa.write_wins(result, markdown, args.out)
+    print(markdown)
+    print("Wrote " + ", ".join(str(p) for p in paths.values()))
+    return 0
+
+
 def _add_system(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--system",
@@ -148,6 +211,21 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
             "Hybrid/agentic: the 'Hybrid retrieval OFF' ablation "
             "(EVALUATION_PROTOCOL.md 24): retrieval.retrievers = ('dense',)."
         ),
+    )
+    parser.add_argument(
+        "--lexical-only",
+        action="store_true",
+        help="Hybrid/agentic: retrieval.retrievers = ('lexical',), the BM25-only reference (DD-072).",
+    )
+    parser.add_argument(
+        "--rrf-k",
+        type=int,
+        help="Hybrid/agentic: the RRF constant (default 60, DD-045). Tune on --split dev only.",
+    )
+    parser.add_argument(
+        "--candidate-k",
+        type=int,
+        help="Hybrid/agentic: depth each retriever ranks to before fusion (default 20, DD-046).",
     )
     for flag, label in (
         ("--no-planner", "Agent planner OFF"),
@@ -486,8 +564,32 @@ def main(argv: list[str] | None = None) -> int:
             "the rule declared for it (DD-071, DD-072)."
         ),
     )
-    sweep_cmd.add_argument("--study", required=True, choices=["chunking"])
+    sweep_cmd.add_argument("--study", required=True, choices=["chunking", "fusion"])
     sweep_cmd.add_argument("--root", help="Arms directory. Default: results/experiments/<study>.")
+
+    wins_cmd = sub.add_parser(
+        "fusion-wins",
+        help=(
+            "DD-072: assign dev questions to numeric/lexical/mixed/paraphrase buckets "
+            "and count which retriever ranks the gold page first, before reranking."
+        ),
+    )
+    wins_cmd.add_argument("--arm", default="results/experiments/fusion/k60_c20")
+    wins_cmd.add_argument("--out", default="results/experiments/fusion")
+    wins_cmd.add_argument("--questions", default=str(DEFAULT_QUESTIONS_PATH))
+    wins_cmd.add_argument("--pdf-dir", default=str(DEFAULT_DOCUMENTS_DIR))
+    wins_cmd.add_argument(
+        "--buckets-only",
+        action="store_true",
+        help="Print the buckets and cut points only; read no run (DD-072 Part 1).",
+    )
+
+    rerank_cmd = sub.add_parser(
+        "reranker-table",
+        help="Reranker cost/benefit from the stored ablations: no new run (A3).",
+    )
+    rerank_cmd.add_argument("--root", default=".")
+    rerank_cmd.add_argument("--out", default="results/experiments/reranker")
 
     chat_cmd = sub.add_parser(
         "chat",
@@ -547,6 +649,23 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(errors="replace")
         print(paths["table"].read_text(encoding="utf-8"))
         print(f"Chosen: {study['chosen']}. Wrote " + ", ".join(str(p) for p in paths.values()))
+        return 0
+
+    if args.command == "fusion-wins":
+        return _fusion_wins(args)
+
+    if args.command == "reranker-table":
+        from .evaluation import tradeoffs  # noqa: PLC0415
+
+        try:
+            paths = tradeoffs.write(tradeoffs.reranker_tradeoff(args.root), args.out)
+        except (OSError, RAGError, ValueError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(errors="replace")
+        print(paths["table"].read_text(encoding="utf-8"))
+        print("Wrote " + ", ".join(str(p) for p in paths.values()))
         return 0
 
     if args.command == "compare-runs":
