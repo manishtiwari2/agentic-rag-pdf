@@ -27,6 +27,7 @@ from src.chunking.base import Chunk
 from src.config import RAGConfig
 from src.evaluation.benchmark import (
     build_config_snapshot,
+    index_size_stats,
     run_benchmark_cli,
     latency_stats,
     load_results,
@@ -755,6 +756,21 @@ class TestLatencyStats:
         assert latency_stats([])["latency_median_s"] is None
 
 
+class TestIndexSizeStats:
+    """DD-071: chunk count and index size, pooled across documents."""
+
+    def test_pooled_over_every_document(self):
+        stats = index_size_stats([{"chunk_chars": [100, 300]}, {"chunk_chars": [200]}])
+        assert stats["chunks_total"] == 3
+        assert stats["indexed_chars_total"] == 600
+        assert stats["chunk_chars_mean"] == pytest.approx(200.0)
+        assert stats["chunk_chars_p95"] == 300
+
+    def test_a_system_without_chunks_reports_none_rather_than_zero(self):
+        stats = index_size_stats([{"chunks": 4}])
+        assert set(stats.values()) == {None}
+
+
 class TestJudgeIsOptional:
     """EVALUATION_PROTOCOL.md 19: optional, non-blocking, never a silent zero."""
 
@@ -964,6 +980,8 @@ class TestFullBenchmarkSmokeRun:
         assert summary["n_retrieval_scored"] == summary["n_answerable"]
         for key in ("recall_at_5", "full_recall_at_5", "mrr_at_10", "accuracy_all"):
             assert summary[key] is not None, key
+        assert summary["chunks_total"] > 0
+        assert summary["indexed_chars_total"] >= summary["chunks_total"]
 
         loaded = load_results(tmp_path / "baseline")
         assert len(loaded["per_question"]) == len(questions)
