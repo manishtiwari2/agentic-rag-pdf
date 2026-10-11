@@ -103,6 +103,7 @@ OVERLAP_RERANKER = "local/term-overlap-reranker"
 RULE_PLANNER = "local/rule-based-planner"
 RULE_EVIDENCE_CONTROLLER = "local/rule-based-evidence-controller"
 RULE_VERIFIER = "local/rule-based-verifier"
+RULE_CONFLICT_DETECTOR = "local/rule-based-conflict-detector"
 
 
 @dataclass(frozen=True)
@@ -386,6 +387,26 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class ConflictConfig:
+    """Stale and conflicting sources (DD-074).
+
+    Off by default, so every stored result -- each produced over one document
+    at a time -- is reproduced unchanged; the chat app turns it on. While off,
+    this section is left out of ``RAGConfig.fingerprint``.
+    """
+
+    enabled: bool = False
+    detector: AgentBackend = "llm"
+    #: Jaccard overlap of two sentences' anchors (content terms minus values)
+    #: above which they make the same claim. Tuned on the conflict suite's dev
+    #: split by DD-074's rule; 0.5 until then.
+    anchor_threshold: float = 0.5
+    #: Sentence pairs shown to the LLM detector at most (DD-074).
+    max_llm_pairs: int = 6
+    policy: Literal["prefer_newer"] = "prefer_newer"
+
+
+@dataclass(frozen=True)
 class RAGConfig:
     """The single configuration object for the whole system."""
 
@@ -396,6 +417,7 @@ class RAGConfig:
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     reranking: RerankingConfig = field(default_factory=RerankingConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
+    conflicts: ConflictConfig = field(default_factory=ConflictConfig)
 
     # -- presets ------------------------------------------------------------
 
@@ -438,6 +460,7 @@ class RAGConfig:
             agents=AgentConfig(
                 planner="rules", evidence_controller="rules", verifier="rules"
             ),
+            conflicts=ConflictConfig(detector="rules"),
         )
 
     # -- derived ------------------------------------------------------------
@@ -494,7 +517,11 @@ class RAGConfig:
 
     def fingerprint(self) -> str:
         """Stable hash of the whole configuration, recorded with every result."""
-        blob = json.dumps(dataclasses.asdict(self), sort_keys=True, default=str)
+        record = dataclasses.asdict(self)
+        if not self.conflicts.enabled:
+            # DD-074: a run with conflicts off is the run it always was.
+            record.pop("conflicts")
+        blob = json.dumps(record, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
     def describe(self) -> dict[str, object]:
@@ -606,6 +633,10 @@ class RAGConfig:
                     f"reranking.candidates ({self.reranking.candidates}) must be at "
                     f"least top_k ({r.top_k})."
                 )
+        if not 0.0 < self.conflicts.anchor_threshold <= 1.0:
+            raise ConfigurationError("conflicts.anchor_threshold must be in (0, 1].")
+        if self.conflicts.max_llm_pairs <= 0:
+            raise ConfigurationError("conflicts.max_llm_pairs must be positive.")
         if r.rrf_k <= 0:
             raise ConfigurationError("retrieval.rrf_k must be positive.")
         if r.bm25_k1 < 0 or not 0.0 <= r.bm25_b <= 1.0:
