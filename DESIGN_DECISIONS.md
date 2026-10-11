@@ -3155,3 +3155,158 @@ second chunking search on the same 33 questions.
 
 **What stands.** The defaults are unchanged: structure-aware, 1200, 150.
 EXPERIMENT_PLAN.md section 5.1 is closed for the offline stack.
+
+---
+
+# DD-072 — Hybrid Fusion: RRF k and Candidate Depth, Swept on Dev by a Rule Written First
+
+**Status:** Part 1 (the rule and the buckets) committed 2026-10-11, before any
+fusion arm was run. Part 2 is appended after it. Issue #32.
+
+> **Offline stand-in stack throughout:** hashing embedder, scripted extractive
+> generator, term-overlap reranker. The "dense" retriever here is a hashing
+> embedder, which is closer to a second lexical retriever than to bge-m3. A
+> result about dense vs BM25 on this stack says little about dense vs BM25 on
+> the model stack, and the write-up must say so.
+
+### Why
+
+EXPERIMENT_PLAN.md section 5.2 has been open since Phase 4. RRF runs at
+k = 60, the Cormack et al. default (DD-045), and each retriever ranks to 20
+(DD-046). Neither value was measured here.
+
+### Part 1 — the study, declared before looking
+
+**System.** Baseline B with the DD-071 chunking (structure-aware 1200/150,
+unchanged), on `--split dev`. Eval is not run and not read for this decision.
+
+**Grid.** `rrf_k` {10, 30, 60, 100} × `candidate_k` {10, 20, 40}, giving 12 arms
+named `k<rrf_k>_c<candidate_k>`. Two references keep fusion's reranker and
+change `retrieval.retrievers` alone: `dense_only` (`--no-hybrid`) and
+`bm25_only` (`--lexical-only`). All go into `results/experiments/fusion/`.
+`sweep-table --study fusion` makes the table.
+
+**Incumbent.** `k60_c20`, the current default.
+
+**Rule** (`sweeps.STUDIES["fusion"]`):
+1. A grid arm **qualifies** when its dev paired-bootstrap CI against the
+   incumbent is above 0 on Recall@5 **or** MRR@10. It must also show no
+   significant regression on Recall@5, MRR@10 or accuracy (all).
+2. **No qualifier:** the incumbent stays.
+3. **Qualifiers:** highest Recall@5, then highest MRR@10, then the smaller
+   `candidate_k`, which is the cheaper one.
+4. The two references are reported and never chosen. A one-retriever system
+   is the ablation DD-057 already measured, not a fusion setting.
+
+Recall@5 and MRR@10 are what fusion can move. Accuracy is a guard, so a
+better ranking that hurts answers cannot win.
+
+**Which retriever wins on which questions** (`fusion-wins`, descriptive,
+outside the rule). On the incumbent arm, for each answerable dev question, it
+takes the rank of the first gold page in three lists: the dense list, the BM25
+list and the fused list. All three are read *before* reranking, from the
+stored candidate ids, so the reranker's reordering does not hide which
+retriever surfaced the page. Results are tallied per question type and per
+bucket.
+
+**Buckets, fixed now from the questions and gold pages alone** (no system
+output is read; `fusion-wins --buckets-only`):
+* **numeric** — question type `numerical` or `table`;
+* the remaining answerable questions are cut into terciles by *overlap*: the
+  share of the question's content terms that appear on its gold pages, using
+  the harness's tokenizer (`metrics.content_tokens`). The dev cut points are:
+  * **lexical** — overlap ≥ 0.6471;
+  * **paraphrase** — overlap ≤ 0.5556;
+  * **mixed** — in between.
+* Dev counts: numeric 8, lexical 8, mixed 5, paraphrase 9. The 3 unanswerable
+  questions have no gold page and are left out.
+
+**Disclosure about the buckets.** The first draft also counted any question
+containing a digit as numeric. That put 18 of 30 in one bucket, including
+definition questions that only name a year or a section number. It was
+narrowed to the two numeric question types before any fusion arm was run, and
+no result had been read.
+
+**Power.** 33 dev questions again. A paired CI above 0 needs several questions
+to gain net. As in DD-071, "the incumbent stays" is the likely outcome, and if
+it does, it means "no measurable difference here". Each bucket has 5-9
+questions, so the bucket tallies are counts to read, not effects.
+
+**If a grid arm is chosen,** it becomes the default only after one eval run,
+which would be the third look at eval, disclosed here and in STATUS.md. If the
+incumbent stays, eval is not run.
+
+### Part 2 — the result (appended after the 14 dev runs)
+
+**Offline stand-in stack, `--split dev`, 33 questions.** Generated tables:
+[`results/experiments/fusion/TABLE.md`](results/experiments/fusion/TABLE.md)
+(`sweep-table --study fusion`) and
+[`results/experiments/fusion/WINS.md`](results/experiments/fusion/WINS.md)
+(`fusion-wins`). The figures below are copied from them.
+
+**Decision: no arm qualifies, and the incumbent `k60_c20` stays.** No eval
+run was made, so eval has still been looked at twice.
+
+**Finding 1: with the reranker on, RRF k and candidate depth are inert.**
+* All 12 grid arms match the incumbent on every metric and every question:
+  every contrast is +0.000 [+0.000, +0.000].
+* The fusion setting does change the fused list. k = 10 and k = 100 order the
+  pre-rerank top 5 differently on 6 of 33 questions (pre-rerank MRR 0.786 at
+  k = 10 vs 0.783 at k = 60).
+* The reranker then re-sorts the fused top 20 (DD-046), so every setting ends
+  at the same final ranking.
+* Candidate depth changes nothing either. Each benchmark document is indexed
+  on its own, and its candidate pools are small enough that the fused top 20
+  holds the same chunks at depth 10, 20 or 40.
+
+So on this system RRF k is a parameter of an intermediate list that the next
+stage overwrites. Fusion settings would matter with the reranker off, or with
+a pool larger than the reranker's window. Neither was swept, and sweeping
+either now would be a second search on the same 33 questions.
+
+**Finding 2: fusion beats either retriever alone, by one question each.**
+* `dense_only` and `bm25_only` both reach Recall@5 0.900 against fusion's
+  0.933 (−0.033 [−0.100, +0.000]), each missing one question fusion finds.
+* MRR@10: BM25-only 0.762, dense-only 0.789, fused 0.796.
+* None of these is significant. This agrees with the 76-question Phase 4
+  result, where hybrid's only significant gain over dense was MRR@10.
+
+**Which retriever wins where** (incumbent arm, pre-rerank lists,
+descriptive):
+
+| bucket | n | dense wins | ties | BM25 wins |
+| --- | ---: | ---: | ---: | ---: |
+| lexical | 8 | 0 | 8 | 0 |
+| mixed | 5 | 0 | 4 | 1 |
+| numeric | 8 | 2 | 5 | 1 |
+| paraphrase | 9 | 2 | 5 | 2 |
+
+* **Lexical questions are all ties.** When the question's words are on the
+  page, both retrievers rank it the same.
+* **The disagreements are in numeric and paraphrase questions,** split almost
+  evenly: 4 dense wins and 3 BM25 wins out of 17.
+* q043 (table) and q014 (explanation) are found at rank 1 by BM25 only, or far
+  higher by BM25.
+* q020 (table) and q051 (paraphrase) are found by dense only. q051 has
+  question-page overlap 0.000, so BM25 cannot find it at all.
+* That split is the case for keeping both retrievers, even though neither
+  single-retriever loss is significant.
+
+**Caveats, stated with the result.**
+* The stored candidate lists hold the top 5 of each retriever, so the wins
+  table compares ranks 1-5 only. A page "not found" may sit at rank 6-20.
+* This stack's "dense" retriever is a hashing embedder: hashed term counts
+  with IDF weighting. It is close to a second lexical retriever, which is why
+  lexical questions tie. With bge-m3, the paraphrase bucket is where dense
+  should pull ahead, and that is the first thing to check on the model stack.
+* Each bucket has 5-9 questions, so these are counts, not effects.
+
+**What I would do at scale.**
+* Sweep fusion with the reranker off, and with a reranker window smaller than
+  the fused pool, so that the fusion setting decides what the reranker sees.
+* Measure the reranker's latency per pair. If fusion order is overwritten
+  anyway, the cheaper lever is the reranker window (`reranking.candidates`),
+  which sets how many pairs the cross-encoder scores.
+
+**What stands.** Defaults unchanged: RRF k = 60, `candidate_k` = 20.
+EXPERIMENT_PLAN.md section 5.2 is closed for the offline stack.
