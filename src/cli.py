@@ -567,6 +567,12 @@ def main(argv: list[str] | None = None) -> int:
     sweep_cmd.add_argument("--study", required=True, choices=["chunking", "fusion"])
     sweep_cmd.add_argument("--root", help="Arms directory. Default: results/experiments/<study>.")
 
+    readme_cmd = sub.add_parser(
+        "readme-table",
+        help="Copy the eval headline of results/final/REPORT.md into README.md's generated block.",
+    )
+    readme_cmd.add_argument("--readme", default="README.md")
+    readme_cmd.add_argument("--report", default="results/final/REPORT.md")
     wins_cmd = sub.add_parser(
         "fusion-wins",
         help=(
@@ -649,6 +655,22 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(errors="replace")
         print(paths["table"].read_text(encoding="utf-8"))
         print(f"Chosen: {study['chosen']}. Wrote " + ", ".join(str(p) for p in paths.values()))
+        return 0
+
+    if args.command == "readme-table":
+        from .evaluation.report import splice_readme  # noqa: PLC0415
+
+        readme = Path(args.readme)
+        try:
+            text = splice_readme(
+                readme.read_bytes().decode("utf-8"),
+                Path(args.report).read_text(encoding="utf-8"),
+            )
+        except (OSError, ValueError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        readme.write_bytes(text.encode("utf-8"))
+        print(f"Wrote the eval headline of {args.report} into {readme}")
         return 0
 
     if args.command == "fusion-wins":
