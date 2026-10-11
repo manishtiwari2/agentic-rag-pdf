@@ -3155,3 +3155,83 @@ second chunking search on the same 33 questions.
 
 **What stands.** The defaults are unchanged: structure-aware, 1200, 150.
 EXPERIMENT_PLAN.md section 5.1 is closed for the offline stack.
+
+---
+
+# DD-072 — Hybrid Fusion: RRF k and Candidate Depth, Swept on Dev by a Rule Written First
+
+**Status:** Part 1 (the rule and the buckets) committed 2026-10-11, before any
+fusion arm was run. Part 2 is appended after it. Issue #32.
+
+> **Offline stand-in stack throughout:** hashing embedder, scripted extractive
+> generator, term-overlap reranker. The "dense" retriever here is a hashing
+> embedder, which is closer to a second lexical retriever than to bge-m3. A
+> result about dense vs BM25 on this stack says little about dense vs BM25 on
+> the model stack, and the write-up must say so.
+
+### Why
+
+EXPERIMENT_PLAN.md section 5.2 has been open since Phase 4. RRF runs at
+k = 60, the Cormack et al. default (DD-045), and each retriever ranks to 20
+(DD-046). Neither value was measured here.
+
+### Part 1 — the study, declared before looking
+
+**System.** Baseline B with the DD-071 chunking (structure-aware 1200/150,
+unchanged), on `--split dev`. Eval is not run and not read for this decision.
+
+**Grid.** `rrf_k` {10, 30, 60, 100} × `candidate_k` {10, 20, 40}, giving 12 arms
+named `k<rrf_k>_c<candidate_k>`. Two references keep fusion's reranker and
+change `retrieval.retrievers` alone: `dense_only` (`--no-hybrid`) and
+`bm25_only` (`--lexical-only`). All go into `results/experiments/fusion/`.
+`sweep-table --study fusion` makes the table.
+
+**Incumbent.** `k60_c20`, the current default.
+
+**Rule** (`sweeps.STUDIES["fusion"]`):
+1. A grid arm **qualifies** when its dev paired-bootstrap CI against the
+   incumbent is above 0 on Recall@5 **or** MRR@10. It must also show no
+   significant regression on Recall@5, MRR@10 or accuracy (all).
+2. **No qualifier:** the incumbent stays.
+3. **Qualifiers:** highest Recall@5, then highest MRR@10, then the smaller
+   `candidate_k`, which is the cheaper one.
+4. The two references are reported and never chosen. A one-retriever system
+   is the ablation DD-057 already measured, not a fusion setting.
+
+Recall@5 and MRR@10 are what fusion can move. Accuracy is a guard, so a
+better ranking that hurts answers cannot win.
+
+**Which retriever wins on which questions** (`fusion-wins`, descriptive,
+outside the rule). On the incumbent arm, for each answerable dev question, it
+takes the rank of the first gold page in three lists: the dense list, the BM25
+list and the fused list. All three are read *before* reranking, from the
+stored candidate ids, so the reranker's reordering does not hide which
+retriever surfaced the page. Results are tallied per question type and per
+bucket.
+
+**Buckets, fixed now from the questions and gold pages alone** (no system
+output is read; `fusion-wins --buckets-only`):
+* **numeric** — question type `numerical` or `table`;
+* the remaining answerable questions are cut into terciles by *overlap*: the
+  share of the question's content terms that appear on its gold pages, using
+  the harness's tokenizer (`metrics.content_tokens`). The dev cut points are:
+  * **lexical** — overlap ≥ 0.6471;
+  * **paraphrase** — overlap ≤ 0.5556;
+  * **mixed** — in between.
+* Dev counts: numeric 8, lexical 8, mixed 5, paraphrase 9. The 3 unanswerable
+  questions have no gold page and are left out.
+
+**Disclosure about the buckets.** The first draft also counted any question
+containing a digit as numeric. That put 18 of 30 in one bucket, including
+definition questions that only name a year or a section number. It was
+narrowed to the two numeric question types before any fusion arm was run, and
+no result had been read.
+
+**Power.** 33 dev questions again. A paired CI above 0 needs several questions
+to gain net. As in DD-071, "the incumbent stays" is the likely outcome, and if
+it does, it means "no measurable difference here". Each bucket has 5-9
+questions, so the bucket tallies are counts to read, not effects.
+
+**If a grid arm is chosen,** it becomes the default only after one eval run,
+which would be the third look at eval, disclosed here and in STATUS.md. If the
+incumbent stays, eval is not run.
