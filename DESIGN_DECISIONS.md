@@ -2557,6 +2557,27 @@ Gradio's own dependency tree was not audited licence by licence. It is an
 optional, Colab-only extra and is never imported by the library outside
 `ui.py`. NOTICE says so.
 
+### Addition (2026-10-11): `python -m src.cli chat`
+
+The app could only be started from notebook section 10. The `chat` command now
+serves the same `build_app()` on its own. Its flags:
+* `--system` sets the system the page opens with, `agentic` by default.
+* `--offline` uses the stand-in stack.
+* `--share` adds the public link; `--host` and `--port` set the address.
+
+The command adds no logic beyond the app, and it takes no ablation flags. It
+fails with a one-line remedy, not a traceback, in three cases:
+* Gradio is missing;
+* the model stack is asked for with no CUDA device;
+* the port is busy.
+
+It still imports Gradio only through `ui.py`, so the licence rule above holds.
+
+Verified on this machine with `--offline` over HTTP (`gradio_client`): two
+PDFs were uploaded and indexed, a question got a cited answer naming its file,
+a follow-up was rewritten, and an unanswerable question was refused.
+Permanent hosting is still out of scope (PROJECT_SPEC section 11). Issue #29.
+
 ---
 
 # DD-067 — OCR Is On by Default, for Pages With No Text Layer Only

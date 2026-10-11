@@ -9,6 +9,7 @@
     python -m src.cli run-benchmark --system agentic --no-verification --offline         --out results/ablations/verification_off                   # an ablation
     python -m src.cli compare-runs --baseline results/baseline --system results/hybrid
     python -m src.cli final-table                                  # results/final/
+    python -m src.cli chat --share                                 # the web app (DD-066)
 
 ``--system`` selects the system through configuration (``retrieval.strategy``)
 rather than through a second code path, so every other flag means the same
@@ -325,6 +326,49 @@ def _add_ocr(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _chat(args: argparse.Namespace) -> int:
+    """Serve the Gradio chat app (DD-066) until interrupted.
+
+    The checks come first, so a missing dependency or GPU is a one-line message
+    here rather than a traceback on the first press of Index.
+    """
+    if not args.offline:
+        try:
+            import torch  # noqa: PLC0415
+            gpu = torch.cuda.is_available()
+        except ImportError:
+            gpu = False
+        if not gpu:
+            print(
+                "No CUDA GPU found, and the model stack needs one (MODEL_SELECTION.md 9.1).\n"
+                "Run on a GPU (e.g. a Colab T4), or add --offline for the dependency-free "
+                "stand-in stack, whose answers are far weaker.",
+                file=sys.stderr,
+            )
+            return 1
+
+    from .chat.ui import build_app  # noqa: PLC0415
+
+    try:
+        app = build_app(offline=args.offline, system=args.system)  # imports gradio
+    except ImportError:
+        print(
+            "Gradio is not installed, so the web app cannot start. Install it with:\n"
+            "  pip install -r requirements-colab.txt",
+            file=sys.stderr,
+        )
+        return 1
+    stack = "offline stand-in stack" if args.offline else "model stack"
+    print(f"Starting the chat app: {args.system} system, {stack}. Ctrl+C stops it.", flush=True)
+    try:
+        app.launch(share=args.share, server_name=args.host, server_port=args.port)
+    except OSError as exc:
+        print(f"The app could not start on {args.host}:{args.port}: {exc}\n"
+              "Is it already running? Pass another --port.", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="src.cli", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -435,7 +479,34 @@ def main(argv: list[str] | None = None) -> int:
     final_cmd.add_argument("--root", default=".", help="Repository root holding results/.")
     final_cmd.add_argument("--out", default="results/final")
 
+    chat_cmd = sub.add_parser(
+        "chat",
+        help="Serve the web chat app: upload PDFs, ask, follow up (DD-065, DD-066).",
+    )
+    chat_cmd.add_argument(
+        "--system", choices=["dense", "hybrid", "agentic"], default="agentic",
+        help="The system selected when the app opens; the page can switch it.",
+    )
+    chat_cmd.add_argument(
+        "--offline",
+        action="store_true",
+        help="Use the hashing embedder and scripted backend: no weights, no GPU.",
+    )
+    chat_cmd.add_argument(
+        "--share",
+        action="store_true",
+        help="Also print a temporary public gradio.live link (needed in Colab).",
+    )
+    chat_cmd.add_argument(
+        "--host", default="127.0.0.1",
+        help="Address to listen on. 0.0.0.0 serves other machines on the network.",
+    )
+    chat_cmd.add_argument("--port", type=int, default=7860)
+
     args = parser.parse_args(argv)
+
+    if args.command == "chat":
+        return _chat(args)
 
     if args.command == "final-table":
         from .evaluation.report import write_report  # noqa: PLC0415
