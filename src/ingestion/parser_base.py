@@ -126,6 +126,10 @@ class BaseParser(ABC):
             "removed_running_lines": sorted(removed),
             "total_chars": sum(len(p.text) for p in pages),
         }
+        creation = pdf_metadata.get("CreationDate") or pdf_metadata.get("creationDate")
+        if creation:
+            # DD-074: the second source of a document's version date.
+            metadata["pdf_creation_date"] = str(creation)
         if ocr_pages:
             # Only when OCR ran: a text PDF's metadata is exactly what it was.
             metadata["ocr_pages"] = ocr_pages
