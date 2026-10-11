@@ -1,0 +1,635 @@
+{
+  "stack": "Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.",
+  "pairs": [
+    {
+      "system": "Baseline B (hybrid)",
+      "reranker_off": "results/ablations/reranker_off",
+      "reranker_on": "results/hybrid",
+      "n_questions": 76,
+      "varied": {
+        "reranker_enabled": {
+          "baseline": false,
+          "system": true
+        },
+        "reranker_model": {
+          "baseline": null,
+          "system": "local/term-overlap-reranker"
+        }
+      },
+      "overall": {
+        "recall_at_5": {
+          "mean_difference": 0.014286,
+          "ci_low": 0.0,
+          "ci_high": 0.042857,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "mean_difference": 0.032262,
+          "ci_low": -0.019652,
+          "ci_high": 0.088574,
+          "questions_changed": 18,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "mean_difference": 0.026316,
+          "ci_low": -0.026316,
+          "ci_high": 0.078947,
+          "questions_changed": 4,
+          "verdict": "no significant difference"
+        },
+        "faithfulness": {
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "latency_s": {
+          "mean_difference": 0.001198,
+          "ci_low": 0.000958,
+          "ci_high": 0.001442,
+          "questions_changed": 76,
+          "verdict": "significant regression"
+        }
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "recall_at_5": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "accuracy_all": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "comparison": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 1,
+            "down": 1,
+            "mean_difference": -0.0521
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "definition": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 2,
+            "down": 2,
+            "mean_difference": -0.025
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "explanation": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 2,
+            "down": 0,
+            "mean_difference": 0.125
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 1,
+            "down": 0,
+            "mean_difference": 0.125
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "factual": {
+          "recall_at_5": {
+            "n": 13,
+            "up": 1,
+            "down": 0,
+            "mean_difference": 0.0769
+          },
+          "mrr_at_10": {
+            "n": 13,
+            "up": 2,
+            "down": 1,
+            "mean_difference": 0.0577
+          },
+          "accuracy_all": {
+            "n": 13,
+            "up": 1,
+            "down": 1,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 13,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "multi_hop": {
+          "recall_at_5": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 7,
+            "up": 1,
+            "down": 1,
+            "mean_difference": 0.006
+          },
+          "accuracy_all": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "numerical": {
+          "recall_at_5": {
+            "n": 11,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 11,
+            "up": 2,
+            "down": 1,
+            "mean_difference": 0.0682
+          },
+          "accuracy_all": {
+            "n": 11,
+            "up": 1,
+            "down": 0,
+            "mean_difference": 0.0909
+          },
+          "faithfulness": {
+            "n": 11,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "summary": {
+          "recall_at_5": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "accuracy_all": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "table": {
+          "recall_at_5": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 7,
+            "up": 1,
+            "down": 1,
+            "mean_difference": 0.0476
+          },
+          "accuracy_all": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "unanswerable": {
+          "accuracy_all": {
+            "n": 6,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 6,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        }
+      },
+      "costs_on": {
+        "rerank_s_mean": 0.0009,
+        "rerank_s_p95": 0.002,
+        "reranker_invocations_mean": 1.0,
+        "pairs_scored_mean": 17.1974
+      },
+      "costs_off": {
+        "rerank_s_mean": 0.0,
+        "rerank_s_p95": 0.0,
+        "reranker_invocations_mean": 0.0,
+        "pairs_scored_mean": 0.0
+      }
+    },
+    {
+      "system": "Agentic",
+      "reranker_off": "results/ablations/reranker_off_agentic",
+      "reranker_on": "results/agentic",
+      "n_questions": 76,
+      "varied": {
+        "reranker_enabled": {
+          "baseline": false,
+          "system": true
+        },
+        "reranker_model": {
+          "baseline": null,
+          "system": "local/term-overlap-reranker"
+        }
+      },
+      "overall": {
+        "recall_at_5": {
+          "mean_difference": 0.014286,
+          "ci_low": 0.0,
+          "ci_high": 0.042857,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "mean_difference": 0.02254,
+          "ci_low": -0.027788,
+          "ci_high": 0.07778,
+          "questions_changed": 17,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "mean_difference": 0.013158,
+          "ci_low": -0.026316,
+          "ci_high": 0.065789,
+          "questions_changed": 3,
+          "verdict": "no significant difference"
+        },
+        "faithfulness": {
+          "mean_difference": -0.013158,
+          "ci_low": -0.039474,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "latency_s": {
+          "mean_difference": 0.005205,
+          "ci_low": 0.004293,
+          "ci_high": 0.006194,
+          "questions_changed": 76,
+          "verdict": "significant regression"
+        }
+      },
+      "by_question_type": {
+        "ambiguous": {
+          "recall_at_5": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "accuracy_all": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 5,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "comparison": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 0,
+            "down": 1,
+            "mean_difference": -0.0625
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "definition": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 2,
+            "down": 2,
+            "mean_difference": -0.025
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "explanation": {
+          "recall_at_5": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 8,
+            "up": 2,
+            "down": 0,
+            "mean_difference": 0.125
+          },
+          "accuracy_all": {
+            "n": 8,
+            "up": 1,
+            "down": 0,
+            "mean_difference": 0.125
+          },
+          "faithfulness": {
+            "n": 8,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "factual": {
+          "recall_at_5": {
+            "n": 13,
+            "up": 1,
+            "down": 0,
+            "mean_difference": 0.0769
+          },
+          "mrr_at_10": {
+            "n": 13,
+            "up": 2,
+            "down": 1,
+            "mean_difference": 0.0577
+          },
+          "accuracy_all": {
+            "n": 13,
+            "up": 1,
+            "down": 1,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 13,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "multi_hop": {
+          "recall_at_5": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 7,
+            "up": 1,
+            "down": 2,
+            "mean_difference": -0.0079
+          },
+          "accuracy_all": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "numerical": {
+          "recall_at_5": {
+            "n": 11,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 11,
+            "up": 2,
+            "down": 1,
+            "mean_difference": 0.0682
+          },
+          "accuracy_all": {
+            "n": 11,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 11,
+            "up": 0,
+            "down": 1,
+            "mean_difference": -0.0909
+          }
+        },
+        "summary": {
+          "recall_at_5": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "accuracy_all": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 3,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "table": {
+          "recall_at_5": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "mrr_at_10": {
+            "n": 7,
+            "up": 0,
+            "down": 1,
+            "mean_difference": -0.0238
+          },
+          "accuracy_all": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 7,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        },
+        "unanswerable": {
+          "accuracy_all": {
+            "n": 6,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          },
+          "faithfulness": {
+            "n": 6,
+            "up": 0,
+            "down": 0,
+            "mean_difference": 0.0
+          }
+        }
+      },
+      "costs_on": {
+        "rerank_s_mean": null,
+        "rerank_s_p95": null,
+        "reranker_invocations_mean": 1.3026,
+        "pairs_scored_mean": 29.6579
+      },
+      "costs_off": {
+        "rerank_s_mean": null,
+        "rerank_s_p95": null,
+        "reranker_invocations_mean": 0.0,
+        "pairs_scored_mean": 0.0
+      }
+    }
+  ]
+}
