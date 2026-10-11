@@ -212,3 +212,26 @@ class TestRestartAfterInstall:
         out = capsys.readouterr().out
         assert kills == [os.getpid()]
         assert "pillow:" in out.lower() and "Run all" in out
+
+
+class TestRecordedColabRun:
+    """The first Colab *Run all* on a T4, kept as evidence (issue #27).
+
+    A record, not generated: the drift test above covers only the notebooks the
+    script builds. This checks the record says what the docs claim of it.
+    """
+
+    RUNS = sorted((ROOT / "notebooks" / "runs").glob("*.ipynb"))
+
+    @pytest.mark.parametrize("path", RUNS, ids=lambda p: p.name)
+    def test_every_cell_ran_once_in_order_without_an_error(self, path):
+        code = [c for c in _read(path).cells if c.cell_type == "code"]
+        assert [c.execution_count for c in code] == list(range(1, len(code) + 1))
+        assert not [o for c in code for o in c.get("outputs", [])
+                    if o.get("output_type") == "error"]
+
+    @pytest.mark.parametrize("path", RUNS, ids=lambda p: p.name)
+    def test_it_ran_the_model_stack(self, path):
+        text = "".join(o.get("text", "") for c in _read(path).cells if c.cell_type == "code"
+                       for o in c.get("outputs", []))
+        assert "MODEL STACK on Tesla T4" in text and "OFFLINE MODE" not in text
