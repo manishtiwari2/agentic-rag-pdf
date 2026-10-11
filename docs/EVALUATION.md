@@ -1,8 +1,8 @@
 # Evaluation
 
 How the numbers in this repository are produced, and why each choice was made.
-The normative rules live in [EVALUATION_PROTOCOL.md](../EVALUATION_PROTOCOL.md)
-and [BENCHMARK_SPEC.md](../BENCHMARK_SPEC.md). This page is the guided tour.
+The normative rules live in [EVALUATION_PROTOCOL.md](EVALUATION_PROTOCOL.md)
+and [BENCHMARK_SPEC.md](BENCHMARK_SPEC.md). This page is the guided tour.
 
 > **Every stored result is from the offline stand-in stack:** a hashing
 > embedder, a scripted extractive generator, a term-overlap reranker and
