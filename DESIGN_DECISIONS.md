@@ -3310,3 +3310,233 @@ descriptive):
 
 **What stands.** Defaults unchanged: RRF k = 60, `candidate_k` = 20.
 EXPERIMENT_PLAN.md section 5.2 is closed for the offline stack.
+
+---
+
+# DD-074 — Stale and Conflicting Sources: Version Metadata, Conflict Detection and a Declared Answer Policy
+
+**Status:** Accepted 2026-10-11 (issue #34). The project owner delegated the
+open decision and asked for implementation without further review. The policy
+in section 3 and the metrics in section 6 are fixed by this DD *before* the
+conflict suite exists. DD-075 reports the measurement.
+
+> Any figure produced under this design on the offline stack comes from the
+> rule-based detector and the scripted generator, and will be labelled so.
+> The LLM detector is built for the model stack and is not measured until the
+> GPU run.
+
+### The problem
+
+Today the system assumes every indexed PDF is current and that no two PDFs
+disagree. Two failure modes follow:
+* **Stale:** a question about a figure that changed between the 2023 and 2024
+  editions of a report is answered from whichever chunk ranked first. That can
+  be the old one, and nothing tells the user.
+* **Conflicting:** two sources state different values for the same claim. The
+  generator picks one silently, or merges them.
+
+Neither case can occur in the current benchmark, because it indexes one PDF
+per question. That is why it needs its own suite (section 5).
+
+### 1. Document version metadata
+
+Each document gets a `DocumentVersion` record in `Document.metadata["version"]`:
+
+```text
+{date: ISO date | null, precision: day | month | year | null, label: str | null,
+ source: user | pdf_metadata | filename | unknown, raw: str | null}
+```
+
+Every chunk reaches it through its `document_id`. It is recorded in
+`index_stats`, in each retrieved chunk's record, and in the trace.
+
+**Resolution order: user > PDF metadata > filename > unknown.** The first
+source that yields a date wins, and `source` records which one it was.
+
+* **User-supplied** at index time:
+  * `index_documents(..., versions={"report.pdf": "2024-03-01"})`;
+  * a `--doc-date file.pdf=2024-03-01` flag;
+  * an optional "Document dates" field in the chat app;
+  * the suite's `documents_metadata.json`.
+  A free-text label ("v2", "FY2024") is kept beside the date. A label alone
+  orders nothing.
+* **PDF metadata:** `CreationDate`, not `ModDate`, because a re-save changes
+  ModDate without changing the content. The PDF date syntax is
+  `D:YYYYMMDDHHmmSS+HH'mm'`, with every field after the year optional.
+* **Filename:** the first year (19xx/20xx), optionally followed by a month,
+  standing as its own token, so `report_2024.pdf` yields 2024 and `v20240.pdf`
+  yields nothing. A year alone is recorded with precision `year`, so 2024 vs
+  2024-03 compares at year precision only.
+
+**Decided: user > metadata > filename** (the owner delegated this call). The
+order puts the user above the metadata. Your brief listed metadata first, then user, then filename. The
+case for the user first, from this repo: `benchmark/documents/doc1.pdf` has
+`CreationDate` 2026-07-06, the day it was downloaded and re-exported, not the
+date of its content. Metadata dates are often export dates, and a user who
+bothered to type a date knows better. The case for keeping metadata first: it
+needs no input, and a user can mistype. A mistyped date is recorded with
+`source: user`, so it is visible in the trace and in the chat status panel.
+
+### 2. Conflict detection
+
+Detection runs after retrieval and reranking, before generation, on the
+evidence the generator would see. It runs only when that evidence comes from
+two or more documents. Same pattern as the other agents (DD-055):
+* a `ConflictDetector` protocol in `src/agents/conflicts.py`;
+* `RuleBasedConflictDetector` (offline, labelled
+  `local/rule-based-conflict-detector`);
+* `LLMConflictDetector` (model stack, JSON reply). A parse failure is recorded
+  as `unavailable` and asserts no conflict.
+* `build_conflict_detector(config, backend)` builds whichever applies.
+
+Model calls are counted as in DD-055.
+
+**Rule path (offline).**
+1. Split each evidence chunk into sentences. Keep a sentence only if it shares
+   at least one content term with the question.
+2. Pull each sentence's **values**:
+   * numbers with their unit or percent sign, normalised (`1,200` = `1200`,
+     `12 %` = `12%`);
+   * dates (year, month-year, full date);
+   * entity spans: capitalised multi-word runs not at sentence start.
+3. A sentence's **anchor** is its content terms with the values removed.
+4. Two sentences from **different documents** make the **same claim** when
+   their anchors' Jaccard overlap is at least τ. They **conflict** when they
+   make the same claim and their values of one kind differ: a number vs a
+   different number, a date vs a different date, or an entity vs a different
+   entity.
+5. Output per conflict:
+   * the claim (anchor terms);
+   * per side: document, version, sentence, value, chunk id;
+   * the kind (number, date or entity).
+
+τ is the one tuned value. It is chosen on the suite's dev split by a rule
+fixed now: the highest detection F1, with ties going to the higher τ (fewer
+false conflicts), from τ in {0.3, 0.4, 0.5, 0.6, 0.7}. The default before
+tuning is 0.5.
+
+**LLM path (model stack).** The same input pairs: sentences from different
+documents that share a question term, capped at 6 pairs. The prompt asks, per
+pair, whether they make the same claim and disagree. The reply is
+`{"conflicts": [{"pair": i, "claim": str, "kind": "number|date|entity"}]}`.
+Values are re-extracted from the sentences by code, not taken from the model.
+
+### 3. Answer policy, declared now
+
+| Situation | Behaviour |
+| --- | --- |
+| No conflict | Unchanged. |
+| Conflict, both dates known, they differ | **Answer from the newer source and say so.** Older-side evidence for that claim is withheld from the generator. Code appends one sentence, "Note: {older doc} ({date}) reports {old value}; the newer {newer doc} ({date}) supersedes it.", which cites both. Citations are resolved by code, as everywhere else (DD-031, DD-062). |
+| Conflict, either date unknown, or the dates equal at their shared precision | **Refuse,** using the canonical sentence (DD-043, so abstention scoring is unchanged), followed by "The sources disagree:" and both claims, each cited. |
+| Several conflicts | Each is handled by the rows above. If any one refuses, the answer refuses. |
+
+The answer never says which value is "right". It says which is newer.
+"Newer supersedes" is a policy for revised documents, such as reports and
+versions. It is wrong for two independent sources of the same date, and that
+case refuses.
+
+### 4. Surfacing
+
+* **Per-question record and agent trace:**
+  * `conflicts: [...]` with both sides;
+  * `conflict_policy: none | prefer_newer | refused`;
+  * each document's `version` with its `source`;
+  * `conflict_detector`, labelled as a rule or a model.
+* **Chat UI** (`src/chat/ui.py`):
+  * `format_answer` gains a "Sources disagree" block listing each conflict,
+    which side was used and why;
+  * `format_trace` gains a "Conflicts" section;
+  * the status panel shows each indexed document's version date and its
+    source, so "unknown" is visible before anyone asks.
+* **Config:** `conflicts.enabled` (default **off**), `conflicts.detector`
+  (`rule`/`llm`), `conflicts.anchor_threshold` (τ) and
+  `conflicts.policy = "prefer_newer"`. **Off by default**, so every stored
+  76-question result, and the tests that compare against them, stay valid.
+  The chat app turns it on, because a chat session indexes several PDFs.
+
+### 5. The conflict benchmark (a separate suite)
+
+* **Location:** `benchmark/conflicts/`, in its own `questions.json`,
+  `documents_metadata.json` and `documents/`. The 76-question set, its splits
+  and every stored result are untouched.
+* **Fixtures:** made by `benchmark/conflicts/build_fixtures.py`, using pymupdf
+  as `tests/pdf_fixtures.py` does. The text is self-written and fictional
+  ("Harbour Vale Water Authority"), and the PDFs are dedicated CC0, stated in
+  each PDF's text.
+  1. `annual_report_2023.pdf`: CreationDate 2024-02.
+  2. `annual_report_2024.pdf`: CreationDate 2025-02. The same structure, with
+     about 8 figures changed (customers, leakage %, budget, the chief engineer's
+     name, a completion date) and about 6 unchanged.
+  3. `press_release_2024-06.pdf`: dated by filename only. It restates two 2024
+     figures, one of them differently.
+  4. `board_memo.pdf`: no metadata date and no date in the filename. It
+     contradicts one figure, so that claim must refuse.
+  5. `audit_note.pdf`: no metadata date. Its date is user-supplied in
+     `documents_metadata.json`, to exercise the user source.
+* **Questions:** 20, each with:
+  * `documents`: the PDFs indexed together for it;
+  * `answer`;
+  * `evidence_pages` per document;
+  * `conflict: bool`;
+  * `expected_behavior`: `answer_newer`, `refuse` or `no_conflict`;
+  * `gold_winner_document`, for `answer_newer` only.
+  The planned mix:
+  * 9 `answer_newer`: numbers, dates and one entity;
+  * 4 `refuse`: an unknown date, or equal dates;
+  * 7 `no_conflict` controls: the same value in both, a figure in one document
+    only, or a different claim with a similar anchor (the false-positive trap).
+* **Split:** 8 dev / 12 eval. τ is tuned on dev. Eval is run once and reported
+  whatever it shows.
+* **Harness:** a question with `documents` is answered over an index of those
+  documents (`index_documents`). This needs one new harness path: questions
+  are grouped by their document tuple instead of by one document.
+  `validate-benchmark` accepts the new optional fields, and the old schema is
+  unchanged.
+
+### 6. Metrics, named now
+
+With 95% bootstrap CIs (DD-028), on the suite's eval split (dev figures only
+to choose τ):
+* **Detection precision / recall,** question level: detected (at least one
+  conflict) vs gold `conflict`.
+* **Correct-source rate,** over `answer_newer` questions: the answer is
+  correct against the newer value (DD-036 deterministic correctness), **and** a
+  citation resolves to `gold_winner_document`.
+* **Answer accuracy on conflict questions:** DD-036 correctness for
+  `answer_newer`, abstention for `refuse`.
+* **False-conflict rate on the normal benchmark:** the 76 questions answered
+  with **all 5 benchmark PDFs indexed together** and conflicts on. These five
+  PDFs are unrelated, so every flagged question is a false conflict. Only this
+  rate is read from that run. Its other numbers mix in distractor documents
+  and are not comparable to stored results. They are not reported as a
+  system result, and they count as no look at eval for any tuning. The rate is
+  reported over all 76 questions, and over dev only.
+
+**Floors stated now:**
+* the scripted generator copies sentences, so accuracy on `answer_newer` is
+  capped by whether the newer sentence is in the evidence at all;
+* the rule detector cannot see a conflict whose two sides share few words
+  ("headcount" vs "number of staff"). That is the case the LLM path exists
+  for, and on the offline stack it is a known miss, counted, not hidden.
+
+### Alternatives considered
+
+* **Always prefer the newest document wholesale,** dropping older documents
+  from retrieval. It is simple, but it throws away everything the old
+  edition says that the new one does not.
+* **Show both values and let the user decide, never refusing.** It is honest,
+  but it pushes the judgment onto the user even when the dates settle it.
+* **LLM-only detection.** It would leave the offline stack untestable, against
+  DD-055's principle that every agent decision has a rule-based stand-in.
+* **Timestamp-free source ranking** (trust scores per source). There is no
+  data to set them from.
+
+### Delivery (after approval)
+
+Two PRs, at the owner's request to move fast:
+1. the feature: version metadata, the detector, the policy, the trace and the
+   chat UI;
+2. the suite, the multi-document harness path, the metrics and DD-075.
+
+DD-075 then records τ chosen on dev, the eval result and the false-conflict
+rate.
