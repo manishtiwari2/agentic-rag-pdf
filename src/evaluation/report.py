@@ -631,3 +631,45 @@ def write_report(root: Path | str = ".", out_dir: Path | str = "results/final") 
     ]) + "\n"
     paths["markdown"].write_text(markdown, encoding="utf-8", newline="\n")
     return paths
+
+
+# ---------------------------------------------------------------------------
+# The README's results table (issue #36)
+# ---------------------------------------------------------------------------
+
+README_BEGIN = (
+    "<!-- BEGIN GENERATED: eval headline from results/final/REPORT.md "
+    "(python -m src.cli readme-table) -->"
+)
+README_END = "<!-- END GENERATED -->"
+_HEADLINE_HEADING = "### Eval split"
+
+
+def headline_section(report_markdown: str) -> str:
+    """The eval headline of REPORT.md: its stack note, tables and caption.
+
+    Everything from the eval-split heading up to the next heading, without the
+    heading itself, so the README carries exactly what ``final-table`` wrote.
+    """
+    lines = report_markdown.replace("\r\n", "\n").split("\n")
+    try:
+        start = next(i for i, line in enumerate(lines) if line.startswith(_HEADLINE_HEADING))
+    except StopIteration:
+        raise ValueError("REPORT.md has no eval-split headline section.") from None
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("### ")), len(lines)
+    )
+    return "\n".join(lines[start + 1 : end]).strip("\n")
+
+
+def splice_readme(readme: str, report_markdown: str) -> str:
+    """Replace whatever sits between the README markers with the headline."""
+    newline = "\r\n" if "\r\n" in readme else "\n"
+    text = readme.replace("\r\n", "\n")
+    if README_BEGIN not in text or README_END not in text:
+        raise ValueError("README.md has no generated-results markers.")
+    head, rest = text.split(README_BEGIN, 1)
+    _, tail = rest.split(README_END, 1)
+    body = headline_section(report_markdown)
+    spliced = f"{head}{README_BEGIN}\n{body}\n{README_END}{tail}"
+    return spliced.replace("\n", newline)
