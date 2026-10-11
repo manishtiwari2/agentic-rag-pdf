@@ -39,6 +39,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
 
+from .agents.conflicts import apply_policy, build_conflict_detector
 from .agents.evidence import ABSTAIN, ANSWER, RETRIEVE_AGAIN, EvidenceController, build_evidence_controller
 from .agents.planner import Planner, build_planner
 from .agents.refinement import MissingTermsRefiner, Refiner
@@ -62,6 +63,7 @@ from .generation.generator import GeneratedAnswer, GroundedGenerator
 from .generation.prompts import ABSTENTION_SENTENCE
 from .ingestion.document import Document
 from .ingestion.parser import build_parser
+from .versioning import DocumentVersion, resolve_version
 from .reranking.reranker import Reranker, build_reranker, rerank
 from .retrieval.embeddings import build_embedder
 from .retrieval.fusion import reciprocal_rank_fusion
@@ -204,6 +206,23 @@ class _RetrieveThenGenerate:
         self.documents: tuple[Document, ...] = ()
         self.chunks: tuple[Chunk, ...] = ()
         self.index_stats: dict[str, object] = {}
+        #: DD-074: each indexed document's version and file name, by document id.
+        self.versions: dict[str, DocumentVersion] = {}
+        self.source_names: dict[str, str] = {}
+        self._conflict_detector: Any = None
+
+    def _record_versions(
+        self, documents: Sequence[Document], supplied: dict[str, str] | None
+    ) -> None:
+        """Resolve each document's version (user > PDF metadata > file name)."""
+        supplied = supplied or {}
+        self.versions, self.source_names = {}, {}
+        for d in documents:
+            name = os.path.basename(d.source_name)
+            version = resolve_version(name, d.metadata, supplied.get(name))
+            d.metadata["version"] = version.to_record()
+            self.versions[d.document_id] = version
+            self.source_names[d.document_id] = name
 
     def _build_retriever(self) -> Any:  # pragma: no cover - abstract
         raise NotImplementedError
@@ -215,10 +234,15 @@ class _RetrieveThenGenerate:
 
     # -- indexing -----------------------------------------------------------
 
-    def index(self, pdf_path: str | os.PathLike[str]) -> Document:
-        """Parse, chunk and index a PDF. Errors here are explicit by design."""
+    def index(self, pdf_path: str | os.PathLike[str], version: str | None = None) -> Document:
+        """Parse, chunk and index a PDF. Errors here are explicit by design.
+
+        ``version`` is an optional user-supplied date or label (DD-074).
+        """
         started = time.perf_counter()
         document = self._parser.parse(pdf_path)
+        name = os.path.basename(document.source_name)
+        self._record_versions([document], {name: version} if version else None)
         parsed_at = time.perf_counter()
 
         chunks = self._chunker.chunk(document)
@@ -246,7 +270,10 @@ class _RetrieveThenGenerate:
         return document
 
     def index_documents(
-        self, pdf_paths: Sequence[str | os.PathLike[str]], on_error: Any = None
+        self,
+        pdf_paths: Sequence[str | os.PathLike[str]],
+        on_error: Any = None,
+        versions: dict[str, str] | None = None,
     ) -> list[Document]:
         """Parse, chunk and index several PDFs into one searchable index.
 
@@ -272,6 +299,8 @@ class _RetrieveThenGenerate:
             chunks.extend(self._chunker.chunk(document))
         if not chunks:
             return documents
+        # DD-074: ``versions`` maps a file name to a user-supplied date or label.
+        self._record_versions(documents, versions)
         self._retriever.index(chunks)
         self.document = documents[0]
         self.documents = tuple(documents)
@@ -284,6 +313,7 @@ class _RetrieveThenGenerate:
                     "pages": d.page_count,
                     "ocr_pages": [p.page_number for p in d.pages if p.metadata.get("ocr")],
                     "chunks": sum(1 for c in chunks if c.document_id == d.document_id),
+                    "version": self.versions[d.document_id].to_record(),
                 }
                 for d in documents
             ],
@@ -385,7 +415,41 @@ class _RetrieveThenGenerate:
         minimum = self.config.retrieval.min_score
         if minimum is not None and retrieved and retrieved[0].score < minimum:
             retrieved = []
-        return self._generator.generate(question, retrieved)
+        if not self.config.conflicts.enabled:
+            return self._generator.generate(question, retrieved)
+        return self._generate_with_conflicts(question, retrieved)
+
+    def _generate_with_conflicts(
+        self, question: str, retrieved: list[RetrievedChunk]
+    ) -> GeneratedAnswer:
+        """DD-074: detect conflicts in the evidence, then apply the policy."""
+        if self._conflict_detector is None:
+            backend = self.backend if self.config.conflicts.detector == "llm" else None
+            self._conflict_detector = build_conflict_detector(
+                self.config.conflicts, backend, label=self.config.generation.model_id
+            )
+        report = self._conflict_detector.detect(
+            question, retrieved, self.versions, self.source_names
+        )
+        generated, policy = apply_policy(
+            question,
+            retrieved,
+            report,
+            lambda chunks: self._generator.generate(question, chunks),
+            self.config.generation,
+            self._generator.backend.name,
+        )
+        generated.metadata.update(
+            {
+                "conflicts": report.to_record(),
+                "conflict_policy": policy,
+                "document_versions": {
+                    doc: {"source_name": self.source_names.get(doc), **v.to_record()}
+                    for doc, v in self.versions.items()
+                },
+            }
+        )
+        return generated
 
 
 class DenseRAGPipeline(_RetrieveThenGenerate):
