@@ -56,6 +56,11 @@ def stack_note(root: Path | str = ".") -> str:
             break
     else:
         return OFFLINE_NOTE
+    return note_for_config(config)
+
+
+def note_for_config(config: Mapping[str, Any]) -> str:
+    """The honesty line for one stored ``config.json``."""
     generator = str(config.get("generation_model") or "")
     if generator.startswith("local/"):
         return OFFLINE_NOTE
