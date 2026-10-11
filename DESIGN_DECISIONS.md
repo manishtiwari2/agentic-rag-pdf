@@ -3000,3 +3000,84 @@ numbers as the model stack. The tuned arm's path is one constant,
 
 Each value was chosen on dev alone. The headline table carries this caveat
 (STATUS.md 9.4).
+
+---
+
+# DD-071 — Chunking: Structure-Aware vs Fixed, Size and Overlap, Swept on Dev by a Rule Written First
+
+**Status:** Part 1 (the rule) committed 2026-10-11, before any chunking arm was
+run. Part 2, the result, is appended after it. Issue #31. DD-070 is reserved for
+the GPU model-stack write-up.
+
+> **Offline stand-in stack throughout:** hashing embedder, scripted extractive
+> generator, term-overlap reranker. No figure here is about Qwen3-4B, bge-m3 or
+> bge-reranker-v2-m3, and none says how chunking behaves under them.
+
+### Why now
+
+EXPERIMENT_PLAN.md section 5.1 has carried "chunk size and overlap: sweep on
+dev" as open since Phase 1. Every stored result uses structure-aware chunking
+at 1200 characters with 150 overlap (DD-009, DD-030), a value never measured.
+Chunking is also the stage most likely to explain the retrieval ceiling, and
+the one an interviewer asks about first.
+
+### Part 1 — the study, declared before looking
+
+**System.** Baseline B (`--system hybrid`: BM25 + dense, RRF k = 60, the
+term-overlap reranker), the best non-agentic system and the retrieval the
+agentic system reuses. The agent loop is left out, so a chunking effect is not
+mixed with controller refusals (DD-060).
+
+**Grid.** strategy {structure, fixed} × `chunk_size` {400, 800, 1200, 1600} ×
+`chunk_overlap` {0, 150}: 16 arms, each
+
+```bash
+python -m src.cli run-benchmark --system hybrid --offline --split dev   --strategy <s> --chunk-size <n> --chunk-overlap <o>   --out results/experiments/chunking/<s>_<n>_<o>
+```
+
+then `python -m src.cli sweep-table --study chunking`. Eval is not run and not
+read for this decision.
+
+**Incumbent.** `structure_1200_150`, the current default.
+
+**Rule** (`sweeps.STUDIES["chunking"]`, the same rule in code):
+1. A challenger **qualifies** when, against the incumbent on dev, its paired
+   bootstrap (2,000 resamples, DD-028) shows a CI above 0 on Recall@5 **or**
+   accuracy (all), and a significant regression on none of Recall@5, accuracy
+   (all) or MRR@10.
+2. **No qualifier:** the incumbent stays.
+3. **Qualifiers:** the highest Recall@5 is chosen, then the highest MRR@10, then
+   the fewest chunks (the smaller index).
+
+Recall@5 and accuracy are the pre-declared primaries of RQ1 and RQ2 (DD-048).
+MRR@10 guards against a setting that finds the page but ranks it lower.
+
+**Reported, never deciding:**
+* Recall@1 and Recall@10;
+* Full-Recall@5 on multi-hop questions (n = 3 on dev; n = 6 with comparison
+  questions) — too few to rank anything on;
+* chunk count and indexed characters, from the new `index_stats` summary keys;
+* p95 latency. Offline it is milliseconds and moves between sessions (DD-069),
+  so it cannot separate arms.
+* "Where structure loses": each structure arm is matched with the fixed arm at
+  the same size and overlap, question by question, and counted per question
+  type.
+
+**Power, stated before the result.** Dev has 33 questions. A paired CI on 33
+binary outcomes excludes 0 only when a challenger gains several questions net.
+"The incumbent stays" is the likely outcome. If so, it means "no measurable
+difference on this stack and this dev set", not "1200/150 is optimal".
+
+**Sanity check.** The `structure_1200_150` arm should reproduce the dev records
+of `results/hybrid/` answer for answer, because the stack is deterministic. If
+it does not, the study stops and the difference is explained first.
+
+**Fair comparison.** Page-level retrieval scoring (DD-025) makes Recall and MRR
+comparable across chunkings: a gold page is found or not, however the text was
+cut. The section 10 check flags the chunking fields as mismatched. That
+mismatch is the treatment, so the sweep records it per arm rather than refusing.
+
+**If a challenger is chosen,** it becomes the code default only after one eval
+run of it against the incumbent. That run would be the third look at eval
+(after DD-059 and DD-069), and it would be disclosed here and in STATUS.md. If
+the incumbent stays, eval is not run.
