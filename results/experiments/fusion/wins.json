@@ -1,0 +1,589 @@
+{
+  "by_bucket": {
+    "lexical": {
+      "n": 8,
+      "dense": 0,
+      "tie": 8,
+      "lexical": 0,
+      "mrr_dense": 0.844,
+      "mrr_lexical": 0.844,
+      "mrr_fused": 0.875
+    },
+    "mixed": {
+      "n": 5,
+      "dense": 0,
+      "tie": 4,
+      "lexical": 1,
+      "mrr_dense": 0.8,
+      "mrr_lexical": 0.84,
+      "mrr_fused": 0.8
+    },
+    "numeric": {
+      "n": 8,
+      "dense": 2,
+      "tie": 5,
+      "lexical": 1,
+      "mrr_dense": 0.76,
+      "mrr_lexical": 0.775,
+      "mrr_fused": 0.781
+    },
+    "paraphrase": {
+      "n": 9,
+      "dense": 2,
+      "tie": 5,
+      "lexical": 2,
+      "mrr_dense": 0.722,
+      "mrr_lexical": 0.722,
+      "mrr_fused": 0.694
+    }
+  },
+  "by_question_type": {
+    "ambiguous": {
+      "n": 2,
+      "dense": 0,
+      "tie": 2,
+      "lexical": 0,
+      "mrr_dense": 1.0,
+      "mrr_lexical": 1.0,
+      "mrr_fused": 1.0
+    },
+    "comparison": {
+      "n": 3,
+      "dense": 0,
+      "tie": 3,
+      "lexical": 0,
+      "mrr_dense": 1.0,
+      "mrr_lexical": 1.0,
+      "mrr_fused": 1.0
+    },
+    "definition": {
+      "n": 4,
+      "dense": 1,
+      "tie": 3,
+      "lexical": 0,
+      "mrr_dense": 1.0,
+      "mrr_lexical": 0.875,
+      "mrr_fused": 0.875
+    },
+    "explanation": {
+      "n": 3,
+      "dense": 0,
+      "tie": 2,
+      "lexical": 1,
+      "mrr_dense": 0.333,
+      "mrr_lexical": 0.667,
+      "mrr_fused": 0.417
+    },
+    "factual": {
+      "n": 6,
+      "dense": 1,
+      "tie": 3,
+      "lexical": 2,
+      "mrr_dense": 0.75,
+      "mrr_lexical": 0.7,
+      "mrr_fused": 0.75
+    },
+    "multi_hop": {
+      "n": 3,
+      "dense": 0,
+      "tie": 3,
+      "lexical": 0,
+      "mrr_dense": 0.75,
+      "mrr_lexical": 0.75,
+      "mrr_fused": 0.667
+    },
+    "numerical": {
+      "n": 4,
+      "dense": 1,
+      "tie": 3,
+      "lexical": 0,
+      "mrr_dense": 0.833,
+      "mrr_lexical": 0.8,
+      "mrr_fused": 0.812
+    },
+    "summary": {
+      "n": 1,
+      "dense": 0,
+      "tie": 1,
+      "lexical": 0,
+      "mrr_dense": 0.5,
+      "mrr_lexical": 0.5,
+      "mrr_fused": 1.0
+    },
+    "table": {
+      "n": 4,
+      "dense": 1,
+      "tie": 2,
+      "lexical": 1,
+      "mrr_dense": 0.688,
+      "mrr_lexical": 0.75,
+      "mrr_fused": 0.75
+    }
+  },
+  "questions": {
+    "q001": {
+      "bucket": "lexical",
+      "question_type": "factual",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q004": {
+      "bucket": "numeric",
+      "question_type": "table",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q009": {
+      "bucket": "mixed",
+      "question_type": "factual",
+      "ranks": {
+        "dense": null,
+        "lexical": 5,
+        "fused": null
+      },
+      "winner": "lexical"
+    },
+    "q012": {
+      "bucket": "lexical",
+      "question_type": "definition",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q014": {
+      "bucket": "paraphrase",
+      "question_type": "explanation",
+      "ranks": {
+        "dense": null,
+        "lexical": 1,
+        "fused": 4
+      },
+      "winner": "lexical"
+    },
+    "q017": {
+      "bucket": "lexical",
+      "question_type": "comparison",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q020": {
+      "bucket": "numeric",
+      "question_type": "table",
+      "ranks": {
+        "dense": 2,
+        "lexical": null,
+        "fused": null
+      },
+      "winner": "dense"
+    },
+    "q023": {
+      "bucket": "lexical",
+      "question_type": "multi_hop",
+      "ranks": {
+        "dense": 4,
+        "lexical": 4,
+        "fused": null
+      },
+      "winner": "tie"
+    },
+    "q026": {
+      "bucket": "lexical",
+      "question_type": "summary",
+      "ranks": {
+        "dense": 2,
+        "lexical": 2,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q027": {
+      "bucket": "paraphrase",
+      "question_type": "factual",
+      "ranks": {
+        "dense": 2,
+        "lexical": 1,
+        "fused": 2
+      },
+      "winner": "lexical"
+    },
+    "q030": {
+      "bucket": "mixed",
+      "question_type": "definition",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q032": {
+      "bucket": "paraphrase",
+      "question_type": "definition",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q034": {
+      "bucket": "paraphrase",
+      "question_type": "explanation",
+      "ranks": {
+        "dense": 2,
+        "lexical": 2,
+        "fused": 2
+      },
+      "winner": "tie"
+    },
+    "q037": {
+      "bucket": "paraphrase",
+      "question_type": "comparison",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q039": {
+      "bucket": "numeric",
+      "question_type": "numerical",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q041": {
+      "bucket": "numeric",
+      "question_type": "numerical",
+      "ranks": {
+        "dense": 3,
+        "lexical": 5,
+        "fused": 4
+      },
+      "winner": "dense"
+    },
+    "q043": {
+      "bucket": "numeric",
+      "question_type": "table",
+      "ranks": {
+        "dense": 4,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "lexical"
+    },
+    "q045": {
+      "bucket": "lexical",
+      "question_type": "multi_hop",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q049": {
+      "bucket": "lexical",
+      "question_type": "ambiguous",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q051": {
+      "bucket": "paraphrase",
+      "question_type": "factual",
+      "ranks": {
+        "dense": 1,
+        "lexical": null,
+        "fused": 1
+      },
+      "winner": "dense"
+    },
+    "q053": {
+      "bucket": "paraphrase",
+      "question_type": "factual",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q055": {
+      "bucket": "numeric",
+      "question_type": "numerical",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q058": {
+      "bucket": "lexical",
+      "question_type": "factual",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q061": {
+      "bucket": "paraphrase",
+      "question_type": "definition",
+      "ranks": {
+        "dense": 1,
+        "lexical": 2,
+        "fused": 2
+      },
+      "winner": "dense"
+    },
+    "q064": {
+      "bucket": "paraphrase",
+      "question_type": "explanation",
+      "ranks": {
+        "dense": 2,
+        "lexical": 2,
+        "fused": 2
+      },
+      "winner": "tie"
+    },
+    "q066": {
+      "bucket": "mixed",
+      "question_type": "comparison",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q068": {
+      "bucket": "numeric",
+      "question_type": "numerical",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q070": {
+      "bucket": "numeric",
+      "question_type": "table",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q073": {
+      "bucket": "mixed",
+      "question_type": "multi_hop",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    },
+    "q075": {
+      "bucket": "mixed",
+      "question_type": "ambiguous",
+      "ranks": {
+        "dense": 1,
+        "lexical": 1,
+        "fused": 1
+      },
+      "winner": "tie"
+    }
+  },
+  "buckets": {
+    "cuts": {
+      "paraphrase_at_or_below": 0.5556,
+      "lexical_at_or_above": 0.6471
+    },
+    "counts": {
+      "lexical": 8,
+      "mixed": 5,
+      "numeric": 8,
+      "paraphrase": 9
+    },
+    "questions": {
+      "q001": {
+        "question_type": "factual",
+        "overlap": 0.8,
+        "bucket": "lexical"
+      },
+      "q004": {
+        "question_type": "table",
+        "overlap": 0.4444,
+        "bucket": "numeric"
+      },
+      "q009": {
+        "question_type": "factual",
+        "overlap": 0.6,
+        "bucket": "mixed"
+      },
+      "q012": {
+        "question_type": "definition",
+        "overlap": 0.7778,
+        "bucket": "lexical"
+      },
+      "q014": {
+        "question_type": "explanation",
+        "overlap": 0.5,
+        "bucket": "paraphrase"
+      },
+      "q017": {
+        "question_type": "comparison",
+        "overlap": 0.7,
+        "bucket": "lexical"
+      },
+      "q020": {
+        "question_type": "table",
+        "overlap": 0.4286,
+        "bucket": "numeric"
+      },
+      "q023": {
+        "question_type": "multi_hop",
+        "overlap": 0.6471,
+        "bucket": "lexical"
+      },
+      "q026": {
+        "question_type": "summary",
+        "overlap": 0.8,
+        "bucket": "lexical"
+      },
+      "q027": {
+        "question_type": "factual",
+        "overlap": 0.4,
+        "bucket": "paraphrase"
+      },
+      "q030": {
+        "question_type": "definition",
+        "overlap": 0.5714,
+        "bucket": "mixed"
+      },
+      "q032": {
+        "question_type": "definition",
+        "overlap": 0.5,
+        "bucket": "paraphrase"
+      },
+      "q034": {
+        "question_type": "explanation",
+        "overlap": 0.5556,
+        "bucket": "paraphrase"
+      },
+      "q037": {
+        "question_type": "comparison",
+        "overlap": 0.5556,
+        "bucket": "paraphrase"
+      },
+      "q039": {
+        "question_type": "numerical",
+        "overlap": 0.5,
+        "bucket": "numeric"
+      },
+      "q041": {
+        "question_type": "numerical",
+        "overlap": 0.3333,
+        "bucket": "numeric"
+      },
+      "q043": {
+        "question_type": "table",
+        "overlap": 0.3,
+        "bucket": "numeric"
+      },
+      "q045": {
+        "question_type": "multi_hop",
+        "overlap": 0.7692,
+        "bucket": "lexical"
+      },
+      "q049": {
+        "question_type": "ambiguous",
+        "overlap": 0.7,
+        "bucket": "lexical"
+      },
+      "q051": {
+        "question_type": "factual",
+        "overlap": 0.0,
+        "bucket": "paraphrase"
+      },
+      "q053": {
+        "question_type": "factual",
+        "overlap": 0.2,
+        "bucket": "paraphrase"
+      },
+      "q055": {
+        "question_type": "numerical",
+        "overlap": 0.1429,
+        "bucket": "numeric"
+      },
+      "q058": {
+        "question_type": "factual",
+        "overlap": 0.6667,
+        "bucket": "lexical"
+      },
+      "q061": {
+        "question_type": "definition",
+        "overlap": 0.25,
+        "bucket": "paraphrase"
+      },
+      "q064": {
+        "question_type": "explanation",
+        "overlap": 0.3333,
+        "bucket": "paraphrase"
+      },
+      "q066": {
+        "question_type": "comparison",
+        "overlap": 0.625,
+        "bucket": "mixed"
+      },
+      "q068": {
+        "question_type": "numerical",
+        "overlap": 0.9,
+        "bucket": "numeric"
+      },
+      "q070": {
+        "question_type": "table",
+        "overlap": 0.6923,
+        "bucket": "numeric"
+      },
+      "q073": {
+        "question_type": "multi_hop",
+        "overlap": 0.6,
+        "bucket": "mixed"
+      },
+      "q075": {
+        "question_type": "ambiguous",
+        "overlap": 0.5714,
+        "bucket": "mixed"
+      }
+    }
+  }
+}

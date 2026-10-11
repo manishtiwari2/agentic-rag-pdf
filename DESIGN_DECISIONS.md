@@ -3155,3 +3155,388 @@ second chunking search on the same 33 questions.
 
 **What stands.** The defaults are unchanged: structure-aware, 1200, 150.
 EXPERIMENT_PLAN.md section 5.1 is closed for the offline stack.
+
+---
+
+# DD-072 — Hybrid Fusion: RRF k and Candidate Depth, Swept on Dev by a Rule Written First
+
+**Status:** Part 1 (the rule and the buckets) committed 2026-10-11, before any
+fusion arm was run. Part 2 is appended after it. Issue #32.
+
+> **Offline stand-in stack throughout:** hashing embedder, scripted extractive
+> generator, term-overlap reranker. The "dense" retriever here is a hashing
+> embedder, which is closer to a second lexical retriever than to bge-m3. A
+> result about dense vs BM25 on this stack says little about dense vs BM25 on
+> the model stack, and the write-up must say so.
+
+### Why
+
+EXPERIMENT_PLAN.md section 5.2 has been open since Phase 4. RRF runs at
+k = 60, the Cormack et al. default (DD-045), and each retriever ranks to 20
+(DD-046). Neither value was measured here.
+
+### Part 1 — the study, declared before looking
+
+**System.** Baseline B with the DD-071 chunking (structure-aware 1200/150,
+unchanged), on `--split dev`. Eval is not run and not read for this decision.
+
+**Grid.** `rrf_k` {10, 30, 60, 100} × `candidate_k` {10, 20, 40}, giving 12 arms
+named `k<rrf_k>_c<candidate_k>`. Two references keep fusion's reranker and
+change `retrieval.retrievers` alone: `dense_only` (`--no-hybrid`) and
+`bm25_only` (`--lexical-only`). All go into `results/experiments/fusion/`.
+`sweep-table --study fusion` makes the table.
+
+**Incumbent.** `k60_c20`, the current default.
+
+**Rule** (`sweeps.STUDIES["fusion"]`):
+1. A grid arm **qualifies** when its dev paired-bootstrap CI against the
+   incumbent is above 0 on Recall@5 **or** MRR@10. It must also show no
+   significant regression on Recall@5, MRR@10 or accuracy (all).
+2. **No qualifier:** the incumbent stays.
+3. **Qualifiers:** highest Recall@5, then highest MRR@10, then the smaller
+   `candidate_k`, which is the cheaper one.
+4. The two references are reported and never chosen. A one-retriever system
+   is the ablation DD-057 already measured, not a fusion setting.
+
+Recall@5 and MRR@10 are what fusion can move. Accuracy is a guard, so a
+better ranking that hurts answers cannot win.
+
+**Which retriever wins on which questions** (`fusion-wins`, descriptive,
+outside the rule). On the incumbent arm, for each answerable dev question, it
+takes the rank of the first gold page in three lists: the dense list, the BM25
+list and the fused list. All three are read *before* reranking, from the
+stored candidate ids, so the reranker's reordering does not hide which
+retriever surfaced the page. Results are tallied per question type and per
+bucket.
+
+**Buckets, fixed now from the questions and gold pages alone** (no system
+output is read; `fusion-wins --buckets-only`):
+* **numeric** — question type `numerical` or `table`;
+* the remaining answerable questions are cut into terciles by *overlap*: the
+  share of the question's content terms that appear on its gold pages, using
+  the harness's tokenizer (`metrics.content_tokens`). The dev cut points are:
+  * **lexical** — overlap ≥ 0.6471;
+  * **paraphrase** — overlap ≤ 0.5556;
+  * **mixed** — in between.
+* Dev counts: numeric 8, lexical 8, mixed 5, paraphrase 9. The 3 unanswerable
+  questions have no gold page and are left out.
+
+**Disclosure about the buckets.** The first draft also counted any question
+containing a digit as numeric. That put 18 of 30 in one bucket, including
+definition questions that only name a year or a section number. It was
+narrowed to the two numeric question types before any fusion arm was run, and
+no result had been read.
+
+**Power.** 33 dev questions again. A paired CI above 0 needs several questions
+to gain net. As in DD-071, "the incumbent stays" is the likely outcome, and if
+it does, it means "no measurable difference here". Each bucket has 5-9
+questions, so the bucket tallies are counts to read, not effects.
+
+**If a grid arm is chosen,** it becomes the default only after one eval run,
+which would be the third look at eval, disclosed here and in STATUS.md. If the
+incumbent stays, eval is not run.
+
+### Part 2 — the result (appended after the 14 dev runs)
+
+**Offline stand-in stack, `--split dev`, 33 questions.** Generated tables:
+[`results/experiments/fusion/TABLE.md`](results/experiments/fusion/TABLE.md)
+(`sweep-table --study fusion`) and
+[`results/experiments/fusion/WINS.md`](results/experiments/fusion/WINS.md)
+(`fusion-wins`). The figures below are copied from them.
+
+**Decision: no arm qualifies, and the incumbent `k60_c20` stays.** No eval
+run was made, so eval has still been looked at twice.
+
+**Finding 1: with the reranker on, RRF k and candidate depth are inert.**
+* All 12 grid arms match the incumbent on every metric and every question:
+  every contrast is +0.000 [+0.000, +0.000].
+* The fusion setting does change the fused list. k = 10 and k = 100 order the
+  pre-rerank top 5 differently on 6 of 33 questions (pre-rerank MRR 0.786 at
+  k = 10 vs 0.783 at k = 60).
+* The reranker then re-sorts the fused top 20 (DD-046), so every setting ends
+  at the same final ranking.
+* Candidate depth changes nothing either. Each benchmark document is indexed
+  on its own, and its candidate pools are small enough that the fused top 20
+  holds the same chunks at depth 10, 20 or 40.
+
+So on this system RRF k is a parameter of an intermediate list that the next
+stage overwrites. Fusion settings would matter with the reranker off, or with
+a pool larger than the reranker's window. Neither was swept, and sweeping
+either now would be a second search on the same 33 questions.
+
+**Finding 2: fusion beats either retriever alone, by one question each.**
+* `dense_only` and `bm25_only` both reach Recall@5 0.900 against fusion's
+  0.933 (−0.033 [−0.100, +0.000]), each missing one question fusion finds.
+* MRR@10: BM25-only 0.762, dense-only 0.789, fused 0.796.
+* None of these is significant. This agrees with the 76-question Phase 4
+  result, where hybrid's only significant gain over dense was MRR@10.
+
+**Which retriever wins where** (incumbent arm, pre-rerank lists,
+descriptive):
+
+| bucket | n | dense wins | ties | BM25 wins |
+| --- | ---: | ---: | ---: | ---: |
+| lexical | 8 | 0 | 8 | 0 |
+| mixed | 5 | 0 | 4 | 1 |
+| numeric | 8 | 2 | 5 | 1 |
+| paraphrase | 9 | 2 | 5 | 2 |
+
+* **Lexical questions are all ties.** When the question's words are on the
+  page, both retrievers rank it the same.
+* **The disagreements are in numeric and paraphrase questions,** split almost
+  evenly: 4 dense wins and 3 BM25 wins out of 17.
+* q043 (table) and q014 (explanation) are found at rank 1 by BM25 only, or far
+  higher by BM25.
+* q020 (table) and q051 (paraphrase) are found by dense only. q051 has
+  question-page overlap 0.000, so BM25 cannot find it at all.
+* That split is the case for keeping both retrievers, even though neither
+  single-retriever loss is significant.
+
+**Caveats, stated with the result.**
+* The stored candidate lists hold the top 5 of each retriever, so the wins
+  table compares ranks 1-5 only. A page "not found" may sit at rank 6-20.
+* This stack's "dense" retriever is a hashing embedder: hashed term counts
+  with IDF weighting. It is close to a second lexical retriever, which is why
+  lexical questions tie. With bge-m3, the paraphrase bucket is where dense
+  should pull ahead, and that is the first thing to check on the model stack.
+* Each bucket has 5-9 questions, so these are counts, not effects.
+
+**What I would do at scale.**
+* Sweep fusion with the reranker off, and with a reranker window smaller than
+  the fused pool, so that the fusion setting decides what the reranker sees.
+* Measure the reranker's latency per pair. If fusion order is overwritten
+  anyway, the cheaper lever is the reranker window (`reranking.candidates`),
+  which sets how many pairs the cross-encoder scores.
+
+**What stands.** Defaults unchanged: RRF k = 60, `candidate_k` = 20.
+EXPERIMENT_PLAN.md section 5.2 is closed for the offline stack.
+
+---
+
+# DD-074 — Stale and Conflicting Sources: Version Metadata, Conflict Detection and a Declared Answer Policy
+
+**Status:** Accepted 2026-10-11 (issue #34). The project owner delegated the
+open decision and asked for implementation without further review. The policy
+in section 3 and the metrics in section 6 are fixed by this DD *before* the
+conflict suite exists. DD-075 reports the measurement.
+
+> Any figure produced under this design on the offline stack comes from the
+> rule-based detector and the scripted generator, and will be labelled so.
+> The LLM detector is built for the model stack and is not measured until the
+> GPU run.
+
+### The problem
+
+Today the system assumes every indexed PDF is current and that no two PDFs
+disagree. Two failure modes follow:
+* **Stale:** a question about a figure that changed between the 2023 and 2024
+  editions of a report is answered from whichever chunk ranked first. That can
+  be the old one, and nothing tells the user.
+* **Conflicting:** two sources state different values for the same claim. The
+  generator picks one silently, or merges them.
+
+Neither case can occur in the current benchmark, because it indexes one PDF
+per question. That is why it needs its own suite (section 5).
+
+### 1. Document version metadata
+
+Each document gets a `DocumentVersion` record in `Document.metadata["version"]`:
+
+```text
+{date: ISO date | null, precision: day | month | year | null, label: str | null,
+ source: user | pdf_metadata | filename | unknown, raw: str | null}
+```
+
+Every chunk reaches it through its `document_id`. It is recorded in
+`index_stats`, in each retrieved chunk's record, and in the trace.
+
+**Resolution order: user > PDF metadata > filename > unknown.** The first
+source that yields a date wins, and `source` records which one it was.
+
+* **User-supplied** at index time:
+  * `index_documents(..., versions={"report.pdf": "2024-03-01"})`;
+  * a `--doc-date file.pdf=2024-03-01` flag;
+  * an optional "Document dates" field in the chat app;
+  * the suite's `documents_metadata.json`.
+  A free-text label ("v2", "FY2024") is kept beside the date. A label alone
+  orders nothing.
+* **PDF metadata:** `CreationDate`, not `ModDate`, because a re-save changes
+  ModDate without changing the content. The PDF date syntax is
+  `D:YYYYMMDDHHmmSS+HH'mm'`, with every field after the year optional.
+* **Filename:** the first year (19xx/20xx), optionally followed by a month,
+  standing as its own token, so `report_2024.pdf` yields 2024 and `v20240.pdf`
+  yields nothing. A year alone is recorded with precision `year`, so 2024 vs
+  2024-03 compares at year precision only.
+
+**Decided: user > metadata > filename** (the owner delegated this call). The
+order puts the user above the metadata. Your brief listed metadata first, then user, then filename. The
+case for the user first, from this repo: `benchmark/documents/doc1.pdf` has
+`CreationDate` 2026-07-06, the day it was downloaded and re-exported, not the
+date of its content. Metadata dates are often export dates, and a user who
+bothered to type a date knows better. The case for keeping metadata first: it
+needs no input, and a user can mistype. A mistyped date is recorded with
+`source: user`, so it is visible in the trace and in the chat status panel.
+
+### 2. Conflict detection
+
+Detection runs after retrieval and reranking, before generation, on the
+evidence the generator would see. It runs only when that evidence comes from
+two or more documents. Same pattern as the other agents (DD-055):
+* a `ConflictDetector` protocol in `src/agents/conflicts.py`;
+* `RuleBasedConflictDetector` (offline, labelled
+  `local/rule-based-conflict-detector`);
+* `LLMConflictDetector` (model stack, JSON reply). A parse failure is recorded
+  as `unavailable` and asserts no conflict.
+* `build_conflict_detector(config, backend)` builds whichever applies.
+
+Model calls are counted as in DD-055.
+
+**Rule path (offline).**
+1. Split each evidence chunk into sentences. Keep a sentence only if it shares
+   at least one content term with the question.
+2. Pull each sentence's **values**:
+   * numbers with their unit or percent sign, normalised (`1,200` = `1200`,
+     `12 %` = `12%`);
+   * dates (year, month-year, full date);
+   * entity spans: capitalised multi-word runs not at sentence start.
+3. A sentence's **anchor** is its content terms with the values removed.
+4. Two sentences from **different documents** make the **same claim** when
+   their anchors' Jaccard overlap is at least τ. They **conflict** when they
+   make the same claim and their values of one kind differ: a number vs a
+   different number, a date vs a different date, or an entity vs a different
+   entity.
+5. Output per conflict:
+   * the claim (anchor terms);
+   * per side: document, version, sentence, value, chunk id;
+   * the kind (number, date or entity).
+
+τ is the one tuned value. It is chosen on the suite's dev split by a rule
+fixed now: the highest detection F1, with ties going to the higher τ (fewer
+false conflicts), from τ in {0.3, 0.4, 0.5, 0.6, 0.7}. The default before
+tuning is 0.5.
+
+**LLM path (model stack).** The same input pairs: sentences from different
+documents that share a question term, capped at 6 pairs. The prompt asks, per
+pair, whether they make the same claim and disagree. The reply is
+`{"conflicts": [{"pair": i, "claim": str, "kind": "number|date|entity"}]}`.
+Values are re-extracted from the sentences by code, not taken from the model.
+
+### 3. Answer policy, declared now
+
+| Situation | Behaviour |
+| --- | --- |
+| No conflict | Unchanged. |
+| Conflict, both dates known, they differ | **Answer from the newer source and say so.** Older-side evidence for that claim is withheld from the generator. Code appends one sentence, "Note: {older doc} ({date}) reports {old value}; the newer {newer doc} ({date}) supersedes it.", which cites both. Citations are resolved by code, as everywhere else (DD-031, DD-062). |
+| Conflict, either date unknown, or the dates equal at their shared precision | **Refuse,** using the canonical sentence (DD-043, so abstention scoring is unchanged), followed by "The sources disagree:" and both claims, each cited. |
+| Several conflicts | Each is handled by the rows above. If any one refuses, the answer refuses. |
+
+The answer never says which value is "right". It says which is newer.
+"Newer supersedes" is a policy for revised documents, such as reports and
+versions. It is wrong for two independent sources of the same date, and that
+case refuses.
+
+### 4. Surfacing
+
+* **Per-question record and agent trace:**
+  * `conflicts: [...]` with both sides;
+  * `conflict_policy: none | prefer_newer | refused`;
+  * each document's `version` with its `source`;
+  * `conflict_detector`, labelled as a rule or a model.
+* **Chat UI** (`src/chat/ui.py`):
+  * `format_answer` gains a "Sources disagree" block listing each conflict,
+    which side was used and why;
+  * `format_trace` gains a "Conflicts" section;
+  * the status panel shows each indexed document's version date and its
+    source, so "unknown" is visible before anyone asks.
+* **Config:** `conflicts.enabled` (default **off**), `conflicts.detector`
+  (`rule`/`llm`), `conflicts.anchor_threshold` (τ) and
+  `conflicts.policy = "prefer_newer"`. **Off by default**, so every stored
+  76-question result, and the tests that compare against them, stay valid.
+  The chat app turns it on, because a chat session indexes several PDFs.
+
+### 5. The conflict benchmark (a separate suite)
+
+* **Location:** `benchmark/conflicts/`, in its own `questions.json`,
+  `documents_metadata.json` and `documents/`. The 76-question set, its splits
+  and every stored result are untouched.
+* **Fixtures:** made by `benchmark/conflicts/build_fixtures.py`, using pymupdf
+  as `tests/pdf_fixtures.py` does. The text is self-written and fictional
+  ("Harbour Vale Water Authority"), and the PDFs are dedicated CC0, stated in
+  each PDF's text.
+  1. `annual_report_2023.pdf`: CreationDate 2024-02.
+  2. `annual_report_2024.pdf`: CreationDate 2025-02. The same structure, with
+     about 8 figures changed (customers, leakage %, budget, the chief engineer's
+     name, a completion date) and about 6 unchanged.
+  3. `press_release_2024-06.pdf`: dated by filename only. It restates two 2024
+     figures, one of them differently.
+  4. `board_memo.pdf`: no metadata date and no date in the filename. It
+     contradicts one figure, so that claim must refuse.
+  5. `audit_note.pdf`: no metadata date. Its date is user-supplied in
+     `documents_metadata.json`, to exercise the user source.
+* **Questions:** 20, each with:
+  * `documents`: the PDFs indexed together for it;
+  * `answer`;
+  * `evidence_pages` per document;
+  * `conflict: bool`;
+  * `expected_behavior`: `answer_newer`, `refuse` or `no_conflict`;
+  * `gold_winner_document`, for `answer_newer` only.
+  The planned mix:
+  * 9 `answer_newer`: numbers, dates and one entity;
+  * 4 `refuse`: an unknown date, or equal dates;
+  * 7 `no_conflict` controls: the same value in both, a figure in one document
+    only, or a different claim with a similar anchor (the false-positive trap).
+* **Split:** 8 dev / 12 eval. τ is tuned on dev. Eval is run once and reported
+  whatever it shows.
+* **Harness:** a question with `documents` is answered over an index of those
+  documents (`index_documents`). This needs one new harness path: questions
+  are grouped by their document tuple instead of by one document.
+  `validate-benchmark` accepts the new optional fields, and the old schema is
+  unchanged.
+
+### 6. Metrics, named now
+
+With 95% bootstrap CIs (DD-028), on the suite's eval split (dev figures only
+to choose τ):
+* **Detection precision / recall,** question level: detected (at least one
+  conflict) vs gold `conflict`.
+* **Correct-source rate,** over `answer_newer` questions: the answer is
+  correct against the newer value (DD-036 deterministic correctness), **and** a
+  citation resolves to `gold_winner_document`.
+* **Answer accuracy on conflict questions:** DD-036 correctness for
+  `answer_newer`, abstention for `refuse`.
+* **False-conflict rate on the normal benchmark:** the 76 questions answered
+  with **all 5 benchmark PDFs indexed together** and conflicts on. These five
+  PDFs are unrelated, so every flagged question is a false conflict. Only this
+  rate is read from that run. Its other numbers mix in distractor documents
+  and are not comparable to stored results. They are not reported as a
+  system result, and they count as no look at eval for any tuning. The rate is
+  reported over all 76 questions, and over dev only.
+
+**Floors stated now:**
+* the scripted generator copies sentences, so accuracy on `answer_newer` is
+  capped by whether the newer sentence is in the evidence at all;
+* the rule detector cannot see a conflict whose two sides share few words
+  ("headcount" vs "number of staff"). That is the case the LLM path exists
+  for, and on the offline stack it is a known miss, counted, not hidden.
+
+### Alternatives considered
+
+* **Always prefer the newest document wholesale,** dropping older documents
+  from retrieval. It is simple, but it throws away everything the old
+  edition says that the new one does not.
+* **Show both values and let the user decide, never refusing.** It is honest,
+  but it pushes the judgment onto the user even when the dates settle it.
+* **LLM-only detection.** It would leave the offline stack untestable, against
+  DD-055's principle that every agent decision has a rule-based stand-in.
+* **Timestamp-free source ranking** (trust scores per source). There is no
+  data to set them from.
+
+### Delivery (after approval)
+
+Two PRs, at the owner's request to move fast:
+1. the feature: version metadata, the detector, the policy, the trace and the
+   chat UI;
+2. the suite, the multi-document harness path, the metrics and DD-075.
+
+DD-075 then records τ chosen on dev, the eval result and the false-conflict
+rate.
