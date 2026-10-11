@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-24 (the Colab chatbot release: defect fixes, OCR, chat, follow-ups, notebooks, regenerated offline results)
+Last updated: 2026-10-11 (tradeoff studies DD-071 to DD-073 write-up, stale/conflicting sources DD-074, interview-ready README; earlier: 2026-09-24 Colab chatbot release)
 
 A factual record of what exists, what it is verified to do, and what blocks the
 next step. `EXPERIMENT_PLAN.md` says what order to build in; this says how far
@@ -13,6 +13,8 @@ along that order the project actually is.
 | | |
 | --- | --- |
 | Phases complete | 0 (benchmark), 1 (ingestion + indexing), 2 (dense baseline), 3 (metrics harness), 4 (hybrid + reranking), 5 (agentic), 6 (ablations + write-up, offline stack) |
+| **Tradeoff studies (2026-10-11)** | Offline stand-in stack, dev only, each rule committed before its runs. **Chunking (DD-071):** 16 arms; no challenger qualified, so structure-aware 1200/150 stays. Fixed windows were a near-miss (Recall@5 +0.067 [+0.000, +0.167]), and structure loses on tables. **Fusion (DD-072):** 12 RRF k × candidate-depth arms are identical, because the reranker re-sorts the fused top 20; fusion beats dense-only and BM25-only by one question each (n.s.). **Reranker (A3, `docs/TRADEOFFS.md`):** no significant quality gain; it costs 17.2 cross-encoder pairs per question (29.7 agentic). **No default changed, so the eval split was not looked at a third time,** and `results/final/` is unchanged. It was not regenerated, because no stored result moved. Tables: `results/experiments/{chunking,fusion,reranker}/TABLE.md` |
+| **Stale/conflicting sources (DD-074)** | Built: document version metadata (user > PDF CreationDate > filename > unknown, source recorded), rule-based and LLM conflict detectors, and the prefer-newer / refuse policy with code-resolved citations. It appears in records, the trace and the chat UI. Off by default, so stored results are unchanged. **Not yet measured:** the conflict benchmark suite and DD-075 are open (issue #43) |
 | Next step | **GPU model-stack run**, from `notebooks/gpu_benchmark_run.ipynb` (section 9.6, `NEXT_STEPS.md`) |
 | **Release** | **The Colab chatbot is built** (section 9.5): the deliverable notebook, a Gradio chat interface, follow-up questions, OCR on by default, resumable runs, and fixes for the three Phase 6 defects (DD-061 to DD-068). Every stored result was regenerated under the fixes (DD-069). All numbers are still offline |
 | **Phase 6 result** | **On the offline stand-in stack, no component earned its cost** (DD-058 rule), unchanged after regeneration under the defect fixes (DD-069). The evidence controller is still the cause of the agentic regression: removing it recovers faithfulness +0.079 [+0.026, +0.145] and citation +0.057 [+0.014, +0.114]. The fixes narrowed the regression and made the verifier inert (it no longer rejects q065). The threshold re-tuned on dev (0.6) regressed on eval and is not kept (section 9.4) |
