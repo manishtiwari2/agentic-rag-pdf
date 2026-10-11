@@ -97,10 +97,20 @@ and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
   * MRR@10 +0.071 [+0.003, +0.145], significant;
   * Recall@5 +0.057 [−0.014, +0.143], not significant;
   * accuracy +0.039 [−0.013, +0.092], not significant.
-* **Fusion study:** RRF k × candidate depth, plus which retriever wins on
-  numeric, lexical and paraphrase questions — *pending: DD-072, issue #32*.
-* **At scale:** sweep the fusion weights on the model stack, where the dense
-  side is a real embedder rather than a second lexical signal.
+* **Fusion study** (DD-072, dev, rule committed first):
+  * All 12 RRF k × candidate-depth arms are identical. The fusion setting
+    does change the fused list, but the reranker re-sorts the fused top 20 and
+    overwrites it.
+  * Fusion beats dense-only and BM25-only by one question each (Recall@5
+    0.933 vs 0.900, n.s.).
+  * The two retrievers agree on every lexical question and disagree only on
+    numeric and paraphrase questions. One paraphrase question, with zero word
+    overlap, is found by dense alone.
+  * Tables: [TABLE.md](results/experiments/fusion/TABLE.md),
+    [WINS.md](results/experiments/fusion/WINS.md).
+* **At scale:** sweep fusion with the reranker off, or with a reranker window
+  smaller than the fused pool, and use a real embedder. The offline "dense"
+  retriever is hashed term counts, close to a second lexical signal.
 * **DDs:** DD-008, DD-045, DD-046, DD-049, **DD-072**.
 
 ### 3. Re-ranking
@@ -116,7 +126,9 @@ and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
   * accuracy +0.026 [−0.026, +0.079];
   * neither is significant, and latency is the only significant contrast.
 * **The cost that carries over** to the model stack is 17.2 cross-encoder
-  passes per question, 29.7 in the agentic system — *write-up: A3, PR #38*.
+  passes per question, 29.7 in the agentic system.
+* Write-up: [docs/TRADEOFFS.md](docs/TRADEOFFS.md#re-ranking); table:
+  [results/experiments/reranker/TABLE.md](results/experiments/reranker/TABLE.md).
 * **At scale:** budget the pool by measured p95 latency per pair batch, skip
   reranking when fusion's top hit is a clear winner, and cache scores per
   (query, chunk).
@@ -203,14 +215,35 @@ and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 
 ### 8. Stale and conflicting sources
 
-* **Decision (proposed, under review):**
-  * version metadata per document: a user-supplied date, then the PDF date,
-    then the filename, recording which one was used;
-  * cross-document conflict detection, with a rule path and an LLM path;
-  * a declared policy: the newer source wins and the answer says so, citing
-    both; unknown dates refuse.
-* **Evidence:** *pending: design DD-074 ([PR #39](https://github.com/manishtiwari2/agentic-rag-pdf/pull/39)),
-  measurement DD-075, on a separate conflict suite*.
+* **Decision:**
+  * every document gets a version date: a user-supplied date, then the PDF
+    CreationDate, then the filename. Which source was used is recorded and
+    shown in the chat app.
+  * when the evidence comes from two or more documents, a detector looks for
+    the same claim stated with a different number, date or name. The rule
+    path runs offline and the LLM path on the model stack.
+  * a policy declared before any data: the newer source answers, and a
+    code-built note names and cites both; an unknown or equal date refuses
+    and shows both claims.
+* **Alternatives:**
+  * drop older documents wholesale, which loses everything only the old
+    edition says;
+  * always show both values, which pushes the call onto the user even when
+    dates settle it;
+  * LLM-only detection, which would leave the offline stack untestable.
+* **Why:** "newer supersedes" is right for revised reports. It is wrong for
+  two independent sources of the same date, so that case refuses.
+* **Evidence:**
+  * The feature is built and unit-tested on synthetic report editions:
+    prefer-newer, refuse-when-undated, a user date settling an undated memo,
+    and no false conflict when sources agree.
+  * **It is not yet measured on a benchmark.** The conflict suite and DD-075
+    are open (issue #43).
+  * Off by default, so every stored result is unchanged.
+* **At scale:** a source-trust model for independent sources, and claim
+  alignment by embeddings rather than word overlap ("headcount" vs "number of
+  staff" is a known miss of the rule path).
+* **DD:** DD-074.
 
 ---
 
@@ -297,6 +330,11 @@ Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000
 * **Licences:** only one of the five benchmark PDFs has a confirmed open
   licence. The other four are recorded as unknown, with the owner's sign-off.
 * **No OCR accuracy figure:** there is no scanned document with gold text.
+* **Conflict handling is not yet benchmarked.** It is unit-tested only; the
+  suite and DD-075 are open (#43).
+* **A stability test is flaky on Python 3.10 CI:** `test_hybrid.py`
+  reproduces q040 differently there. It passes on 3.13 and is not caused by
+  this work; it is to be investigated.
 
 ---
 
