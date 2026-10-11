@@ -218,6 +218,13 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
 1. **Chunk size and overlap.** No principled starting value. Sweep on the dev
    set in Phase 1; do not tune further afterwards. **Still open after Phase
    6.** No arm varied chunking, and DD-058 added no unplanned sweep.
+   **Closed for the offline stack (DD-071, issue #31):** a 16-arm dev sweep
+   (structure/fixed × 400-1600 × overlap 0/150) on Baseline B, chosen by a rule
+   committed before the runs. No challenger qualified, so structure-aware
+   1200/150 stays. Fixed chunking is a near-miss: dev Recall@5 +0.067
+   [+0.000, +0.167]. `chunk_size` barely changes structure-aware chunks, because
+   short sections set their length. Structure loses on tables and on one
+   multi-hop question. Re-sweep on dev in the model-stack run.
 2. **RRF vs. weighted fusion**, and the dense/lexical weights. RRF is the
    default (DD-008) because it needs no calibration, not because it is known
    to be better here. Still open after Phase 4: RRF is built with k = 60

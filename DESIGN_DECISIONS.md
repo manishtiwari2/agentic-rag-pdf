@@ -3081,3 +3081,77 @@ mismatch is the treatment, so the sweep records it per arm rather than refusing.
 run of it against the incumbent. That run would be the third look at eval
 (after DD-059 and DD-069), and it would be disclosed here and in STATUS.md. If
 the incumbent stays, eval is not run.
+
+### Part 2 — the result (appended after the 16 dev runs)
+
+**Offline stand-in stack, `--split dev`, 33 questions.** The full generated
+table, with every arm and every contrast, is
+[`results/experiments/chunking/TABLE.md`](results/experiments/chunking/TABLE.md)
+(`table.json` beside it). Figures quoted below are copied from it.
+
+**Sanity check passed.** The `structure_1200_150` arm reproduces all 33 dev
+records of `results/hybrid/` exactly: the same answers, the same retrieved
+chunks, the same correctness.
+
+**Decision: no challenger qualifies, and the incumbent `structure_1200_150`
+stays.** No eval run was made, so eval has still been looked at twice.
+
+**The near-miss is the fixed strategy, and it is reported as one.**
+* Six fixed arms reach dev Recall@5 1.000 against the incumbent's 0.933:
+  +0.067 [+0.000, +0.167].
+* `fixed_800_150` has the highest accuracy, 0.364 against 0.242: +0.121
+  [+0.000, +0.273].
+* `fixed_1200_150` improves MRR@10 significantly (+0.054 [+0.004, +0.113]), but
+  MRR@10 is a guard in the rule, not a primary.
+
+Each primary CI has its lower bound at exactly 0. The rule asks for a CI above
+0, so none qualifies. The Recall@5 gain is two questions, q020 and q023, and
+the rule was written to stop a two-question gain on 33 from becoming a default.
+Changing the rule now that the table points at fixed chunking would be the
+tuning-on-the-result DD-058 forbids. The honest reading: **on this stack and
+this dev set, fixed chunking is slightly ahead but not measurably so.** It is
+the first thing to re-test on the model stack.
+
+**Finding 1: `chunk_size` is nearly inert for the structure-aware chunker.**
+* Across 400-1600 its chunk count moves only from 470 to 351, and its retrieval
+  figures are identical at every size and overlap except Recall@1/MRR.
+* At 1200 its chunks average 387 characters (p95 1,174). Fixed chunks at 1200
+  average 1,170.
+* The cause: a heading starts a new chunk (DD-009, DD-061), and these PDFs'
+  sections are short, so the section, not `chunk_size`, sets the length.
+  `chunk_size` is only a ceiling that a few long sections reach.
+
+So "structure 1200 vs fixed 1200" is really "≈390-character section chunks vs
+1,170-character windows". The structure index has 2.8× the chunks (359 vs 130)
+with about the same indexed text (138,942 vs 152,076 characters).
+
+**Finding 2: where structure-aware chunking loses** (matched on size and
+overlap, per question type; the counts are in TABLE.md):
+* **Tables.** It loses Recall@5 on q020 at every size from 800 up, and accuracy
+  on q043 at 7 of 8 settings and q004 and q070 at 3. Across all settings, table
+  accuracy is 5 wins against 13 losses. A table gets its own chunk (DD-061), cut
+  off from the sentence above it that names what the table measures. A fixed
+  window keeps the two together.
+* **Multi-hop.** It loses Recall@5 on q023 at 6 of 8 settings. The two hops sit
+  in neighbouring short sections, and one fixed window covers both.
+* **Numerical.** 0 wins against 7 losses on accuracy, almost all q068, whose
+  number and the noun it measures fall into adjacent section chunks.
+
+**Where it wins:**
+* comparison accuracy, 4 wins against 0 losses;
+* definition accuracy, 2 against 0;
+* multi-hop accuracy, 7 against 3. A short chunk that leads with its heading
+  gives the extractive generator one focused passage to copy from.
+
+**What I would do at scale, not done here:**
+* merge adjacent short sections up to `chunk_size`, so a section chunk inherits
+  a fixed window's context while keeping its heading;
+* attach each table's caption or preceding sentence to its chunk;
+* re-run this study on the model stack, where bge-m3 embeds a 1,170-character
+  window very differently from a hashing embedder.
+
+These are recorded as follow-ups, not tried: trying them on dev now would be a
+second chunking search on the same 33 questions.
+
+**What stands.** The defaults are unchanged: structure-aware, 1200, 150.
+EXPERIMENT_PLAN.md section 5.1 is closed for the offline stack.
