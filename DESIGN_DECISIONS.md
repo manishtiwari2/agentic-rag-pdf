@@ -2811,6 +2811,29 @@ Three changes:
   both notebooks. Colab does not display a subprocess's own output, so the
   first run showed no per-question progress at all.
 
+### Correction (2026-10-09): the chatbot notebook crashed after its own install
+
+On a GPU runtime, *Run all* on `agentic_pdf_rag.ipynb` failed in cell 5b with
+`TypeError: function takes at most 16 arguments (17 given)`, raised inside
+`PIL/Image.py`. Colab imports Pillow before the notebook runs. Cell 2's
+`pip install -r requirements-colab.txt` replaced it on disk, so the kernel mixed
+the old compiled extension with the new Python files. The GPU runner never hit
+this, because it runs everything in subprocesses. The offline test could not
+catch it, because outside Colab cell 2 installs nothing (issue #25).
+
+Two changes:
+* **Cell 2 compares versions before and after the install.** It records the
+  installed version of every distribution the kernel has already imported. If
+  the install changes any of them, it names them and restarts the runtime once.
+  The second *Run all* installs nothing and runs through.
+  `tests/test_notebooks.py` executes this logic with a faked install, both with
+  and without a changed package.
+* **Cell 5b no longer aborts the notebook** if OCR runs but reads too little.
+  It now reports the `ScannedPDFError`, and its fallback font is large enough
+  to read.
+
+The pinned tag is unchanged: neither fix touches `src/`.
+
 ---
 
 # DD-069 — Offline Results Regenerated After DD-061 to DD-063; Threshold Re-Chosen on Dev, Eval Looked at a Second Time

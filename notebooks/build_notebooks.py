@@ -145,11 +145,49 @@ In Colab this installs the Tesseract OCR engine (a system package; OCR is on by 
 and `requirements-colab.txt`: the model stack, Gradio for the chat interface and pytesseract.
 Every licence is permissive; they are listed in `NOTICE`. Outside Colab nothing is installed:
 install `requirements-colab.txt` yourself, or rely on the offline stack.
+
+Colab imports some packages (Pillow among them) before this cell runs. If the install changes one
+of those, the old copy in memory and the new one on disk get mixed, and later cells fail with
+errors like `function takes at most 16 arguments (17 given)`. So this cell checks: if the install
+changed an already-imported package, it names it and **restarts the runtime once**. Then choose
+*Runtime → Run all* again; the second time nothing is installed and every cell runs. Red
+`pip's dependency resolver` lines during the install are warnings, not failures.
 """),
         _code('''
 if IN_COLAB:
+    import importlib
+    import importlib.metadata as metadata
+    import signal
+
+    def imported_versions():
+        """The installed version of every distribution this kernel has already imported."""
+        importlib.invalidate_caches()
+        owners = metadata.packages_distributions()
+        names = {name for module in list(sys.modules)
+                 for name in owners.get(module.partition(".")[0], [])}
+        versions = {}
+        for name in names:
+            try:
+                versions[name] = metadata.version(name)
+            except metadata.PackageNotFoundError:
+                versions[name] = None
+        return versions
+
+    before = imported_versions()
     sh("apt-get", "install", "-y", "-qq", "tesseract-ocr")
     sh(sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-colab.txt")
+    after = imported_versions()
+    changed = {name: (old, after.get(name)) for name, old in before.items() if after.get(name) != old}
+    if changed:
+        print("=" * 78)
+        print("The install changed packages this runtime had already imported:")
+        for name, (old, new) in sorted(changed.items()):
+            print(f"  {name}: {old} -> {new}")
+        print("Restarting the runtime so every cell uses the new versions.")
+        print("When it reconnects: Runtime -> Run all. The second run installs nothing.")
+        print("=" * 78, flush=True)
+        os.kill(os.getpid(), signal.SIGKILL)
+    print("Dependencies ready; no restart needed.")
 else:
     print("Not in Colab: skipping installs. For everything: pip install -r requirements-colab.txt")
 '''),
@@ -254,7 +292,7 @@ indexing an empty page.
         _code('''
 from PIL import Image, ImageDraw, ImageFont
 
-from src.errors import OCRUnavailableError
+from src.errors import OCRUnavailableError, ScannedPDFError
 from src.ingestion.parser import build_parser
 
 lines = ["Scanned report, page 1", "",
@@ -265,7 +303,10 @@ draw = ImageDraw.Draw(image)
 try:
     font = ImageFont.truetype("DejaVuSans.ttf", 64)
 except OSError:
-    font = ImageFont.load_default()
+    try:
+        font = ImageFont.load_default(size=64)  # Pillow 10.1+: large enough to OCR
+    except TypeError:
+        font = ImageFont.load_default()
 for row, line in enumerate(lines):
     draw.text((200, 300 + row * 110), line, fill=0, font=font)
 import tempfile
@@ -281,6 +322,8 @@ try:
     print(scanned.page(1).text)
 except OCRUnavailableError as exc:
     print("OCR is unavailable here:", exc)
+except ScannedPDFError as exc:
+    print("OCR ran but could not read the demo page:", exc)
 '''),
         _md("""
 ## 6. Baseline RAG: dense retrieval, then generation
