@@ -1,0 +1,714 @@
+{
+  "study": "fusion",
+  "dd": "DD-072",
+  "stack": "Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.",
+  "split": "dev",
+  "n_questions": 33,
+  "rule": {
+    "incumbent": "k60_c20",
+    "primary": [
+      "recall_at_5",
+      "mrr_at_10"
+    ],
+    "guard": [
+      "accuracy_all"
+    ],
+    "tiebreak": [
+      [
+        "recall_at_5",
+        true
+      ],
+      [
+        "mrr_at_10",
+        true
+      ],
+      [
+        "candidate_k",
+        false
+      ]
+    ],
+    "references": [
+      "dense_only",
+      "bm25_only"
+    ]
+  },
+  "qualified": [],
+  "chosen": "k60_c20",
+  "rows": [
+    {
+      "arm": "bm25_only",
+      "factors": {
+        "retrievers": [
+          "lexical"
+        ],
+        "rrf_k": 60,
+        "candidate_k": 20
+      },
+      "reference": true,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6333,
+        "recall_at_5": 0.9,
+        "recall_at_10": 0.9333,
+        "mrr_at_10": 0.7625,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0066
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": -0.033333,
+          "ci_low": -0.1,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": -0.033333,
+          "ci_low": -0.1,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "dense_only",
+      "factors": {
+        "retrievers": [
+          "dense"
+        ],
+        "rrf_k": 60,
+        "candidate_k": 20
+      },
+      "reference": true,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9,
+        "recall_at_10": 0.9333,
+        "mrr_at_10": 0.7889,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0093
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": -0.033333,
+          "ci_low": -0.1,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": -0.006944,
+          "ci_low": -0.025,
+          "ci_high": 0.004167,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k100_c10",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 100,
+        "candidate_k": 10
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0041
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k100_c20",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 100,
+        "candidate_k": 20
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0049
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k100_c40",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 100,
+        "candidate_k": 40
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0109
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k10_c10",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 10,
+        "candidate_k": 10
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0123
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k10_c20",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 10,
+        "candidate_k": 20
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0162
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k10_c40",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 10,
+        "candidate_k": 40
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.018
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k30_c10",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 30,
+        "candidate_k": 10
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0114
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k30_c20",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 30,
+        "candidate_k": 20
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.014
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k30_c40",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 30,
+        "candidate_k": 40
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0098
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k60_c10",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 60,
+        "candidate_k": 10
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0113
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    },
+    {
+      "arm": "k60_c20",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 60,
+        "candidate_k": 20
+      },
+      "reference": false,
+      "incumbent": true,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.009
+      },
+      "contrasts": {}
+    },
+    {
+      "arm": "k60_c40",
+      "factors": {
+        "retrievers": [
+          "dense",
+          "lexical"
+        ],
+        "rrf_k": 60,
+        "candidate_k": 40
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0077
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [],
+      "qualifies": false
+    }
+  ],
+  "notes": [
+    "dense_only and bm25_only keep fusion's reranker and differ from the incumbent in retrieval.retrievers alone; they are references, never chosen.",
+    "p95 latency is milliseconds on the offline stack and moves between sessions (DD-069): descriptive only."
+  ]
+}

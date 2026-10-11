@@ -233,6 +233,13 @@ Decisions deferred until there is evidence, recorded so they are not forgotten:
    after Phase 6.** Inside the agentic system, hybrid OFF changed neither
    Recall@5 nor MRR@10 (DD-060), so fusion weights are unlikely to matter on
    the offline stack. They should be swept on dev in the model-stack run.
+   **Closed for the offline stack (DD-072, issue #32):** RRF k {10, 30, 60,
+   100} × `candidate_k` {10, 20, 40} on dev, under a rule committed before the
+   runs. All 12 arms are identical to k = 60 / 20, because the reranker
+   re-sorts the fused top 20 and overwrites the fusion order. Fusion beats
+   dense-only and BM25-only by one question each (n.s.). The retrievers
+   disagree only on numeric and paraphrase questions. Re-sweep on the model
+   stack with the reranker off or a smaller reranker window.
 3. **`MAX_RETRIEVAL_ITERATIONS = 2`.** Chosen for latency, not measured. Phase
    5 should check whether iteration 2 ever changes an answer. **Measured in Phase 5
    (DD-053):** with the rule-based controller, a second round ran on 4 of 76
