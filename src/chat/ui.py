@@ -39,7 +39,10 @@ def make_config(system: str, offline: bool) -> RAGConfig:
         raise ValueError(f"system must be one of {SYSTEMS}, not {system!r}")
     config = RAGConfig.offline() if offline else RAGConfig.default()
     return dataclasses.replace(
-        config, retrieval=dataclasses.replace(config.retrieval, strategy=system)
+        config,
+        retrieval=dataclasses.replace(config.retrieval, strategy=system),
+        # DD-074: a chat session indexes several PDFs, so it checks for conflicts.
+        conflicts=dataclasses.replace(config.conflicts, enabled=True),
     )
 
 
@@ -115,11 +118,14 @@ def format_status(state: ChatState) -> str:
         lines.append(f"Indexed for **{SYSTEM_LABELS[state.system]}**"
                      + (" (offline stand-in stack)" if state.offline else "") + ":")
         lines.append("")
-        lines.append("| File | Pages | OCR'd pages | Chunks |")
-        lines.append("| --- | ---: | ---: | ---: |")
+        lines.append("| File | Pages | OCR'd pages | Chunks | Version date (source) |")
+        lines.append("| --- | ---: | ---: | ---: | --- |")
         for doc in state.documents:
+            version = doc.get("version") or {}
+            dated = f"{version.get('date') or 'unknown'} ({version.get('source', 'unknown')})"
             lines.append(
-                f"| {doc['source_name']} | {doc['pages']} | {len(doc['ocr_pages'])} | {doc['chunks']} |"
+                f"| {doc['source_name']} | {doc['pages']} | {len(doc['ocr_pages'])} | "
+                f"{doc['chunks']} | {dated} |"
             )
     if state.errors:
         if lines:
@@ -149,7 +155,28 @@ def format_answer(result: RAGResult, documents: Sequence[dict[str, Any]] = ()) -
             section = f" ({citation.section})" if citation.section else ""
             lines.append(f"* [{citation.marker}] {where}{section}")
         text = "\n".join(lines)
-    return text
+    return text + format_conflicts(result)
+
+
+def format_conflicts(result: RAGResult) -> str:
+    """DD-074: a "Sources disagree" block, empty when nothing conflicts."""
+    report = result.metadata.get("conflicts") or {}
+    conflicts = report.get("conflicts") or []
+    if not conflicts:
+        return ""
+    if result.metadata.get("conflict_policy") == "prefer_newer":
+        why = "answered from the newer source"
+    else:
+        why = "refused: the dates cannot say which source is current"
+    lines = ["", "", f"**Sources disagree** ({why})"]
+    for conflict in conflicts:
+        for side in conflict["sides"]:
+            version = side["version"]
+            lines.append(
+                f"* {side['source_name']} ({version.get('date') or 'undated'}, "
+                f"{version.get('source')}): {', '.join(side['values'])}"
+            )
+    return "\n".join(lines)
 
 
 def format_trace(result: RAGResult) -> str:
@@ -162,6 +189,13 @@ def format_trace(result: RAGResult) -> str:
         lines.append(
             f"**Follow-up rewritten** ({conversation['rewriter']}{fallback}): "
             f"{conversation['standalone_question']}"
+        )
+    report = meta.get("conflicts")
+    if report:
+        lines.append(
+            f"**Conflicts:** {len(report.get('conflicts') or [])} found by "
+            f"{report.get('detector')} ({report.get('status')}); "
+            f"policy: {meta.get('conflict_policy', 'none')}"
         )
     trace = meta.get("agent_trace")
     if not trace:
