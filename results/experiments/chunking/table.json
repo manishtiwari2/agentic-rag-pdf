@@ -1,0 +1,1391 @@
+{
+  "study": "chunking",
+  "dd": "DD-071",
+  "stack": "Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.",
+  "split": "dev",
+  "n_questions": 33,
+  "rule": {
+    "incumbent": "structure_1200_150",
+    "primary": [
+      "recall_at_5",
+      "accuracy_all"
+    ],
+    "guard": [
+      "mrr_at_10"
+    ],
+    "tiebreak": [
+      [
+        "recall_at_5",
+        true
+      ],
+      [
+        "mrr_at_10",
+        true
+      ],
+      [
+        "chunks_total",
+        false
+      ]
+    ],
+    "references": []
+  },
+  "qualified": [],
+  "chosen": "structure_1200_150",
+  "rows": [
+    {
+      "arm": "fixed_1200_0",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 1200,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 113,
+        "indexed_chars_total": 133249,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.8194,
+        "full_recall_at_5_multi_hop": 0.6667,
+        "full_recall_at_5_multi_hop_comparison": 0.8333,
+        "accuracy_all": 0.303,
+        "latency_p95_s": 0.0166
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.066667,
+          "ci_low": 0.0,
+          "ci_high": 0.166667,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.060606,
+          "ci_low": -0.090909,
+          "ci_high": 0.212879,
+          "questions_changed": 8,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.023611,
+          "ci_low": -0.030556,
+          "ci_high": 0.077778,
+          "questions_changed": 5,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_1200_150",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 1200,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 130,
+        "indexed_chars_total": 152076,
+        "recall_at_1": 0.7333,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.85,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.303,
+        "latency_p95_s": 0.0157
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.066667,
+          "ci_low": 0.0,
+          "ci_high": 0.166667,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.060606,
+          "ci_low": -0.121212,
+          "ci_high": 0.212121,
+          "questions_changed": 8,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.054167,
+          "ci_low": 0.004167,
+          "ci_high": 0.1125,
+          "questions_changed": 4,
+          "verdict": "significant improvement"
+        }
+      },
+      "confounded_by": [
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_1600_0",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 1600,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 86,
+        "indexed_chars_total": 133274,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.8178,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0134
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.066667,
+          "ci_low": 0.0,
+          "ci_high": 0.166667,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": -0.151515,
+          "ci_high": 0.151515,
+          "questions_changed": 6,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.021944,
+          "ci_low": -0.036667,
+          "ci_high": 0.105278,
+          "questions_changed": 4,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_1600_150",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 1600,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 94,
+        "indexed_chars_total": 146686,
+        "recall_at_1": 0.6333,
+        "recall_at_5": 0.9667,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.7747,
+        "full_recall_at_5_multi_hop": 0.0,
+        "full_recall_at_5_multi_hop_comparison": 0.5,
+        "accuracy_all": 0.303,
+        "latency_p95_s": 0.0131
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.033333,
+          "ci_low": 0.0,
+          "ci_high": 0.1,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.060606,
+          "ci_low": -0.060606,
+          "ci_high": 0.212121,
+          "questions_changed": 6,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": -0.021111,
+          "ci_low": -0.076667,
+          "ci_high": 0.019444,
+          "questions_changed": 4,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_400_0",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 400,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 341,
+        "indexed_chars_total": 133010,
+        "recall_at_1": 0.7,
+        "recall_at_5": 0.9667,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.8233,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2121,
+        "latency_p95_s": 0.0083
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.033333,
+          "ci_low": 0.0,
+          "ci_high": 0.1,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": -0.030303,
+          "ci_low": -0.181818,
+          "ci_high": 0.121212,
+          "questions_changed": 7,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0275,
+          "ci_low": -0.030833,
+          "ci_high": 0.091708,
+          "questions_changed": 7,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_400_150",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 400,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 550,
+        "indexed_chars_total": 215001,
+        "recall_at_1": 0.7,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.7863,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0076
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": -0.151515,
+          "ci_high": 0.151515,
+          "questions_changed": 8,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": -0.009537,
+          "ci_low": -0.072507,
+          "ci_high": 0.058243,
+          "questions_changed": 11,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_800_0",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 800,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 170,
+        "indexed_chars_total": 133187,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.8222,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0094
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.066667,
+          "ci_low": 0.0,
+          "ci_high": 0.166667,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": -0.181818,
+          "ci_high": 0.151515,
+          "questions_changed": 8,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.026389,
+          "ci_low": -0.044444,
+          "ci_high": 0.094444,
+          "questions_changed": 6,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "fixed_800_150",
+      "factors": {
+        "chunking_strategy": "fixed",
+        "chunk_size": 800,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 209,
+        "indexed_chars_total": 163914,
+        "recall_at_1": 0.7333,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "mrr_at_10": 0.8428,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.3636,
+        "latency_p95_s": 0.0096
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.066667,
+          "ci_low": 0.0,
+          "ci_high": 0.166667,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.121212,
+          "ci_low": 0.0,
+          "ci_high": 0.272727,
+          "questions_changed": 6,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.046944,
+          "ci_low": -0.016674,
+          "ci_high": 0.116111,
+          "questions_changed": 7,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size",
+        "chunking_strategy"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_1200_0",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 1200,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 358,
+        "indexed_chars_total": 136675,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2121,
+        "latency_p95_s": 0.018
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": -0.030303,
+          "ci_low": -0.090909,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_1200_150",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 1200,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": true,
+      "values": {
+        "chunks_total": 359,
+        "indexed_chars_total": 138942,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.011
+      },
+      "contrasts": {}
+    },
+    {
+      "arm": "structure_1600_0",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 1600,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 351,
+        "indexed_chars_total": 136326,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2121,
+        "latency_p95_s": 0.0137
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": -0.030303,
+          "ci_low": -0.090909,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_1600_150",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 1600,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 351,
+        "indexed_chars_total": 137654,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0157
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_400_0",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 400,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 462,
+        "indexed_chars_total": 140875,
+        "recall_at_1": 0.6667,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7958,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2121,
+        "latency_p95_s": 0.0165
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": -0.030303,
+          "ci_low": -0.090909,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": -0.05,
+          "ci_high": 0.05,
+          "questions_changed": 2,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_400_150",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 400,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 470,
+        "indexed_chars_total": 155171,
+        "recall_at_1": 0.6333,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.7792,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2727,
+        "latency_p95_s": 0.015
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.030303,
+          "ci_low": 0.0,
+          "ci_high": 0.090909,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": -0.016667,
+          "ci_low": -0.05,
+          "ci_high": 0.0,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_800_0",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 800,
+        "chunk_overlap": 0
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 375,
+        "indexed_chars_total": 137508,
+        "recall_at_1": 0.7,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.8125,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0128
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.016667,
+          "ci_low": 0.0,
+          "ci_high": 0.05,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_overlap",
+        "chunk_size"
+      ],
+      "qualifies": false
+    },
+    {
+      "arm": "structure_800_150",
+      "factors": {
+        "chunking_strategy": "structure",
+        "chunk_size": 800,
+        "chunk_overlap": 150
+      },
+      "reference": false,
+      "incumbent": false,
+      "values": {
+        "chunks_total": 378,
+        "indexed_chars_total": 141966,
+        "recall_at_1": 0.7,
+        "recall_at_5": 0.9333,
+        "recall_at_10": 0.9667,
+        "mrr_at_10": 0.8125,
+        "full_recall_at_5_multi_hop": 0.3333,
+        "full_recall_at_5_multi_hop_comparison": 0.6667,
+        "accuracy_all": 0.2424,
+        "latency_p95_s": 0.0154
+      },
+      "contrasts": {
+        "recall_at_5": {
+          "n": 30,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "accuracy_all": {
+          "n": 33,
+          "mean_difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "questions_changed": 0,
+          "verdict": "no significant difference"
+        },
+        "mrr_at_10": {
+          "n": 30,
+          "mean_difference": 0.016667,
+          "ci_low": 0.0,
+          "ci_high": 0.05,
+          "questions_changed": 1,
+          "verdict": "no significant difference"
+        }
+      },
+      "confounded_by": [
+        "chunk_size"
+      ],
+      "qualifies": false
+    }
+  ],
+  "notes": [
+    "Full-Recall@5 on multi-hop has n = 3 on dev (n = 6 with comparison questions): descriptive only, never part of the rule.",
+    "p95 latency is milliseconds on the offline stack and moves between sessions (DD-069): descriptive only."
+  ],
+  "strategy_by_type": {
+    "settings": [
+      [
+        400,
+        0
+      ],
+      [
+        400,
+        150
+      ],
+      [
+        800,
+        0
+      ],
+      [
+        800,
+        150
+      ],
+      [
+        1200,
+        0
+      ],
+      [
+        1200,
+        150
+      ],
+      [
+        1600,
+        0
+      ],
+      [
+        1600,
+        150
+      ]
+    ],
+    "tally": {
+      "recall_at_5": {
+        "factual": {
+          "wins": 0,
+          "ties": 48,
+          "losses": 0
+        },
+        "table": {
+          "wins": 0,
+          "ties": 26,
+          "losses": 6
+        },
+        "definition": {
+          "wins": 0,
+          "ties": 32,
+          "losses": 0
+        },
+        "explanation": {
+          "wins": 0,
+          "ties": 24,
+          "losses": 0
+        },
+        "comparison": {
+          "wins": 0,
+          "ties": 24,
+          "losses": 0
+        },
+        "multi_hop": {
+          "wins": 0,
+          "ties": 18,
+          "losses": 6
+        },
+        "summary": {
+          "wins": 0,
+          "ties": 8,
+          "losses": 0
+        },
+        "numerical": {
+          "wins": 0,
+          "ties": 32,
+          "losses": 0
+        },
+        "ambiguous": {
+          "wins": 0,
+          "ties": 16,
+          "losses": 0
+        }
+      },
+      "accuracy_all": {
+        "factual": {
+          "wins": 3,
+          "ties": 41,
+          "losses": 4
+        },
+        "table": {
+          "wins": 5,
+          "ties": 14,
+          "losses": 13
+        },
+        "unanswerable": {
+          "wins": 0,
+          "ties": 24,
+          "losses": 0
+        },
+        "definition": {
+          "wins": 2,
+          "ties": 30,
+          "losses": 0
+        },
+        "explanation": {
+          "wins": 0,
+          "ties": 19,
+          "losses": 5
+        },
+        "comparison": {
+          "wins": 4,
+          "ties": 20,
+          "losses": 0
+        },
+        "multi_hop": {
+          "wins": 7,
+          "ties": 14,
+          "losses": 3
+        },
+        "summary": {
+          "wins": 0,
+          "ties": 8,
+          "losses": 0
+        },
+        "numerical": {
+          "wins": 0,
+          "ties": 25,
+          "losses": 7
+        },
+        "ambiguous": {
+          "wins": 0,
+          "ties": 16,
+          "losses": 0
+        }
+      }
+    },
+    "losses": [
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 400,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q004",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q064",
+        "question_type": "explanation",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q004",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 400,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q004",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q014",
+        "question_type": "explanation",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q014",
+        "question_type": "explanation",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q064",
+        "question_type": "explanation",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q070",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 800,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q014",
+        "question_type": "explanation",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q045",
+        "question_type": "multi_hop",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q051",
+        "question_type": "factual",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q045",
+        "question_type": "multi_hop",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q051",
+        "question_type": "factual",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q070",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 1600,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q023",
+        "question_type": "multi_hop",
+        "metric": "recall_at_5",
+        "chunk_size": 1600,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q051",
+        "question_type": "factual",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q068",
+        "question_type": "numerical",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 0,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q020",
+        "question_type": "table",
+        "metric": "recall_at_5",
+        "chunk_size": 1600,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q043",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q045",
+        "question_type": "multi_hop",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q051",
+        "question_type": "factual",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      },
+      {
+        "question_id": "q070",
+        "question_type": "table",
+        "metric": "accuracy_all",
+        "chunk_size": 1600,
+        "chunk_overlap": 150,
+        "structure": 0.0,
+        "fixed": 1.0
+      }
+    ]
+  }
+}

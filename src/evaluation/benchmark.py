@@ -393,6 +393,7 @@ class BenchmarkRun:
             3,
         )
         result["documents_indexed"] = len(self.index_stats)
+        result.update(index_size_stats(self.index_stats))
         if self.resumed:
             # The index figures above cover this session only; the carried-over
             # records were answered by an earlier one (DD-064).
@@ -410,6 +411,32 @@ class BenchmarkRun:
             self.judge.summary() if self.judge is not None else {"judge_enabled": False}
         )
         return result
+
+
+def index_size_stats(index_stats: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Index size across every document indexed this session (DD-071).
+
+    Chunk count is the number of dense vectors and BM25 documents; indexed
+    characters count overlap twice, so they grow with ``chunk_overlap`` the
+    way the stored index does. A system that does not expose its chunks
+    reports ``None``, never 0.
+    """
+    lengths = [n for stats in index_stats for n in stats.get("chunk_chars", ())]
+    if not lengths:
+        return {
+            "chunks_total": None,
+            "indexed_chars_total": None,
+            "chunk_chars_mean": None,
+            "chunk_chars_p95": None,
+        }
+    ordered = sorted(lengths)
+    p95_index = min(len(ordered) - 1, max(0, math.ceil(0.95 * len(ordered)) - 1))
+    return {
+        "chunks_total": len(ordered),
+        "indexed_chars_total": sum(ordered),
+        "chunk_chars_mean": round(sum(ordered) / len(ordered), 1),
+        "chunk_chars_p95": ordered[p95_index],
+    }
 
 
 def run_cost_stats(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
@@ -651,7 +678,11 @@ def run_benchmark(
         try:
             system = factory()
             system.index(pdf_path)
-            run.index_stats.append(dict(getattr(system, "index_stats", {})))
+            stats = dict(getattr(system, "index_stats", {}))
+            chunks = getattr(system, "chunks", None)
+            if chunks:
+                stats["chunk_chars"] = [len(chunk.text) for chunk in chunks]
+            run.index_stats.append(stats)
         except (RAGError, OSError) as exc:
             # One unreadable document must not cost the other 60 questions.
             for question in group:

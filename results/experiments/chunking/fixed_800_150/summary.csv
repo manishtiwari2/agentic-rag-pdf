@@ -1,0 +1,2 @@
+system,accuracy_all,accuracy_answerable,faithfulness,citation_any_correct,citation_precision,recall_at_5,full_recall_at_5,mrr_at_10,abstention_accuracy,false_answer_rate,over_abstention_rate,unsupported_answer_rate,latency_median_s,latency_p95_s,peak_vram_gb,retrieval_iterations_mean,model_calls_mean
+baseline_hybrid,0.36363636363636365,0.4,0.9696969696969697,0.7,0.6551724137931034,1.0,0.8666666666666667,0.8427777777777778,0.0,1.0,0.03333333333333333,0.0,0.0087,0.0096,,,
