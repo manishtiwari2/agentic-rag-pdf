@@ -1,888 +1,405 @@
-# Local Agentic RAG for PDF Question Answering
+# Agentic RAG over PDFs, measured
 
-A local, open-source Agentic RAG system for asking questions about uploaded PDFs, designed to run on the free Google Colab GPU environment.
+A question-answering system over PDFs that runs on a free Colab T4. It
+handles ingestion with OCR, structure-aware chunking, dense + BM25 retrieval
+fused with RRF, a cross-encoder reranker, and a bounded agent loop (planner,
+evidence controller, refinement, verifier). Every answer cites pages that code
+resolves, not the model. The hard part is not wiring these together. It is
+knowing which of them actually helps. So the repo carries a benchmark (76
+human-verified questions over 5 PDFs, dev/eval split), paired-bootstrap
+confidence intervals, a failure taxonomy, and a written decision (a "DD") for
+every judgment call, including the ones where the fancier component lost.
 
-> **Status: Research release, offline numbers only**
->
-> The full pipeline, a chat interface and the Colab notebook run today
-> ([Quick Start](#13-quick-start)). Every benchmark number in this repository comes from
-> the **offline stand-in stack** (hashing embedder, scripted generator, rule-based agents)
-> on a machine with no GPU. The model-stack run on a Colab T4 is the next step
-> ([NEXT_STEPS.md](NEXT_STEPS.md)).
+> **Every number in this README comes from the offline stand-in stack:** a
+> hashing embedder, a scripted extractive generator, a term-overlap reranker
+> and rule-based agents, run on a CPU. None is a Qwen3-4B / bge-m3 /
+> bge-reranker-v2-m3 result. **The GPU model-stack run has not been done**
+> ([NEXT_STEPS.md](NEXT_STEPS.md)). The offline numbers are real measurements
+> of a real, weak system. They test the harness and the engineering, not the
+> models.
 
----
-
-## 1. Project Goal
-
-The goal is to build a practical PDF question-answering system that can:
-
-* accept an uploaded PDF,
-* understand its structure,
-* retrieve relevant evidence,
-* answer questions using only document evidence,
-* provide page-level citations,
-* recognize when evidence is insufficient,
-* perform additional retrieval when necessary,
-* and run entirely with local models.
-
-The main research question is:
-
-> **Can a carefully designed Agentic RAG pipeline provide better grounded PDF question answering than simpler RAG pipelines while remaining practical on free Google Colab GPU resources?**
-
-The project therefore focuses on both **quality and efficiency**.
+**Contents:**
+[Architecture](#architecture) ·
+[The hard parts](#the-hard-parts-and-the-tradeoffs-i-made) ·
+[Evaluation](#evaluation-harness) ·
+[Results](#results) ·
+[Limitations](#honest-limitations) ·
+[Quick start](#quick-start) ·
+[Talking points](#interview-talking-points)
 
 ---
 
-## 2. Why Agentic RAG?
+## Architecture
 
-A conventional RAG pipeline usually follows:
-
-```text
-Question
-   ↓
-Retrieve
-   ↓
-Generate
+```mermaid
+flowchart LR
+    A[PDF upload] --> B[Ingestion<br/>pdfplumber, OCR for<br/>pages with no text layer]
+    B --> C[Chunking<br/>structure-aware:<br/>headings, tables]
+    C --> D1[Dense index<br/>bge-m3 / FAISS]
+    C --> D2[BM25 index<br/>whole numbers kept]
+    D1 --> E[RRF fusion<br/>k = 60, top 20 each]
+    D2 --> E
+    E --> F[Cross-encoder rerank<br/>bge-reranker-v2-m3]
+    F --> G{Agent loop<br/>max 2 rounds}
+    G -->|plan / refine query| E
+    G -->|evidence sufficient| H[Grounded generation<br/>Qwen3-4B, emits C1 markers]
+    G -->|insufficient| R[Refusal<br/>canonical sentence]
+    H --> V[Verifier<br/>claim-level, one retry]
+    V --> I[Cited answer<br/>markers resolved to pages by code]
 ```
 
-This is simple and useful, but retrieval is fixed.
-
-The proposed system introduces controlled decision-making:
-
-```text
-Question
-   ↓
-Query Planning
-   ↓
-Retrieval
-   ↓
-Reranking
-   ↓
-Evidence Assessment
-   ↓
-Enough Evidence?
-   ├── Yes → Generate → Verify → Answer
-   │
-   └── No  → Refine Query → Retrieve Again
-```
-
-The agentic behaviour is intentionally bounded.
-
-The project does not assume that adding agents automatically improves RAG. The benchmark must demonstrate whether the additional complexity provides measurable value.
+The modules are independent, and each is switchable by one config field
+(`src/config.py`, DD-017). The dense, hybrid and agentic systems share every
+layer they have in common, so a comparison between them changes one thing at a
+time ([ARCHITECTURE.md](ARCHITECTURE.md)).
 
 ---
 
-## 3. Key Constraints
+## The hard parts and the tradeoffs I made
 
-This project is designed around strict resource constraints.
+Each subsection covers the decision, the alternatives I considered, why I
+chose as I did, the measured evidence (offline stand-in stack, 95% CI), what I
+would do at scale, and the DD. Depth lives in [docs/TRADEOFFS.md](docs/TRADEOFFS.md)
+and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 
-### Compute
+### 1. Chunking
 
-Target environment:
+* **Decision:** structure-aware chunks. A heading starts a chunk and is
+  repeated at the top of every chunk in its section. Tables get their own
+  chunk, split by rows with the header repeated. Size 1200 characters, overlap
+  150.
+* **Alternatives:** fixed-size character windows; sizes 400-1600; overlap 0 or
+  150.
+* **Why:** a chunk retrieved without its heading reads as if it belonged to
+  whatever came before it. A table cut mid-row loses its column names.
+* **Evidence** (DD-071, a 16-arm dev sweep, rule committed before the runs):
+  * No setting beat the incumbent under the pre-declared rule.
+  * Fixed windows were a near-miss: dev Recall@5 +0.067 [+0.000, +0.167],
+    which is two questions.
+  * `chunk_size` barely changes structure-aware chunks: short sections cap
+    them at about 390 characters.
+  * Structure-aware chunking **loses on tables**, whose chunk is cut off from
+    the sentence that introduces it.
+  * Table: [results/experiments/chunking/TABLE.md](results/experiments/chunking/TABLE.md).
+* **At scale:** merge adjacent short sections up to the size cap, attach each
+  table's caption to its chunk, and re-sweep with a real embedder.
+* **DDs:** [DD-009](DESIGN_DECISIONS.md), DD-030, DD-061, **DD-071**.
 
-```text
-Google Colab Free GPU
-```
+### 2. Hybrid search
 
-The implementation should not assume:
+* **Decision:** dense + BM25, fused by Reciprocal Rank Fusion (k = 60). Each
+  retriever ranks to 20. BM25 keeps numbers whole and does no stemming.
+* **Alternatives:** dense only; BM25 only; weighted score fusion.
+* **Why:** RRF needs no score calibration between two retrievers whose scores
+  are not comparable. BM25 catches exact numbers and identifiers that
+  embeddings blur.
+* **Evidence** (all 76 questions, Baseline B − dense Baseline A):
+  * MRR@10 +0.071 [+0.003, +0.145], significant;
+  * Recall@5 +0.057 [−0.014, +0.143], not significant;
+  * accuracy +0.039 [−0.013, +0.092], not significant.
+* **Fusion study** (DD-072, dev, rule committed first):
+  * All 12 RRF k × candidate-depth arms are identical. The fusion setting
+    does change the fused list, but the reranker re-sorts the fused top 20 and
+    overwrites it.
+  * Fusion beats dense-only and BM25-only by one question each (Recall@5
+    0.933 vs 0.900, n.s.).
+  * The two retrievers agree on every lexical question and disagree only on
+    numeric and paraphrase questions. One paraphrase question, with zero word
+    overlap, is found by dense alone.
+  * Tables: [TABLE.md](results/experiments/fusion/TABLE.md),
+    [WINS.md](results/experiments/fusion/WINS.md).
+* **At scale:** sweep fusion with the reranker off, or with a reranker window
+  smaller than the fused pool, and use a real embedder. The offline "dense"
+  retriever is hashed term counts, close to a second lexical signal.
+* **DDs:** DD-008, DD-045, DD-046, DD-049, **DD-072**.
 
-* A100/H100 GPUs
-* large dedicated servers
-* distributed inference
-* permanent GPU availability
+### 3. Re-ranking
 
-### Inference
+* **Decision:** a cross-encoder reorders the fused top 20. It is on by default
+  and switchable (`--no-rerank`).
+* **Alternatives:** no reranker; a larger pool; an LLM reranker, which would
+  cost a generation call on the GPU that already holds the generator.
+* **Why:** a cross-encoder reads the query and passage together. Its cost is
+  one batched forward pass per pair, with no generation.
+* **Evidence** (all 76 questions, reranker ON − OFF on Baseline B):
+  * MRR@10 +0.032 [−0.020, +0.089];
+  * accuracy +0.026 [−0.026, +0.079];
+  * neither is significant, and latency is the only significant contrast.
+* **The cost that carries over** to the model stack is 17.2 cross-encoder
+  passes per question, 29.7 in the agentic system.
+* Write-up: [docs/TRADEOFFS.md](docs/TRADEOFFS.md#re-ranking); table:
+  [results/experiments/reranker/TABLE.md](results/experiments/reranker/TABLE.md).
+* **At scale:** budget the pool by measured p95 latency per pair batch, skip
+  reranking when fusion's top hit is a clear winner, and cache scores per
+  (query, chunk).
+* **DDs:** DD-044, DD-046, DD-048.
 
-All model inference must be local.
+### 4. The agent loop and bounded iterations
 
-The final system must not require:
+* **Decision:** an explicit loop with four components, each switchable: a
+  planner that splits multi-hop questions, an evidence controller, query
+  refinement, and a verifier. The caps are hard: at most 2 retrieval rounds
+  and one regeneration. Every step is written to a per-question trace.
+* **Alternatives:** a free-form ReAct agent; no loop at all (Baseline B).
+* **Why:** a loop with no cap has unbounded latency and cost on a T4. A trace
+  makes every refusal explainable.
+* **Evidence** (agentic − Baseline B, all 76 questions):
+  * faithfulness −0.079 [−0.145, −0.026], a significant regression;
+  * citation any-correct −0.057 [−0.114, −0.014], a significant regression;
+  * accuracy −0.013 [−0.066, +0.026], not significant.
+* The ablations trace the regression to the rule-based evidence controller,
+  which refuses answerable questions. Removing it recovers faithfulness
+  +0.079 [+0.026, +0.145].
+* On dev, an iteration cap of 3 is identical to 2.
+* **The agentic system is not kept**, and that verdict was declared before
+  the run.
+* **At scale:** re-measure with the LLM controller. The rule-based stand-in is
+  the likeliest reason the loop lost.
+* **DDs:** DD-050 to DD-060, DD-069.
 
-* OpenAI API
-* Anthropic API
-* Gemini API
-* paid inference APIs
-* hosted embedding APIs
-* hosted reranking APIs
+### 5. Citations resolved by code, not by the model
 
-Open-weight models downloaded into the Colab runtime are allowed, subject to their licenses.
+* **Decision:** the generator sees a numbered evidence list and emits `[C1]`
+  markers. It never sees a page number. Code maps each marker to its chunk's
+  pages. A bare `[3]` copied from a bibliography is not mistaken for a
+  citation.
+* **Alternatives:** let the model write page numbers; post-hoc attribution by
+  similarity.
+* **Why:** a page number a model writes can be invented. A marker resolved
+  against the evidence list cannot point outside it.
+* **Evidence:**
+  * 0 of 228 stored answers mention a page that was not in the evidence
+    (dense, hybrid and agentic). This holds by construction on this stack:
+    the scripted generator cannot invent a page.
+  * Citation any-correct is 0.686 on Baseline B.
+* **At scale:** sentence-level attribution checks, so that a correct page is
+  also the page that supports that particular sentence.
+* **DDs:** DD-031, DD-042, DD-062.
 
----
+### 6. Refusal and abstention
 
-## 4. Planned Architecture
+* **Decision:** refuse with one fixed, canonical sentence. Score abstention
+  from the answer text, with the model's own report recorded beside it.
+  Unanswerable questions get their own denominators.
+* **Alternatives:** a retrieval-score threshold. It is left off: no untuned
+  threshold is allowed.
+* **Why:** a fixed sentence makes refusals countable and testable. A
+  self-reported "I'm not sure" is not the same thing.
+* **Evidence:**
+  * Abstention accuracy on the 6 unanswerable questions is **0.000 for both
+    baselines** and 0.167 for the agentic system; every system answers almost
+    every unanswerable question.
+  * Tuning the controller threshold on dev to refuse more (0.6) refused one of
+    3 eval unanswerables, and raised over-abstention by +0.175
+    [+0.075, +0.300] on eval.
+* **At scale:** this is the stack's weakest point. A real model's calibrated
+  evidence check is the first thing the GPU run should measure.
+* **DDs:** DD-043, DD-052, DD-063, DD-069.
 
-```text
-                         PDF
-                          │
-                          ▼
-                ┌──────────────────┐
-                │ PDF Extraction   │
-                └────────┬─────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Semantic Chunking│
-                └────────┬─────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Local Embeddings │
-                └────────┬─────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Local Vector     │
-                │ Index             │
-                └────────┬─────────┘
-                         │
-                      Question
-                         ▼
-                ┌──────────────────┐
-                │ Query Planner    │
-                └────────┬─────────┘
-                         ▼
-             ┌───────────┴───────────┐
-             │                       │
-             ▼                       ▼
-       Dense Retrieval       Lexical Retrieval
-             │                       │
-             └───────────┬───────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Result Fusion    │
-                └────────┬─────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Local Reranker   │
-                └────────┬─────────┘
-                         ▼
-                ┌──────────────────┐
-                │ Evidence Agent   │
-                └────────┬─────────┘
-                         ▼
-                  Evidence enough?
-                    /          \
-                  No            Yes
-                  │              │
-                  ▼              ▼
-             Refine Query    Generate Answer
-                  │              │
-                  └──────┐       ▼
-                         │   Verify
-                         │       │
-                         └───────┤
-                                 ▼
-                         Answer + Citations
-```
+### 7. OCR
 
-This is the planned architecture. Individual components may change based on benchmark evidence.
+* **Decision:** Tesseract, on by default, **only for pages with no text
+  layer**. A page that has text is never re-OCR'd.
+* **Alternatives:** OCR every page; a layout model.
+* **Why:** OCR on a born-digital page can only add noise. A missing engine
+  fails with a remedy rather than silently.
+* **Evidence:**
+  * Tests verify it on synthetic scanned PDFs.
+  * It provably changes nothing on the 5 benchmark PDFs, which all have a
+    text layer.
+  * **There is no OCR accuracy figure.** The benchmark has no scanned
+    document.
+* **At scale:** add a scanned-document suite with gold text, and report
+  character error rate.
+* **DD:** DD-067.
 
----
+### 8. Stale and conflicting sources
 
-## 5. Planned Components
-
-### PDF Processing
-
-The ingestion layer will extract text while preserving page information.
-
-Each retrieval chunk should retain metadata such as:
-
-```text
-document_id
-page_number
-chunk_id
-section
-```
-
-This allows retrieved evidence to be traced back to the original PDF.
-
-### Chunking
-
-The project will investigate structure-aware chunking rather than relying exclusively on arbitrary fixed-size text windows.
-
-A simple fixed-size strategy will remain available as a baseline.
-
-### Retrieval
-
-The initial retrieval design will investigate:
-
-```text
-Dense semantic retrieval
-+
-Lexical retrieval
-```
-
-The results can then be fused before reranking.
-
-### Reranking
-
-A local reranker may be used to improve the ordering of retrieved candidates.
-
-Its contribution will be measured separately.
-
-### Agentic Control
-
-The agentic layer will handle decisions such as:
-
-* query interpretation,
-* retrieval strategy,
-* evidence sufficiency,
-* retrieval refinement,
-* final verification.
-
-The loop will have a hard iteration limit to control latency and model usage.
-
-### Generation
-
-The answer generator will receive the question and selected document evidence.
-
-It should not depend on external web knowledge.
-
-### Verification
-
-The system will attempt to identify unsupported claims before returning the final response.
-
-If evidence remains insufficient, the system should abstain rather than fabricate an answer.
-
----
-
-## 6. Initial Model Candidates
-
-The final models have **not yet been selected**.
-
-Initial candidates include:
-
-### Generation
-
-```text
-Qwen3-4B-Instruct-2507
-Qwen2.5-3B-Instruct
-Qwen2.5-1.5B-Instruct
-```
-
-### Embeddings
-
-```text
-BAAI/bge-m3
-```
-
-### Reranking
-
-```text
-BAAI/bge-reranker-v2-m3
-```
-
-These are experimental candidates, not claims that they are the final or best models for this project.
-
-Selection will consider:
-
-* answer quality,
-* retrieval quality,
-* grounding,
-* citation quality,
-* latency,
-* GPU memory,
-* reliability,
-* licensing,
-* Colab compatibility.
-
-See [`MODEL_SELECTION.md`](MODEL_SELECTION.md).
+* **Decision:**
+  * every document gets a version date: a user-supplied date, then the PDF
+    CreationDate, then the filename. Which source was used is recorded and
+    shown in the chat app.
+  * when the evidence comes from two or more documents, a detector looks for
+    the same claim stated with a different number, date or name. The rule
+    path runs offline and the LLM path on the model stack.
+  * a policy declared before any data: the newer source answers, and a
+    code-built note names and cites both; an unknown or equal date refuses
+    and shows both claims.
+* **Alternatives:**
+  * drop older documents wholesale, which loses everything only the old
+    edition says;
+  * always show both values, which pushes the call onto the user even when
+    dates settle it;
+  * LLM-only detection, which would leave the offline stack untestable.
+* **Why:** "newer supersedes" is right for revised reports. It is wrong for
+  two independent sources of the same date, so that case refuses.
+* **Evidence:**
+  * The feature is built and unit-tested on synthetic report editions:
+    prefer-newer, refuse-when-undated, a user date settling an undated memo,
+    and no false conflict when sources agree.
+  * **It is not yet measured on a benchmark.** The conflict suite and DD-075
+    are open (issue #43).
+  * Off by default, so every stored result is unchanged.
+* **At scale:** a source-trust model for independent sources, and claim
+  alignment by embeddings rather than word overlap ("headcount" vs "number of
+  staff" is a known miss of the rule path).
+* **DD:** DD-074.
 
 ---
 
-## 7. Baselines
+## Evaluation harness
 
-The project will compare progressively stronger systems.
+Details: [docs/EVALUATION.md](docs/EVALUATION.md) and
+[EVALUATION_PROTOCOL.md](EVALUATION_PROTOCOL.md).
 
-### Baseline 1 — Dense RAG
-
-```text
-PDF
- ↓
-Chunk
- ↓
-Dense Retrieval
- ↓
-LLM
-```
-
-### Baseline 2 — Hybrid + Reranking
-
-```text
-PDF
- ↓
-Chunk
- ↓
-Dense + Lexical Retrieval
- ↓
-Fusion
- ↓
-Reranking
- ↓
-LLM
-```
-
-### Proposed Agentic RAG
-
-```text
-Query Planning
- ↓
-Adaptive Retrieval
- ↓
-Fusion
- ↓
-Reranking
- ↓
-Evidence Assessment
- ↓
-Optional Retrieval Refinement
- ↓
-Generation
- ↓
-Verification
-```
-
-The purpose of these baselines is to measure whether each additional component actually contributes value.
+* **Dataset:**
+  * 76 questions over 5 PDFs (56 pages), spanning 10 question types: factual,
+    numerical, table, multi-hop, comparison, unanswerable and more.
+  * Every evidence page was checked by a person against the rendered PDF.
+    Three errors in the AI-drafted set were found and fixed this way.
+* **Dev/eval discipline:**
+  * 33 dev / 43 eval.
+  * Every tuning choice is made on dev, by a rule committed before the run.
+  * Eval has been looked at **twice** (DD-059, DD-069), and each look is
+    disclosed.
+* **Metrics, and why each:**
+  * page-level Recall@k / MRR@10, so chunking choices stay comparable;
+  * Full-Recall@5, which tells whether a multi-hop question got every page it
+    needs;
+  * deterministic answer correctness (token overlap plus exact numbers, with
+    no LLM grading);
+  * faithfulness;
+  * citation correctness;
+  * abstention on all four cells of the outcome matrix;
+  * p95 latency, never the mean alone.
+* **Statistics:**
+  * a paired bootstrap over questions (2,000 resamples) for every contrast;
+  * the primary metrics are named before each run;
+  * every contrast is counted, so one significant result among many reads as
+    a hypothesis.
+* **Failure taxonomy:** nine ordered categories, and each failing record gets
+  exactly one.
+* **Reproduce:** `python -m src.cli run-benchmark --system hybrid --offline`,
+  then `compare-runs`, then `final-table`. A test checks the 76-question runs
+  record by record against `results/`.
 
 ---
 
-## 8. Benchmark
+## Results
 
-The benchmark will contain multiple PDFs and questions covering different question types.
+Eval split, 43 questions, generated from
+[results/final/REPORT.md](results/final/REPORT.md) by
+`python -m src.cli readme-table`.
 
-Planned categories include:
+<!-- BEGIN GENERATED: eval headline from results/final/REPORT.md (python -m src.cli readme-table) -->
+> Offline stand-in stack: hashing embedder, scripted extractive generator, term-overlap reranker, rule-based planner / evidence controller / verifier. No figure here is about Qwen3-4B, bge-m3 or bge-reranker-v2-m3.
 
-* factual
-* definition
-* explanation
-* comparison
-* numerical
-* table-based
-* multi-hop
-* ambiguous
-* unanswerable
-* summary
+| System | n | Recall@5 | MRR@10 | Accuracy | Faithfulness | Citation any-correct | Abstention accuracy | P95 latency (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense RAG (Baseline A) | 43 | 0.850 [0.725, 0.950] | 0.740 [0.614, 0.854] | 0.140 [0.047, 0.256] | 0.953 [0.884, 1.000] | 0.625 [0.475, 0.775] | 0.000 [0.000, 0.000] | 0.003 [0.002, 0.003] |
+| Hybrid RAG (Baseline B) | 43 | 0.950 [0.875, 1.000] | 0.854 [0.767, 0.933] | 0.209 [0.093, 0.349] | 0.953 [0.884, 1.000] | 0.675 [0.525, 0.825] | 0.000 [0.000, 0.000] | 0.005 [0.004, 0.005] |
+| Agentic RAG (threshold 0.5) | 43 | 0.950 [0.875, 1.000] | 0.855 [0.766, 0.938] | 0.163 [0.070, 0.279] | 0.907 [0.814, 0.977] | 0.625 [0.475, 0.775] | 0.000 [0.000, 0.000] | 0.020 [0.016, 0.023] |
+| Agentic RAG (threshold 0.6, tuned on dev) | 43 | 0.950 [0.875, 1.000] | 0.855 [0.766, 0.938] | 0.140 [0.047, 0.256] | 0.774 [0.635, 0.890] | 0.525 [0.375, 0.675] | 0.333 [0.000, 1.000] | 0.010 [0.007, 0.017] |
 
-Initial target:
+| System | Avg retrieval iterations | Avg model calls | Peak VRAM (GB) |
+| --- | ---: | ---: | ---: |
+| Dense RAG (Baseline A) | null | null | null (no GPU; not measured) |
+| Hybrid RAG (Baseline B) | null | null | null (no GPU; not measured) |
+| Agentic RAG (threshold 0.5) | 1.023 [1.000, 1.070] | 0.907 [0.814, 0.977] | null (no GPU; not measured) |
+| Agentic RAG (threshold 0.6, tuned on dev) | 1.116 [1.023, 1.233] | 0.767 [0.628, 0.884] | null (no GPU; not measured) |
 
-```text
-5–10 PDFs
-50–100 questions
-```
-
-The benchmark will include ground-truth answers and supporting evidence locations.
-
-Benchmark details are documented in:
-
-```text
-BENCHMARK_SPEC.md
-```
+Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000 resamples, seed 42). P95 latency is nearest-rank, with a bootstrap CI of the same statistic. Iterations and model calls are null for the baselines, which report neither (DD-055). Latencies are milliseconds on a stack that loads no weights, and were measured in different sessions.
+<!-- END GENERATED -->
 
 ---
 
-## 9. Evaluation
+## Honest limitations
 
-The project will evaluate both retrieval and end-to-end answer quality.
-
-### Retrieval
-
-Planned metrics:
-
-```text
-Recall@1
-Recall@3
-Recall@5
-Recall@10
-MRR@10
-nDCG@10 where applicable
-```
-
-### Answer Quality
-
-Planned metrics:
-
-```text
-Answer correctness
-Faithfulness
-Citation correctness
-Citation completeness
-Abstention accuracy
-```
-
-### Performance
-
-The system will also measure:
-
-```text
-PDF ingestion time
-Indexing time
-Retrieval latency
-Reranking latency
-Generation latency
-Total query latency
-Peak GPU memory
-Peak system RAM
-```
-
-No benchmark result is claimed until it has actually been measured.
+* **The GPU model-stack run is pending.** No Qwen3-4B, bge-m3 or
+  bge-reranker-v2-m3 number exists yet.
+* **The LLM judge has not been run.** It is built and off by default. Answer
+  quality is scored deterministically.
+* **The offline generator copies sentences.** Accuracy is capped by that, not
+  only by retrieval (about 0.21 on eval for Baseline B).
+* **Small data:**
+  * 43 eval questions, so most CIs span ±0.1;
+  * 6 unanswerable questions, so abstention CIs span [0, 1];
+  * 3 multi-hop questions on dev.
+* **Eval has been looked at twice.** Defects found partly by reading eval
+  failures were fixed (DD-060, DD-069).
+* **Licences:** only one of the five benchmark PDFs has a confirmed open
+  licence. The other four are recorded as unknown, with the owner's sign-off.
+* **No OCR accuracy figure:** there is no scanned document with gold text.
+* **Conflict handling is not yet benchmarked.** It is unit-tested only; the
+  suite and DD-075 are open (#43).
+* **A stability test is flaky on Python 3.10 CI:** `test_hybrid.py`
+  reproduces q040 differently there. It passes on 3.13 and is not caused by
+  this work; it is to be investigated.
 
 ---
 
-## 10. Ablation Studies
+## Quick start
 
-The project will investigate the contribution of major components.
+**Colab (recommended):** open
+[`notebooks/agentic_pdf_rag.ipynb`](notebooks/agentic_pdf_rag.ipynb) in Colab,
+choose a T4 runtime, then *Run all*. With no GPU it runs the offline stack and
+says so.
 
-Planned ablations include:
+**Chat app:**
 
-```text
-Agent planner OFF
-Hybrid retrieval OFF
-Reranker OFF
-Retrieval refinement OFF
-Evidence controller OFF
-Verification OFF
+```bash
+pip install -r requirements-colab.txt
+python -m src.cli chat --offline          # local, CPU, stand-in stack
+python -m src.cli chat --share            # model stack, prints a public gradio.live link
 ```
 
-The goal is to determine which components provide measurable improvements and which add complexity without sufficient benefit.
-
----
-
-## 11. Repository Structure
-
-```text
-agentic-pdf-rag/
-│
-├── README.md
-├── PROJECT_SPEC.md
-├── ARCHITECTURE.md
-├── MODEL_SELECTION.md
-├── BENCHMARK_SPEC.md
-├── EVALUATION_PROTOCOL.md
-├── DESIGN_DECISIONS.md
-│
-├── references/
-│   ├── reference_notebook.ipynb
-│   └── reference_notes.md
-│
-├── benchmark/
-│   ├── README.md
-│   ├── documents/
-│   ├── questions.json
-│   └── ground_truth.json
-│
-├── notebooks/
-│   └── agentic_pdf_rag.ipynb
-│
-├── src/
-│   ├── ingestion/
-│   ├── chunking/
-│   ├── retrieval/
-│   ├── reranking/
-│   ├── agents/
-│   ├── generation/
-│   └── evaluation/
-│
-├── tests/
-│
-└── results/
-    ├── baseline/
-    ├── hybrid/
-    ├── agentic/
-    ├── ablations/
-    └── final/
-```
-
-The exact structure may evolve during implementation.
-
----
-
-## 12. Colab Notebook
-
-[`notebooks/agentic_pdf_rag.ipynb`](notebooks/agentic_pdf_rag.ipynb) is the primary entry
-point (DD-002). It follows PROJECT_SPEC section 12, with an explanation before every code
-cell:
-
-```text
-1. Environment setup (clone at a pinned tag, DD-034)   9. Agent trace
-2. Dependencies (incl. Tesseract for OCR)             10. Chat interface (Gradio)
-3. Mode switch and model loading                      11. Benchmark (optional, --limit)
-4. PDF upload (or a bundled benchmark PDF)            12. Evaluation metrics (from REPORT.md)
-5. Parsing, chunking, indexing + a scanned-PDF demo   13. Ablation results (from REPORT.md)
-6. Baseline RAG                                       14. Latency and peak VRAM
-7. Agentic RAG                                        15. Final demo: a follow-up conversation
-8. Dense vs agentic, side by side
-```
-
-With no GPU it announces **OFFLINE MODE** and runs the stand-in stack top to bottom on a
-CPU; a test executes it that way on every run of the suite. No result number is typed
-into it: tables are rendered from the reports `final-table` generates.
-[`notebooks/gpu_benchmark_run.ipynb`](notebooks/gpu_benchmark_run.ipynb) runs the full
-model-stack benchmark on a Colab T4, resumably, with results on Drive. Both are generated by
-`notebooks/build_notebooks.py` and never edited by hand (DD-068).
-
----
-
-## 13. Quick Start
-
-**In Colab** (recommended):
-
-1. Open [`notebooks/agentic_pdf_rag.ipynb`](notebooks/agentic_pdf_rag.ipynb) in Colab
-   (*File → Open notebook → GitHub*).
-2. *Runtime → Change runtime type → T4 GPU*, then *Runtime → Run all*.
-3. Set `UPLOAD = True` in section 4 to use your own PDF, text or scanned; section 10 opens a
-   chat interface with a public link.
-
-The notebook clones the pinned tag `v0.7-gpu-run` (DD-034); it runs once that tag is pushed
-(NEXT_STEPS.md step 1).
-
-**Locally**, on a CPU, with the offline stand-in stack:
+**CLI:**
 
 ```bash
 pip install -r requirements.txt
 python -m src.cli ask --pdf paper.pdf --question "What was measured?" --offline
+python -m src.cli run-benchmark --system hybrid --offline --split dev
+python -m src.cli final-table
 ```
 
-See section 19.1 for more commands, and `requirements-colab.txt` for the chat interface and
-OCR.
-
-**The web app on its own**, without the notebook: the same Gradio chat interface as notebook
-section 10. You can upload one or more PDFs, text or scanned. Choose dense, hybrid or agentic,
-then chat; answers cite pages, and follow-up questions are understood.
-
-```bash
-pip install -r requirements-colab.txt     # plus: apt-get install -y tesseract-ocr, for OCR
-python -m src.cli chat --share            # needs a GPU; prints a public gradio.live link
-python -m src.cli chat --offline          # any CPU: http://127.0.0.1:7860, stand-in stack
-```
-
-In Colab, run it from a cell after cloning `main`. `--share` is needed there, since
-`127.0.0.1` is not reachable from your browser. `--system`, `--host` and `--port` change the
-defaults (agentic, `127.0.0.1`, `7860`).
-
-The link lasts only as long as the process does. Permanent hosting would need a GPU server,
-and it is out of scope (PROJECT_SPEC section 11).
+Further commands and the Python API: [docs/PROJECT_README_ARCHIVE.md](docs/PROJECT_README_ARCHIVE.md#191-quick-start).
 
 ---
 
-## 14. Example Expected Interaction
+## Interview talking points
 
-For an uploaded document:
-
-```text
-Question:
-What was the main improvement introduced by the proposed method?
-```
-
-The system should return something conceptually similar to:
-
-```text
-The proposed method improves X by introducing Y.
-
-Evidence:
-- Page 4
-- Page 9
-
-The answer is based on the retrieved sections describing the
-methodology and experimental results.
-```
-
-The exact answer depends on the uploaded document.
-
-For unsupported questions, the system should respond along the lines of:
-
-```text
-I could not find sufficient evidence in the uploaded document
-to answer this question.
-```
-
-The wording may change during implementation.
-
----
-
-## 15. Design Principles
-
-### Evidence over fluency
-
-A fluent unsupported answer is a failure.
-
-### Local first
-
-The system should remain useful without proprietary inference APIs.
-
-### Simple where possible
-
-Deterministic operations should remain deterministic.
-
-### Agents only where useful
-
-Agentic behaviour should solve a real decision problem.
-
-### Benchmark before claiming improvement
-
-Architectural complexity must be justified experimentally.
-
-### Reproducibility
-
-Model versions, configuration, benchmark data and evaluation procedures should be recorded.
-
-### Explicit limitations
-
-The repository should clearly document known failure modes instead of presenting the system as universally reliable.
+* **Measure first, then build.** I built the 76-question benchmark and the
+  paired-bootstrap harness before any retrieval improvement. It cost the
+  longest phase of the project, and it is why every claim below has a CI.
+* **Fusion that needs no calibration.** I chose RRF over weighted score
+  fusion because dense and BM25 scores are not comparable and RRF needs no
+  calibration. It bought MRR@10 +0.071 [+0.003, +0.145] over dense alone, for
+  about 1.4 ms more per question offline (DD-045).
+* **Citations resolved by code.** I chose code-resolved `[C1]` markers over
+  letting the model write page numbers, so no answer can cite a page outside
+  its evidence. The cost: the generator must follow a marker format, and a
+  bibliography `[3]` needed its own rule (DD-031, DD-062).
+* **I dropped my own agent loop.** I chose to report that the agentic system
+  regressed faithfulness by −0.079 [−0.145, −0.026], rather than tune until it
+  won. The ablation pinned the cause on the evidence controller (DD-060).
+* **Rules committed before results.** I chose a pre-committed decision rule
+  over picking the best-looking arm. In DD-071 it kept the default chunking
+  even though fixed windows looked better on dev (+0.067 Recall@5, two
+  questions); a lower bound at exactly 0 is not evidence.
+* **Bounded loops.** I chose a capped loop (2 rounds, 1 regeneration) over an
+  open-ended agent, because a T4 has a latency budget. On dev, a third round
+  changed nothing (DD-059, DD-069).
+* **One fixed refusal sentence.** I chose a canonical refusal sentence over
+  free-form hedging, so refusals can be counted. It exposed that every system
+  here fails almost all unanswerable questions, which is the first thing the
+  GPU run must fix.
+* **Honest offline stand-ins.** I chose dependency-free stand-ins for every
+  model, so the whole pipeline and the notebook are tested on a CPU in CI. The
+  cost: every number in this README is about the harness, not about the
+  models, and it says so.
 
 ---
 
-## 16. Current Limitations
-
-* **Offline numbers only.** Every benchmark figure so far comes from the offline stand-in
-  stack: a hashing embedder, a scripted extractive generator, a term-overlap reranker and
-  rule-based agents, on a machine with no GPU. None is a claim about Qwen3-4B, bge-m3 or
-  bge-reranker-v2-m3. On that stack no agentic component earned its cost (STATUS.md 9.4).
-  The model-stack run is prepared but not yet run (NEXT_STEPS.md).
-* **Peak VRAM, the model-call cost of LLM agents and the LLM parse-failure rate are
-  unmeasured**, for the same reason; they are reported as null, never 0.
-* **The benchmark is small**: 76 questions over 5 PDFs, 6 of them unanswerable, so
-  abstention figures move 17 points per question.
-* **OCR reads pages with no text layer only**, and its accuracy on real scans has not been
-  benchmarked; no benchmark PDF is scanned. Tesseract's per-page time has not been measured
-  on the development machine (DD-067).
-* **Follow-up rewriting is untested against a benchmark**: no benchmark question is
-  multi-turn, and the offline rewriter is a crude rule (DD-065).
-* **The LLM judge has never been run.**
-* Free-Colab GPU availability and memory vary between sessions; the GPU runner is resumable
-  for that reason (DD-064).
-
----
-
-## 17. Roadmap
-
-### Phase 1 — Specification
-
-* [x] Define project requirements
-* [x] Define architecture
-* [x] Define model-selection process
-* [x] Define benchmark
-* [x] Define evaluation protocol
-* [x] Audit reference implementation
-
-This checklist predates the project's phase numbering; section 19 maps the two.
-
-### Phase 2 — Baseline
-
-* [x] PDF ingestion, with OCR for pages that have no text layer (DD-067)
-* [x] Chunking
-* [x] Embeddings
-* [x] Vector retrieval
-* [x] Local generation
-* [x] Baseline benchmark (offline stack)
-
-### Phase 3 — Retrieval Improvements
-
-* [x] Lexical retrieval
-* [x] Hybrid fusion
-* [x] Reranking
-* [x] Retrieval evaluation (offline stack)
-
-### Phase 4 — Agentic RAG
-
-* [x] Query planner
-* [x] Evidence controller
-* [x] Retrieval refinement
-* [x] Context selection
-* [x] Verification
-
-### Phase 5 — Evaluation
-
-* [x] Full benchmark (offline stack)
-* [x] Ablation experiments (offline stack)
-* [x] Error analysis (offline stack)
-* [x] Latency analysis (offline stack; milliseconds, no model loaded)
-* [ ] GPU/RAM analysis: needs the model-stack run
-
-### Phase 6 — Finalization
-
-* [x] Colab notebook, chat interface and follow-up questions
-* [x] Documentation
-* [x] Reproducibility testing: *Run all* in a fresh Colab runtime (T4, 2026-10-11; `notebooks/runs/`)
-* [ ] Final benchmark: the model-stack run (NEXT_STEPS.md)
-* [ ] Final release
-
----
-
-## 18. Research Questions
-
-The project will primarily investigate:
-
-### RQ1
-
-Does hybrid retrieval improve document evidence retrieval compared with dense retrieval alone?
-
-### RQ2
-
-Does reranking improve final answer quality enough to justify its computational cost?
-
-### RQ3
-
-Does adaptive/agentic retrieval improve difficult and multi-hop questions?
-
-### RQ4
-
-Does evidence verification reduce unsupported answers?
-
-### RQ5
-
-Can these improvements be achieved within practical free-Colab resource limits?
-
-These questions should be answered using measured experiments rather than assumptions.
-
----
-
-## 19. Project Status
-
-**Current status: Phases 0-6 done on the offline stand-in stack; the Colab chatbot release is
-built. The GPU model-stack run is next.**
-
-A fuller record — verification evidence, enforced invariants, known limitations
-and the next step — is kept in [STATUS.md](STATUS.md).
-
-| Phase | State |
-| --- | --- |
-| 0 — Benchmark construction | **Done.** 5 PDFs, 76 human-verified questions, 33 dev / 43 eval |
-| 1 — Ingestion and indexing | **Done.** Page-attributed chunks, two chunking strategies, two PDF backends, OCR for scanned pages, explicit failure modes |
-| 2 — Dense baseline | **Done.** `results/baseline/` |
-| 3 — Metrics harness | **Done.** Retrieval, answer, citation and abstention metrics; nine-category error taxonomy |
-| 4 — Hybrid retrieval and reranking | **Done.** `results/hybrid/`; no significant gain on either primary metric |
-| 5 — Agentic pipeline | **Done.** `results/agentic/`; not kept |
-| 6 — Ablations and write-up | **Done on the offline stand-in stack.** Seven arms in `results/ablations/`; `results/final/` generated by `python -m src.cli final-table`; no component earned its cost offline |
-| Release — Colab chatbot | **Built** (STATUS.md 9.5): the deliverable notebook, a Gradio chat interface, follow-up questions, OCR on by default, resumable runs, fixes for three Phase 6 defects, and every offline result regenerated under them (DD-061 to DD-069) |
-| Next — model-stack run | **Prepared, not run**: `notebooks/gpu_benchmark_run.ipynb` on a Colab T4 ([NEXT_STEPS.md](NEXT_STEPS.md)) |
-
-**Every result so far is from the offline stand-in stack**, on a machine with no GPU.
-`STATUS.md` is the authoritative record.
-
-What runs today:
-
-* **PDF ingestion** with 1-based page numbers, ligature/hyphen/header normalization, **OCR
-  on by default** for pages with no text layer (Tesseract, DD-067), and distinct errors, each
-  with a remedy, for encrypted, blank and unreadable files and for a missing OCR engine.
-* **Two chunkers** behind one interface — structure-aware (DD-009) and a fixed-size
-  baseline — preserving `document_id`, `pages`, `page_span`, `section` and `chunk_id`.
-  Every chunk carries its section heading, and oversized tables are split by rows with their
-  header, so no page line is hidden from retrieval (DD-061).
-* **Retrieval**: dense (FAISS, with an exact numpy fallback), BM25, Reciprocal Rank Fusion,
-  and a cross-encoder reranker.
-* **The agentic system**: planner, evidence controller, refinement and verifier in a bounded
-  loop, each switchable, with a full per-question trace.
-* **Grounded generation** with deterministic citation resolution: the model emits `[C1]`
-  markers against a numbered evidence list and never sees a page number; code maps markers to
-  pages (DD-031). A bibliography `[3]` copied from the source is not mistaken for a citation
-  (DD-062).
-* **Chat**: follow-up questions rewritten into standalone ones (DD-065), and a Gradio app over
-  one or more PDFs with citations, refusals and an agent trace (DD-066).
-* **Benchmark harness**: `run-benchmark` checkpoints every question and resumes with
-  `--resume` (DD-064); `compare-runs` runs the paired bootstrap; `final-table` writes the
-  report.
-* **Dependency-free fallbacks** — a hashing embedder, a scripted extractive generator, a
-  term-overlap reranker and rule-based agents — so everything, notebook included, runs and is
-  tested on a CPU with no model weights.
-
-748 tests: 747 pass and 1 is skipped (the real-Tesseract test, where the binary is absent),
-in about 4 to 7 minutes on a laptop CPU, with no network, GPU or model weights. The suite
-includes full 76-question runs checked record by record against `results/`, and an
-execution of the deliverable notebook.
-
----
-
-## 19.1 Quick start
-
-```bash
-pip install -r requirements.txt          # pdfplumber, numpy, faiss-cpu
-python -m src.cli ask --pdf paper.pdf --question "What was measured?" --offline
-```
-
-`--offline` uses the hashing embedder and the scripted backend: no downloads, no
-GPU, weak answers. Drop it to use the real models, which requires
-`pip install -r requirements-models.txt` and a GPU.
-
-```text
-3 Hardware
-
-Peak memory during generation reached 9.4 gigabytes with four-bit
-weights, leaving sufficient headroom for the key-value cache. [C1]
-
-Evidence:
-  [C1] page 3 - 3 Hardware
-```
-
-Other commands:
-
-```bash
-python -m src.cli inspect --pdf paper.pdf --offline --show-chunks 3
-python -m src.cli ask --pdf paper.pdf --question "..." --strategy fixed --top-k 8 --json
-python -m src.cli chat --offline        # the web chat app (section 13)
-pip install -r requirements-dev.txt && python -m pytest    # 748 tests
-```
-
-In Python:
-
-```python
-from src.config import RAGConfig
-from src.pipeline import DenseRAGPipeline
-
-pipeline = DenseRAGPipeline(RAGConfig.default())   # or .low_memory() / .offline()
-pipeline.index("paper.pdf")
-result = pipeline.ask("What is the main contribution?")
-
-print(result.answer)
-print(result.cited_pages)      # (4, 9) -- resolved by code, not written by the model
-print(result.abstained)
-```
-
-Every model name, chunk size, top-k and threshold lives in `src/config.py`
-(DD-017). `RAGConfig.validate()` refuses a configuration that exceeds the
-free-tier T4 budget or that makes a research-licensed model the default
-(DD-024).
-
----
-
-## 20. License
-
-**Apache-2.0.** See [LICENSE](LICENSE); third-party and model licences are
-recorded in [NOTICE](NOTICE).
-
-Chosen for its explicit patent grant, and because it matches the licence of the
-default model stack. It was unblocked by DD-033, which moved the default PDF
-backend from PyMuPDF (AGPL-3.0) to pdfplumber (MIT); the whole runtime
-dependency chain is now permissive — pdfplumber MIT, pdfminer.six MIT,
-pypdfium2 BSD-3-Clause/Apache-2.0, Pillow MIT-CMU, numpy BSD-3-Clause,
-faiss-cpu MIT. The Colab extras in `requirements-colab.txt` are permissive too:
-gradio (chat interface), pytesseract and the Tesseract engine (OCR), all
-Apache-2.0.
-
-Two licence facts worth stating plainly:
-
-* **PyMuPDF remains an optional test-only dependency** (AGPL-3.0). It writes the
-  synthetic PDFs the test suite builds, and is the second parser backend. It is
-  in the `dev` extra, never in the runtime dependencies.
-* **The default generator must be Apache-2.0** (DD-024). `Qwen2.5-3B-Instruct`
-  is `qwen-research`, research/non-commercial only; `RAGConfig.validate()`
-  raises rather than let it become the default.
-
-The final repository must separately document the licenses of:
-
-* source PDFs,
-* model weights,
-* datasets,
-* third-party libraries.
-
-Model and document licenses must not be assumed from the project code license.
-
----
-
-## 21. Acknowledgements
-
-This project was initially inspired by existing local/agentic PDF RAG implementations and is intended to build upon those ideas through a more explicit focus on:
-
-* local inference,
-* constrained hardware,
-* reproducible benchmarking,
-* modular engineering,
-* citation grounding,
-* and ablation-based evaluation.
-
-Reference implementations should be credited appropriately in the final repository.
+**Licence:** Apache-2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)) ·
+**Status record:** [STATUS.md](STATUS.md) ·
+**All decisions:** [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
