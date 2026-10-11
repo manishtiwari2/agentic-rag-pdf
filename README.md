@@ -541,6 +541,23 @@ python -m src.cli ask --pdf paper.pdf --question "What was measured?" --offline
 See section 19.1 for more commands, and `requirements-colab.txt` for the chat interface and
 OCR.
 
+**The web app on its own**, without the notebook: the same Gradio chat interface as notebook
+section 10. You can upload one or more PDFs, text or scanned. Choose dense, hybrid or agentic,
+then chat; answers cite pages, and follow-up questions are understood.
+
+```bash
+pip install -r requirements-colab.txt     # plus: apt-get install -y tesseract-ocr, for OCR
+python -m src.cli chat --share            # needs a GPU; prints a public gradio.live link
+python -m src.cli chat --offline          # any CPU: http://127.0.0.1:7860, stand-in stack
+```
+
+In Colab, run it from a cell after cloning `main`. `--share` is needed there, since
+`127.0.0.1` is not reachable from your browser. `--system`, `--host` and `--port` change the
+defaults (agentic, `127.0.0.1`, `7860`).
+
+The link lasts only as long as the process does. Permanent hosting would need a GPU server,
+and it is out of scope (PROJECT_SPEC section 11).
+
 ---
 
 ## 14. Example Expected Interaction
@@ -797,6 +814,7 @@ Other commands:
 ```bash
 python -m src.cli inspect --pdf paper.pdf --offline --show-chunks 3
 python -m src.cli ask --pdf paper.pdf --question "..." --strategy fixed --top-k 8 --json
+python -m src.cli chat --offline        # the web chat app (section 13)
 pip install -r requirements-dev.txt && python -m pytest    # 748 tests
 ```
 

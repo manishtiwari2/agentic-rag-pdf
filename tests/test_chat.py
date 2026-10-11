@@ -276,3 +276,72 @@ def test_the_gradio_app_builds_when_gradio_is_installed():
     gradio = pytest.importorskip("gradio")
     app = ui.build_app(offline=True)
     assert isinstance(app, gradio.Blocks)
+
+
+class TestChatCommand:
+    """`python -m src.cli chat`: the web app without the notebook."""
+
+    class FakeApp:
+        def __init__(self):
+            self.launched = None
+
+        def launch(self, **kwargs):
+            self.launched = kwargs
+
+    def _serve(self, monkeypatch, argv):
+        from src import cli
+
+        built, app = {}, self.FakeApp()
+
+        def fake_build_app(**kwargs):
+            built.update(kwargs)
+            return app
+
+        monkeypatch.setattr(ui, "build_app", fake_build_app)
+        return cli.main(["chat", *argv]), built, app.launched
+
+    def test_offline_serves_the_app_with_its_flags(self, monkeypatch):
+        code, built, launched = self._serve(
+            monkeypatch, ["--offline", "--system", "hybrid", "--share", "--port", "8000"])
+        assert code == 0
+        assert built == {"offline": True, "system": "hybrid"}
+        assert launched == {"share": True, "server_name": "127.0.0.1", "server_port": 8000}
+
+    def test_the_defaults_are_agentic_local_and_private(self, monkeypatch):
+        _, built, launched = self._serve(monkeypatch, ["--offline"])
+        assert built["system"] == "agentic"
+        assert launched == {"share": False, "server_name": "127.0.0.1", "server_port": 7860}
+
+    def test_the_model_stack_without_a_gpu_is_refused_with_the_remedy(self, monkeypatch, capsys):
+        import sys
+
+        monkeypatch.setitem(sys.modules, "torch", None)  # no torch, so no GPU
+        code, built, launched = self._serve(monkeypatch, [])
+        assert code == 1 and built == {} and launched is None
+        assert "--offline" in capsys.readouterr().err
+
+    def test_missing_gradio_says_how_to_install_it(self, monkeypatch, capsys):
+        import sys
+
+        from src import cli
+
+        monkeypatch.setitem(sys.modules, "gradio", None)
+        assert cli.main(["chat", "--offline"]) == 1
+        assert "pip install -r requirements-colab.txt" in capsys.readouterr().err
+
+    def test_it_takes_no_ablation_flags(self):
+        from src import cli
+
+        with pytest.raises(SystemExit):
+            cli.main(["chat", "--offline", "--no-rerank"])
+
+    def test_a_busy_port_is_a_message_not_a_traceback(self, monkeypatch, capsys):
+        from src import cli
+
+        class BusyApp:
+            def launch(self, **kwargs):
+                raise OSError("Cannot find empty port in range: 7860-7860.")
+
+        monkeypatch.setattr(ui, "build_app", lambda **kwargs: BusyApp())
+        assert cli.main(["chat", "--offline"]) == 1
+        assert "Pass another --port" in capsys.readouterr().err
