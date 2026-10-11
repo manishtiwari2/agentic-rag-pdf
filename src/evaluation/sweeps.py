@@ -80,6 +80,32 @@ STUDIES: dict[str, StudySpec] = {
             "sessions (DD-069): descriptive only.",
         ),
     ),
+    # DD-072 Part 1, committed before any fusion arm was run.
+    "fusion": StudySpec(
+        name="fusion",
+        dd="DD-072",
+        incumbent="k60_c20",
+        primary=("recall_at_5", "mrr_at_10"),
+        guard=("accuracy_all",),
+        tiebreak=(("recall_at_5", True), ("mrr_at_10", True), ("candidate_k", False)),
+        columns=(
+            "recall_at_1",
+            "recall_at_5",
+            "recall_at_10",
+            "mrr_at_10",
+            "full_recall_at_5_multi_hop_comparison",
+            "accuracy_all",
+            "latency_p95_s",
+        ),
+        references=("dense_only", "bm25_only"),
+        factors=("retrievers", "rrf_k", "candidate_k"),
+        notes=(
+            "dense_only and bm25_only keep fusion's reranker and differ from the "
+            "incumbent in retrieval.retrievers alone; they are references, never chosen.",
+            "p95 latency is milliseconds on the offline stack and moves between "
+            "sessions (DD-069): descriptive only.",
+        ),
+    ),
 }
 
 
@@ -121,6 +147,8 @@ def arm_values(loaded: Mapping[str, Any]) -> dict[str, Any]:
         values[spec.name] = (
             round(sum(vector.values()) / len(vector), 4) if vector else None
         )
+    for key in ("retrievers", "rrf_k", "candidate_k"):
+        values.setdefault(key, (loaded.get("config") or {}).get(key))
     values["full_recall_at_5_multi_hop"] = _multi_hop_full_recall(
         loaded.get("per_question") or []
     )
