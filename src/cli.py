@@ -479,6 +479,16 @@ def main(argv: list[str] | None = None) -> int:
     final_cmd.add_argument("--root", default=".", help="Repository root holding results/.")
     final_cmd.add_argument("--out", default="results/final")
 
+    sweep_cmd = sub.add_parser(
+        "sweep-table",
+        help=(
+            "Generate a dev parameter study's table from its stored arms and apply "
+            "the rule declared for it (DD-071, DD-072)."
+        ),
+    )
+    sweep_cmd.add_argument("--study", required=True, choices=["chunking"])
+    sweep_cmd.add_argument("--root", help="Arms directory. Default: results/experiments/<study>.")
+
     chat_cmd = sub.add_parser(
         "chat",
         help="Serve the web chat app: upload PDFs, ask, follow up (DD-065, DD-066).",
@@ -521,6 +531,22 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(errors="replace")
         print(paths["markdown"].read_text(encoding="utf-8"))
         print("Wrote " + ", ".join(str(p) for p in paths.values()))
+        return 0
+
+    if args.command == "sweep-table":
+        from .evaluation import sweeps  # noqa: PLC0415
+
+        root = args.root or f"results/experiments/{args.study}"
+        try:
+            study = sweeps.run_study(sweeps.STUDIES[args.study], root)
+            paths = sweeps.write_study(study, root)
+        except (OSError, RAGError, ValueError) as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(errors="replace")
+        print(paths["table"].read_text(encoding="utf-8"))
+        print(f"Chosen: {study['chosen']}. Wrote " + ", ".join(str(p) for p in paths.values()))
         return 0
 
     if args.command == "compare-runs":
