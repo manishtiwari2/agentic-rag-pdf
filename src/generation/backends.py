@@ -133,10 +133,14 @@ def _coverage(
 ) -> float:
     """Share of the question's weighted terms present in the candidate."""
     present = set(candidate_terms)
-    total = sum(idf.get(term, 1.0) for term in set(query_terms))
+    # Summed in sorted order: float addition is not associative, so iterating
+    # the set (hash-seeded order) would round differently per process and flip
+    # near-ties between runs.
+    unique = sorted(set(query_terms))
+    total = sum(idf.get(term, 1.0) for term in unique)
     if total == 0:
         return 0.0
-    matched = sum(idf.get(term, 1.0) for term in set(query_terms) if term in present)
+    matched = sum(idf.get(term, 1.0) for term in unique if term in present)
     return matched / total
 
 

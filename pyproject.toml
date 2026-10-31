@@ -24,8 +24,8 @@ models = [
 colab = ["gradio>=5.0,<7", "pytesseract>=0.3.10"]
 # pymupdf is AGPL-3.0 and test-only: it writes the fixture PDFs and serves
 # as the second parser backend. See DD-033 and requirements-dev.txt.
-dev = ["pytest>=8.0", "pymupdf>=1.24", "nbformat>=5.9", "nbclient>=0.10", "ipykernel>=6.29"]
-pymupdf = ["pymupdf>=1.24"]
+dev = ["pytest>=8.0", "pymupdf>=1.24,<2", "nbformat>=5.9", "nbclient>=0.10", "ipykernel>=6.29"]
+pymupdf = ["pymupdf>=1.24,<2"]
 
 [tool.setuptools.packages.find]
 include = ["src*"]

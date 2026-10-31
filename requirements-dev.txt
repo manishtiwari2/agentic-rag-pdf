@@ -29,4 +29,6 @@ ipykernel>=6.29        # BSD-3-Clause (the kernel nbclient runs the notebook in)
 # checking one in as a binary. Recorded as a known wart rather than fixed,
 # because it does not affect what users install.
 
-pymupdf>=1.24          # AGPL-3.0 or commercial -- test fixtures only
+pymupdf>=1.24,<2       # AGPL-3.0 or commercial -- test fixtures only. 2.0 reorders
+                       # table cell text ("0.71" -> "071 ."), breaking the pymupdf
+                       # backend's table chunks; pin until the parser adapts.
