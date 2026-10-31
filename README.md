@@ -31,6 +31,8 @@ every judgment call, including the ones where the fancier component lost.
 
 ## Architecture
 
+![Pipeline workflow graph](docs/assets/workflow.svg)
+
 ```mermaid
 flowchart LR
     A[PDF upload] --> B[Ingestion<br/>pdfplumber, OCR for<br/>pages with no text layer]
