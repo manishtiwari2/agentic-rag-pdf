@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="540" viewBox="0 0 1500 540" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1500" height="540" fill="#ffffff"/>
+  <text x="30" y="30" font-size="17" font-weight="bold" fill="#0f172a">Agentic RAG over PDFs — pipeline workflow</text>
+
+  <!-- feedback: agent loop -> RRF fusion -->
+  <path d="M 1378 80 V 52 H 942 V 78" fill="none" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="1160" y="46" font-size="11.5" fill="#334155" text-anchor="middle">plan / refine query (bounded: max 2 rounds)</text>
+
+  <!-- row A boxes -->
+  <g stroke-width="1.6">
+    <rect x="30" y="100" width="130" height="50" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="195" y="80" width="185" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="415" y="80" width="185" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="635" y="45" width="185" height="70" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="635" y="145" width="185" height="70" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="860" y="80" width="165" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="1060" y="80" width="190" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="1285" y="80" width="185" height="90" rx="8" fill="#fef9c3" stroke="#a16207"/>
+  </g>
+
+  <!-- row A arrows -->
+  <g fill="none" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)">
+    <path d="M 160 125 H 193"/>
+    <path d="M 380 125 H 413"/>
+    <path d="M 600 125 H 618 V 80 H 633"/>
+    <path d="M 600 125 H 618 V 180 H 633"/>
+    <path d="M 820 80 H 840 V 105 H 858"/>
+    <path d="M 820 180 H 840 V 145 H 858"/>
+    <path d="M 1025 125 H 1058"/>
+    <path d="M 1250 125 H 1283"/>
+  </g>
+
+  <!-- row A text -->
+  <g fill="#0f172a" text-anchor="middle">
+    <text x="95" y="121" font-size="14" font-weight="bold">PDF upload</text>
+    <text x="95" y="139" font-size="10.5" fill="#475569">text or scanned</text>
+
+    <text x="287" y="102" font-size="14" font-weight="bold">Ingestion</text>
+    <text x="287" y="122" font-size="10.5" fill="#475569">pdfplumber text layer;</text>
+    <text x="287" y="137" font-size="10.5" fill="#475569">Tesseract OCR only for</text>
+    <text x="287" y="152" font-size="10.5" fill="#475569">pages with no text</text>
+
+    <text x="507" y="102" font-size="14" font-weight="bold">Chunking</text>
+    <text x="507" y="122" font-size="10.5" fill="#475569">structure-aware: headings</text>
+    <text x="507" y="137" font-size="10.5" fill="#475569">repeated, tables split by</text>
+    <text x="507" y="152" font-size="10.5" fill="#475569">rows; 1200 chars, overlap 150</text>
+
+    <text x="727" y="72" font-size="14" font-weight="bold">Dense index</text>
+    <text x="727" y="94" font-size="10.5" fill="#475569">bge-m3 / FAISS</text>
+
+    <text x="727" y="167" font-size="14" font-weight="bold">BM25 index</text>
+    <text x="727" y="187" font-size="10.5" fill="#475569">numbers kept whole,</text>
+    <text x="727" y="202" font-size="10.5" fill="#475569">no stemming</text>
+
+    <text x="942" y="106" font-size="14" font-weight="bold">RRF fusion</text>
+    <text x="942" y="126" font-size="10.5" fill="#475569">k = 60,</text>
+    <text x="942" y="141" font-size="10.5" fill="#475569">top 20 each;</text>
+    <text x="942" y="156" font-size="10.5" fill="#475569">no score calibration</text>
+
+    <text x="1155" y="106" font-size="14" font-weight="bold">Cross-encoder rerank</text>
+    <text x="1155" y="126" font-size="10.5" fill="#475569">bge-reranker-v2-m3</text>
+    <text x="1155" y="141" font-size="10.5" fill="#475569">re-sorts the fused top 20</text>
+
+    <text x="1378" y="102" font-size="14" font-weight="bold">Agent loop</text>
+    <text x="1378" y="122" font-size="10.5" fill="#475569">planner, evidence</text>
+    <text x="1378" y="137" font-size="10.5" fill="#475569">controller, refinement;</text>
+    <text x="1378" y="152" font-size="10.5" fill="#475569">every step traced</text>
+  </g>
+
+  <!-- row B arrows -->
+  <g fill="none" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)">
+    <path d="M 1330 170 V 240 H 1065 V 308"/>
+    <path d="M 1378 170 V 308"/>
+    <path d="M 960 355 H 902"/>
+    <path d="M 700 355 H 642"/>
+    <path d="M 800 400 V 438 H 1065 V 402"/>
+  </g>
+  <text x="1150" y="232" font-size="11.5" fill="#334155" text-anchor="middle">evidence sufficient</text>
+  <text x="1390" y="240" font-size="11.5" fill="#334155">insufficient</text>
+  <text x="932" y="432" font-size="11.5" fill="#334155" text-anchor="middle">one retry on failure</text>
+
+  <!-- row B boxes -->
+  <g stroke-width="1.6">
+    <rect x="960" y="310" width="210" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="700" y="310" width="200" height="90" rx="8" fill="#f8fafc" stroke="#334155"/>
+    <rect x="410" y="310" width="230" height="90" rx="8" fill="#dcfce7" stroke="#15803d"/>
+    <rect x="1285" y="310" width="185" height="90" rx="8" fill="#fee2e2" stroke="#b91c1c"/>
+  </g>
+
+  <!-- row B text -->
+  <g fill="#0f172a" text-anchor="middle">
+    <text x="1065" y="332" font-size="14" font-weight="bold">Grounded generation</text>
+    <text x="1065" y="352" font-size="10.5" fill="#475569">Qwen3-4B-Instruct (4-bit);</text>
+    <text x="1065" y="367" font-size="10.5" fill="#475569">emits [C1] markers,</text>
+    <text x="1065" y="382" font-size="10.5" fill="#475569">never sees a page number</text>
+
+    <text x="800" y="337" font-size="14" font-weight="bold">Verifier</text>
+    <text x="800" y="357" font-size="10.5" fill="#475569">claim-level check of the</text>
+    <text x="800" y="372" font-size="10.5" fill="#475569">draft against evidence;</text>
+    <text x="800" y="387" font-size="10.5" fill="#475569">one regeneration retry</text>
+
+    <text x="525" y="337" font-size="14" font-weight="bold">Cited answer</text>
+    <text x="525" y="357" font-size="10.5" fill="#475569">markers resolved to pages</text>
+    <text x="525" y="372" font-size="10.5" fill="#475569">by code, not the model;</text>
+    <text x="525" y="387" font-size="10.5" fill="#475569">chat UI shows the agent trace</text>
+
+    <text x="1378" y="337" font-size="14" font-weight="bold">Refusal</text>
+    <text x="1378" y="357" font-size="10.5" fill="#475569">one canonical sentence,</text>
+    <text x="1378" y="372" font-size="10.5" fill="#475569">so abstentions are</text>
+    <text x="1378" y="387" font-size="10.5" fill="#475569">countable and testable</text>
+  </g>
+
+  <!-- footnote -->
+  <g fill="#64748b" font-size="11">
+    <text x="30" y="480">Every model has a dependency-free offline stand-in (hashing embedder, scripted extractive generator, term-overlap reranker, rule-based agents),</text>
+    <text x="30" y="496">so the whole pipeline runs and is tested on a CPU. Bounded by design for a free Colab T4: at most 2 retrieval rounds and one regeneration;</text>
+    <text x="30" y="512">measured peak VRAM 6.15 GB with 4-bit Qwen3-4B + bge-m3 + bge-reranker-v2-m3 on a Tesla T4 (2026-10-11 run).</text>
+  </g>
+</svg>
