@@ -19,7 +19,7 @@ along that order the project actually is.
 | **Release** | **The Colab chatbot is built** (section 9.5): the deliverable notebook, a Gradio chat interface, follow-up questions, OCR on by default, resumable runs, and fixes for the three Phase 6 defects (DD-061 to DD-068). Every stored result was regenerated under the fixes (DD-069). All numbers are still offline |
 | **Phase 6 result** | **On the offline stand-in stack, no component earned its cost** (DD-058 rule), unchanged after regeneration under the defect fixes (DD-069). The evidence controller is still the cause of the agentic regression: removing it recovers faithfulness +0.079 [+0.026, +0.145] and citation +0.057 [+0.014, +0.114]. The fixes narrowed the regression and made the verifier inert (it no longer rejects q065). The threshold re-tuned on dev (0.6) regressed on eval and is not kept (section 9.4) |
 | **Phase 5 result** | **The agentic pipeline is not kept: its added complexity did not pay for itself.** No keep-or-drop metric improves over Baseline B. Faithfulness −0.132 [−0.211, −0.053] and citation any-correct −0.143 [−0.229, −0.071] *regress*, because the rule-based evidence controller refused 11 answerable questions. RQ3 not shown, and RQ4 unanswerable offline (floor), as DD-056 declared in advance. Rule-based stand-ins for every agent decision (section 9.3) |
-| Tests | 748 collected: 747 passing, 1 skipped (the real-Tesseract OCR test; no Tesseract binary on this machine), 0 failing. The two failures Phase 6 left in `tests/test_agentic.py` were the tests' own errors against DD-053 and DD-054 and are fixed |
+| Tests | Counted at the end of Phase 6 (later PRs added tests; CI shows the current count): 748 collected: 747 passing, 1 skipped (the real-Tesseract OCR test; no Tesseract binary on this machine), 0 failing. The two failures Phase 6 left in `tests/test_agentic.py` were the tests' own errors against DD-053 and DD-054 and are fixed |
 | Source | 13,045 lines in `src/`, 6,672 lines in `tests/`, 686 in `notebooks/build_notebooks.py` |
 | Licence | Apache-2.0 (DD-035) |
 | Merged | Phases 0-6 in `main` (PR #1-#11); the Colab release is on `feat/colab-chatbot-release` (issues #12-#21) |
@@ -198,7 +198,7 @@ Rules that exist only in prose drift. These are executable:
 
 ## 6. Verification evidence
 
-* **747 of 748 tests pass, 1 skipped** (real Tesseract, binary absent), in about 4 to 7
+* **747 of 748 tests passed, 1 skipped, at the end of Phase 6** (real Tesseract, binary absent; later PRs added tests, see CI for the current count), in about 4 to 7
   minutes. No network, no GPU, no model weights.
   Full 76-question runs of both baselines are among them, one of them a
   record-by-record check against `results/baseline/`, so the harness is
