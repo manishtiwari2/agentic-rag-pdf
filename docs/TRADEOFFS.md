@@ -6,7 +6,8 @@ evidence, what I would do at scale, and the design decision (DD) behind it.
 > **Every measured figure in this document comes from the offline stand-in
 > stack:** hashing embedder, scripted extractive generator, term-overlap
 > reranker, rule-based agents. None is a Qwen3-4B / bge-m3 /
-> bge-reranker-v2-m3 result. The GPU model-stack run has not been done.
+> bge-reranker-v2-m3 result. A T4 smoke run of the model stack exists (`notebooks/runs/`), but the
+> 76-question benchmark has not been run on it.
 
 Sections for chunking (DD-071), hybrid search (DD-072), the agent loop,
 citations, abstention, OCR and stale/conflicting sources are added as each

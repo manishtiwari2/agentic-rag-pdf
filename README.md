@@ -13,8 +13,9 @@ every judgment call, including the ones where the fancier component lost.
 > **Every number in this README comes from the offline stand-in stack:** a
 > hashing embedder, a scripted extractive generator, a term-overlap reranker
 > and rule-based agents, run on a CPU. None is a Qwen3-4B / bge-m3 /
-> bge-reranker-v2-m3 result. **The GPU model-stack run has not been done**
-> ([NEXT_STEPS.md](docs/NEXT_STEPS.md)). The offline numbers are real measurements
+> bge-reranker-v2-m3 result. **A T4 smoke run of the model stack exists
+> ([notebooks/runs/](notebooks/runs/)), but the 76-question benchmark has not
+> been run on it** ([NEXT_STEPS.md](docs/NEXT_STEPS.md)). The offline numbers are real measurements
 > of a real, weak system. They test the harness and the engineering, not the
 > models.
 
