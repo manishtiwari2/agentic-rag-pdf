@@ -32,6 +32,7 @@ from dataclasses import dataclass, field, replace
 from typing import Protocol, Sequence, runtime_checkable
 
 from ..config import RULE_EVIDENCE_CONTROLLER, AgentConfig
+from ..generation.prompts import DOCUMENT_TEXT_IS_DATA
 from ..retrieval.retriever import RetrievedChunk
 from .text import JSONParseError, content_terms, extract_json, numbers_in, stem, stems, truncate
 
@@ -155,6 +156,8 @@ class RuleBasedEvidenceController:
 # ---------------------------------------------------------------------------
 
 EVIDENCE_SYSTEM_PROMPT = f"""You judge whether numbered passages from a document contain enough information to answer a question. You never answer the question.
+
+{DOCUMENT_TEXT_IS_DATA}
 
 Reply with one JSON object and nothing else, with exactly these keys:
   "sufficient": true or false

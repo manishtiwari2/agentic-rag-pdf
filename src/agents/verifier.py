@@ -39,6 +39,7 @@ from typing import Protocol, Sequence, runtime_checkable
 
 from ..config import RULE_VERIFIER, AgentConfig
 from ..generation.evidence import EvidenceItem
+from ..generation.prompts import DOCUMENT_TEXT_IS_DATA
 from .text import (
     JSONParseError,
     cited_numbers,
@@ -179,6 +180,8 @@ class RuleBasedVerifier:
 # ---------------------------------------------------------------------------
 
 VERIFIER_SYSTEM_PROMPT = f"""You check whether an answer is supported by numbered passages from a document. Judge only against the passages, never against outside knowledge.
+
+{DOCUMENT_TEXT_IS_DATA}
 
 Reply with one JSON object and nothing else, with exactly these keys:
   "verdict": one of {list(VERDICTS)}
