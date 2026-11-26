@@ -302,4 +302,5 @@ def build_app(offline: bool = True, system: str = "agentic") -> Any:
 
 def launch(offline: bool = True, share: bool = False, **kwargs: Any) -> Any:
     """Build and launch the app. In Colab, pass ``share=True`` for a public link."""
+    kwargs.setdefault("max_file_size", RAGConfig.default().ingestion.max_upload_mb * 1024**2)
     return build_app(offline=offline).launch(share=share, **kwargs)

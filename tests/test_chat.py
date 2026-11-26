@@ -11,6 +11,7 @@ import dataclasses
 import pytest
 
 from src.chat import ui
+from src.config import IngestionConfig
 from src.chat.session import (
     ChatSession,
     LLMRewriter,
@@ -305,12 +306,14 @@ class TestChatCommand:
             monkeypatch, ["--offline", "--system", "hybrid", "--share", "--port", "8000"])
         assert code == 0
         assert built == {"offline": True, "system": "hybrid"}
-        assert launched == {"share": True, "server_name": "127.0.0.1", "server_port": 8000}
+        assert launched == {"share": True, "server_name": "127.0.0.1", "server_port": 8000,
+                            "max_file_size": IngestionConfig().max_upload_mb * 1024**2}
 
     def test_the_defaults_are_agentic_local_and_private(self, monkeypatch):
         _, built, launched = self._serve(monkeypatch, ["--offline"])
         assert built["system"] == "agentic"
-        assert launched == {"share": False, "server_name": "127.0.0.1", "server_port": 7860}
+        assert launched == {"share": False, "server_name": "127.0.0.1", "server_port": 7860,
+                            "max_file_size": IngestionConfig().max_upload_mb * 1024**2}
 
     def test_the_model_stack_without_a_gpu_is_refused_with_the_remedy(self, monkeypatch, capsys):
         import sys

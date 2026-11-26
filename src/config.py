@@ -224,6 +224,16 @@ class IngestionConfig:
     ocr_languages: str = "eng"
     #: Render resolution for OCR, in DPI; 300 is what Tesseract is tuned for.
     ocr_resolution: int = 300
+    max_upload_mb: int = 32
+    max_pages: int = 200
+    max_ocr_pages: int = 20
+    max_ocr_pixels: int = 20_000_000
+
+    def __post_init__(self) -> None:
+        for name in ("max_upload_mb", "max_pages", "max_ocr_pages", "max_ocr_pixels", "ocr_resolution"):
+            value = getattr(self, name)
+            if type(value) is not int or value <= 0:
+                raise ConfigurationError(f"ingestion.{name} must be a positive integer.")
 
 
 @dataclass(frozen=True)

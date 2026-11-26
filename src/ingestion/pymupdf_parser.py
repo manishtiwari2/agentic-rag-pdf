@@ -54,28 +54,18 @@ class PyMuPDFParser(BaseParser):
             ) from exc
 
         try:
-            self._authenticate(pdf, source_name)
+            if pdf.needs_pass or pdf.xref_get_key(-1, "Encrypt")[0] != "null":
+                raise EncryptedPDFError.for_file(source_name)
+            self._check_page_count(pdf.page_count)
             pages = [self._extract_page(pdf[i], i + 1) for i in range(pdf.page_count)]
             metadata = dict(pdf.metadata or {})
+        except (EncryptedPDFError, PDFReadError):
+            raise
+        except Exception as exc:
+            raise PDFReadError(f"{source_name} could not be read. Check that the PDF is valid.") from exc
         finally:
             pdf.close()
         return pages, metadata
-
-    def _authenticate(self, pdf, source_name: str) -> None:
-        if not pdf.needs_pass:
-            return
-        password = self.config.password
-        if password is None or not pdf.authenticate(password):
-            detail = (
-                "no password was supplied"
-                if password is None
-                else "the supplied password was rejected"
-            )
-            raise EncryptedPDFError(
-                f"{source_name} is password protected and {detail}. Pass the "
-                "password via IngestionConfig(password=...), or decrypt the file "
-                "first (for example with `qpdf --decrypt in.pdf out.pdf`)."
-            )
 
     # -- per page -----------------------------------------------------------
 

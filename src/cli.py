@@ -440,7 +440,8 @@ def _chat(args: argparse.Namespace) -> int:
     stack = "offline stand-in stack" if args.offline else "model stack"
     print(f"Starting the chat app: {args.system} system, {stack}. Ctrl+C stops it.", flush=True)
     try:
-        app.launch(share=args.share, server_name=args.host, server_port=args.port)
+        app.launch(share=args.share, server_name=args.host, server_port=args.port,
+                   max_file_size=IngestionConfig().max_upload_mb * 1024**2)
     except OSError as exc:
         print(f"The app could not start on {args.host}:{args.port}: {exc}\n"
               "Is it already running? Pass another --port.", file=sys.stderr)
@@ -468,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     inspect_page_cmd.add_argument("--pdf", required=True)
     inspect_page_cmd.add_argument("--page", required=True, type=int)
-    inspect_page_cmd.add_argument("--password")
+    inspect_page_cmd.add_argument("--password", help=argparse.SUPPRESS)
     inspect_page_cmd.add_argument("--out")
 
     validate_cmd = sub.add_parser(

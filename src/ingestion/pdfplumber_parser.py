@@ -59,12 +59,16 @@ class PdfPlumberParser(BaseParser):
 
         try:
             pdf = pdfplumber.open(
-                io.BytesIO(data), password=self.config.password or ""
+                io.BytesIO(data), password=self.config.password or "",
+                pages=range(1, self.config.max_pages + 2),
             )
         except Exception as exc:
-            raise _open_error(exc, source_name, self.config.password) from exc
+            raise _open_error(exc, source_name) from exc
 
         try:
+            if pdf.doc.encryption is not None:
+                raise EncryptedPDFError.for_file(source_name)
+            self._check_page_count(len(pdf.pages))
             pages = [
                 self._extract_page(page, number)
                 for number, page in enumerate(pdf.pages, start=1)
@@ -259,22 +263,13 @@ def _error_chain(exc: BaseException, limit: int = 5) -> list[BaseException]:
     return chain
 
 
-def _open_error(exc: Exception, source_name: str, password: str | None) -> Exception:
+def _open_error(exc: Exception, source_name: str) -> Exception:
     """Map a pdfminer failure onto this project's error taxonomy."""
     chain = _error_chain(exc)
     name = " ".join(type(e).__name__ for e in chain).lower()
     message = " ".join(str(e) for e in chain).lower()
     if "password" in name or "password" in message or "encrypt" in name or "encrypt" in message:
-        detail = (
-            "no password was supplied"
-            if not password
-            else "the supplied password was rejected"
-        )
-        return EncryptedPDFError(
-            f"{source_name} is password protected and {detail}. Pass the "
-            "password via IngestionConfig(password=...), or decrypt the file "
-            "first (for example with `qpdf --decrypt in.pdf out.pdf`)."
-        )
+        return EncryptedPDFError.for_file(source_name)
     return PDFReadError(
         f"{source_name} could not be opened as a PDF: {exc}. Check that the "
         "file is a valid, uncorrupted PDF."

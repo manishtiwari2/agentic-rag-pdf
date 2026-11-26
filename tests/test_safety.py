@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from src.chat.session import ChatSession, Rewrite
-from src.config import GenerationConfig
+from src.config import GenerationConfig, IngestionConfig
 from src.errors import ConfigurationError, DeadlineExceeded, PDFReadError
 from src.generation.backends import HuggingFaceBackend
 from src.ingestion.pdfplumber_parser import PdfPlumberParser
@@ -101,3 +101,8 @@ def test_json_logs_share_request_id_and_exclude_inputs():
 def test_invalid_timeout_is_rejected(value):
     with pytest.raises(ConfigurationError):
         GenerationConfig(call_timeout_s=value)
+
+
+def test_invalid_page_limit_is_rejected():
+    with pytest.raises(ConfigurationError):
+        IngestionConfig(max_pages=0)
