@@ -85,6 +85,10 @@ class GenerationError(RAGError):
     """The generation backend failed or produced unusable output."""
 
 
+class DeadlineExceeded(GenerationError):
+    """The model call or the whole question reached its wall-clock limit."""
+
+
 class ModelLoadError(RAGError):
     """A model could not be loaded, typically for memory or licensing reasons."""
 

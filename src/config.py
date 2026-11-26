@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -333,6 +334,14 @@ class GenerationConfig:
     max_evidence_chars: int = 1600
     #: Set True only to benchmark a research-licensed checkpoint (DD-024).
     allow_non_commercial_model: bool = False
+    call_timeout_s: float = 60.0
+    question_timeout_s: float = 180.0
+
+    def __post_init__(self) -> None:
+        for name in ("call_timeout_s", "question_timeout_s"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ConfigurationError(f"generation.{name} must be finite and positive.")
 
 
 AgentBackend = Literal["llm", "rules"]

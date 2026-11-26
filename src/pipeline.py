@@ -56,6 +56,7 @@ from .agents.verifier import (
 )
 from .chunking.base import Chunk, build_chunker
 from .config import RAGConfig
+from .deadlines import remaining_seconds, run_question
 from .errors import ConfigurationError, IndexNotBuiltError, IngestionError
 from .generation.backends import LLMBackend
 from .generation.citations import Citation
@@ -346,6 +347,9 @@ class _RetrieveThenGenerate:
     # -- querying -----------------------------------------------------------
 
     def ask(self, question: str, top_k: int | None = None) -> RAGResult:
+        return run_question(self.config.generation.question_timeout_s, lambda: self._ask(question, top_k))
+
+    def _ask(self, question: str, top_k: int | None) -> RAGResult:
         if not self.is_indexed:
             raise IndexNotBuiltError(
                 "No document has been indexed. Call pipeline.index(pdf_path) "
@@ -387,6 +391,10 @@ class _RetrieveThenGenerate:
         )
 
     def retrieve(self, question: str, k: int | None = None) -> list[RetrievedChunk]:
+        """Rank evidence within the same question budget used by ask."""
+        return run_question(self.config.generation.question_timeout_s, lambda: self._retrieve(question, k))
+
+    def _retrieve(self, question: str, k: int | None) -> list[RetrievedChunk]:
         """Rank chunks without generating an answer.
 
         The benchmark harness uses this to score retrieval at a depth greater
@@ -678,6 +686,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             state.iteration = iteration
             round_ = RetrievalRound(iteration=iteration, queries=list(pending))
             for query in pending:
+                remaining_seconds()
                 _, pool, ranked, _ = self._pools(query)
                 state.reranker_calls += int(self.reranker is not None and bool(pool))
                 pools.append(pool)
@@ -753,7 +762,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
 
     # -- asking --------------------------------------------------------------
 
-    def retrieve(self, question: str, k: int | None = None) -> list[RetrievedChunk]:
+    def _retrieve(self, question: str, k: int | None) -> list[RetrievedChunk]:
         """The final merged ranking, without generating (DD-039, DD-050).
 
         Re-runs the retrieval loop -- plan, rounds, assessment, refinement --
@@ -770,7 +779,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         outcome = self._retrieval_loop(question, self.config.retrieval.top_k, state)
         return outcome.ranking[: k or self.config.retrieval.top_k]
 
-    def ask(self, question: str, top_k: int | None = None) -> RAGResult:
+    def _ask(self, question: str, top_k: int | None) -> RAGResult:
         if not self.is_indexed:
             raise IndexNotBuiltError(
                 "No document has been indexed. Call pipeline.index(pdf_path) "

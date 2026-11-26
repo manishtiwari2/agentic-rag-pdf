@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from ..agents.text import content_terms
+from ..deadlines import run_question
 from ..generation.backends import LLMBackend, ScriptedBackend
 from ..generation.prompts import ABSTENTION_SENTENCE, DOCUMENT_TEXT_IS_DATA
 from ..pipeline import RAGResult
@@ -189,8 +190,13 @@ class ChatSession:
         self.turns = 0
 
     def ask(self, question: str) -> RAGResult:
-        rewrite = self.rewriter.rewrite(question, list(self.history))
-        result = self.pipeline.ask(rewrite.standalone)
+        history = list(self.history)
+
+        def answer():
+            rewrite = self.rewriter.rewrite(question, history)
+            return rewrite, self.pipeline.ask(rewrite.standalone)
+
+        rewrite, result = run_question(self.pipeline.config.generation.question_timeout_s, answer)
         self.turns += 1
         self.history.append(
             Turn(question=question, standalone=rewrite.standalone, answer=result.answer)
