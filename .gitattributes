@@ -1,0 +1,4 @@
+*.sql text eol=lf
+migrations/*.py text eol=lf
+migrations/versions/*.py text eol=lf
+migrations/*.mako text eol=lf
