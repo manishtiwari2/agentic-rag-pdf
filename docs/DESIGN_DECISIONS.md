@@ -3565,3 +3565,36 @@ The safety tests block a model, expire a chat rewrite, inspect every model
 prompt and submit rejected files to both parsers. The agent tests exercise
 both verifier policies. JSON logs carry a request ID without copying prompts,
 answers or document text.
+
+## DD-077. Store PDFs and indexes by owner in Postgres
+
+The persistent library uses Postgres 16 and pgvector. Each owner stores one
+copy of a PDF's bytes per SHA-256. The cache key for parsed chunks and
+embeddings adds the RAG configuration fingerprint and a required code version.
+Versions can share an index. Deletion removes file data and chunks after the
+last version stops referencing them. These changes commit in one transaction.
+Concurrent writes for one owner take a row lock before they check the cache,
+so a duplicate upload waits for the first upload to finish.
+
+Every library query uses an owner ID. Composite foreign keys prevent links to
+another owner's records. A transaction-local setting limits row-level security
+policies to that owner. Runtime connections must use a role without
+`BYPASSRLS` or superuser rights.
+
+Dense retrieval uses the existing vector-store interface. The 1,024-dimension
+index can use HNSW. Other dimensions use exact search. Exact search also fills
+short results from the approximate path when filters leave too few hits.
+BM25 is rebuilt from the requested versions for each question. The persistent
+offline embedder uses fixed term weights so an embedding stays valid across
+uploads and restarts. The existing in-memory benchmark keeps its corpus IDF.
+
+Keeping PDFs in Postgres makes saving and deleting them atomic with their
+versions. It keeps the first deployment to one database and makes backups
+larger. A shared index across users would complicate isolation and deletion,
+so deduplication is limited to each owner.
+
+Install with `python -m pip install -e ".[postgres]"`. Set `DATABASE_URL`
+for a migration role and run `python -m alembic upgrade head`. To run the
+integration tests, check `docker info`, set `RAG_TEST_DATABASE_URL` to a
+disposable Postgres 16 server with pgvector and run
+`python -m pytest tests/test_postgres_library.py -o addopts="" -q`.

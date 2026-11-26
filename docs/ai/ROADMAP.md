@@ -16,9 +16,9 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 1.6 Fix the `tests/test_config.py` reference. Bug #10.
 
 ## P2 Data layer
-- [ ] 2.1 Postgres + pgvector schema with SQLAlchemy 2 and Alembic (LF line endings).
-- [ ] 2.2 A pgvector store behind the existing store interface.
-- [ ] 2.3 Index keyed by (file sha256, config fingerprint, code version). No re-embedding of the same file.
+- [x] 2.1 Postgres + pgvector schema with SQLAlchemy 2 and Alembic (LF line endings).
+- [x] 2.2 A pgvector store behind the existing store interface.
+- [x] 2.3 Index keyed by (file sha256, config fingerprint, code version). No re-embedding of the same file.
 
 ## P3 API + auth
 - [ ] 3.1 FastAPI app: /health, /ready, /metrics.
