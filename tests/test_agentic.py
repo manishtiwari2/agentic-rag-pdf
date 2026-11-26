@@ -549,12 +549,23 @@ class TestVerificationErrorCategory:
         assert run.score.error_category == VERIFICATION_FAILURE
         assert run.record["verification_status"] == VERIFICATION_FAILED
 
-    def test_end_to_end_a_crashed_verifier_is_unavailable(self, offline_config, structured_pdf_path):
-        pipeline = indexed(agentic_config(offline_config), structured_pdf_path, verifier=Raising())
+    @pytest.mark.parametrize("verifier", [Raising(), LLMVerifier(Canned("unreadable verdict"))])
+    def test_unavailable_verifier_refuses(self, offline_config, structured_pdf_path, verifier):
+        pipeline = indexed(agentic_config(offline_config), structured_pdf_path, verifier=verifier)
         text = "What recall did the hybrid system achieve?"
         result = pipeline.ask(text)
         assert result.metadata["verification_status"] == VERIFICATION_UNAVAILABLE
-        assert result.answer != ABSTENTION_SENTENCE  # kept, not claimed verified
+        assert result.answer == ABSTENTION_SENTENCE and not result.citations
+        assert result.abstained and result.metadata["abstention_reason"] == "verification_unavailable"
+        assert "draft_answer" not in result.metadata
+        assert result.metadata["agent_trace"]["draft_answer"] is None
+
+    def test_unavailable_verifier_can_label_the_answer(self, offline_config, structured_pdf_path):
+        config = agentic_config(offline_config, on_verifier_unavailable="mark_unverified")
+        pipeline = indexed(config, structured_pdf_path, verifier=Raising())
+        text = "What recall did the hybrid system achieve?"
+        result = pipeline.ask(text)
+        assert result.answer.startswith("Unverified answer: ") and not result.abstained
         pages = tuple(sorted({p for c in result.citations for p in c.pages}))
         question = dataclasses.replace(question_on(pages, answer=result.answer), question=text)
         run = score_result(question, result, system=pipeline.name)

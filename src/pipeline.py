@@ -812,13 +812,23 @@ class AgenticRAGPipeline(HybridRAGPipeline):
                 generated, verification_status = self._verify_loop(
                     question, context, generated, state
                 )
-                if verification_status == VERIFICATION_FAILED and not generated.abstained:
+                if verification_status == VERIFICATION_UNAVAILABLE:
+                    logging.getLogger(__name__).warning("Verifier unavailable")
+                    if self.config.agents.on_verifier_unavailable == "mark_unverified":
+                        generated = replace(generated, answer=f"Unverified answer: {generated.answer}")
+                    else:
+                        generated = self._refuse(generated.evidence, "verification_unavailable")
+                        abstention_source = "verifier"
+                elif verification_status == VERIFICATION_FAILED and not generated.abstained:
                     generated = self._refuse(generated.evidence, "verification_failed")
                     abstention_source = "verifier"
                 elif generated.abstained:
                     abstention_source = "generator"
 
         state.selected_context = [e.chunk_id for e in generated.evidence]
+        withheld = verification_status == VERIFICATION_UNAVAILABLE and generated.abstained
+        if withheld:
+            draft = None
         state.draft_answer = draft.answer if draft is not None else None
         state.verification_status = verification_status
         state.citations = [c.to_record() for c in generated.citations]
@@ -827,7 +837,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             "abstained": generated.abstained,
             "abstention_source": abstention_source,
         }
-        refinement_changed = self._refinement_counterfactual(
+        refinement_changed = None if withheld else self._refinement_counterfactual(
             question, outcome, draft, context, state
         )
 

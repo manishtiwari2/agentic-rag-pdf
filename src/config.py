@@ -378,6 +378,7 @@ class AgentConfig:
     record_refinement_counterfactual: bool = True
 
     verification_enabled: bool = True
+    on_verifier_unavailable: Literal["refuse", "mark_unverified"] = "refuse"
     verifier: AgentBackend = "llm"
     #: Share of a claim's content terms its cited evidence must contain for the
     #: rule-based verifier to call it supported (DD-054).
@@ -691,6 +692,8 @@ class RAGConfig:
 
     def _validate_agents(self) -> None:
         a = self.agents
+        if a.on_verifier_unavailable not in ("refuse", "mark_unverified"):
+            raise ConfigurationError("agents.on_verifier_unavailable must be refuse or mark_unverified.")
         if a.max_retrieval_iterations < 1:
             raise ConfigurationError(
                 "agents.max_retrieval_iterations counts retrieval rounds, the "
