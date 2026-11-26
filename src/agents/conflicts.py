@@ -34,7 +34,7 @@ from ..config import RULE_CONFLICT_DETECTOR, ConflictConfig
 from ..generation.citations import Citation
 from ..generation.evidence import EvidenceItem, build_evidence
 from ..generation.generator import GeneratedAnswer
-from ..generation.prompts import ABSTENTION_SENTENCE
+from ..generation.prompts import ABSTENTION_SENTENCE, DOCUMENT_TEXT_IS_DATA
 from ..versioning import DocumentVersion, compare_versions
 from ..retrieval.retriever import RetrievedChunk
 from .text import JSONParseError, content_terms, extract_json, sentences, stem, truncate
@@ -311,6 +311,7 @@ CONFLICT_SYSTEM_PROMPT = (
     "it (a different number, date or name for the same thing). Reply with JSON "
     'only: {"conflicts": [{"pair": <number>, "claim": "<short description>", '
     '"kind": "number" | "date" | "entity"}]}. Return an empty list if none disagree.'
+    f"\n\n{DOCUMENT_TEXT_IS_DATA}"
 )
 
 

@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="src.benchmark.inspect", description=__doc__)
     parser.add_argument("--pdf", required=True, help="Path to the PDF.")
     parser.add_argument("--page", required=True, type=int, help="1-based page number.")
-    parser.add_argument("--password", help="Password, if the PDF is encrypted.")
+    parser.add_argument("--password", help=argparse.SUPPRESS)
     parser.add_argument(
         "--out", help="PNG output path. Defaults to <pdf-stem>_p<page>.png."
     )

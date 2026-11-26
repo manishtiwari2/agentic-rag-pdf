@@ -63,7 +63,7 @@ def pdf_with_empty_page(total: int = 3, empty_index: int = 2) -> bytes:
     return _write(doc)
 
 
-def encrypted_pdf(password: str = "secret") -> bytes:
+def encrypted_pdf(password: str = "secret", *, user_password: str | None = None) -> bytes:
     """A password-protected document."""
     doc = _new()
     page = doc.new_page()
@@ -71,7 +71,7 @@ def encrypted_pdf(password: str = "secret") -> bytes:
     data = doc.tobytes(
         encryption=pymupdf.PDF_ENCRYPT_AES_256,
         owner_pw=password,
-        user_pw=password,
+        user_pw=password if user_password is None else user_password,
         permissions=pymupdf.PDF_PERM_ACCESSIBILITY,
     )
     doc.close()

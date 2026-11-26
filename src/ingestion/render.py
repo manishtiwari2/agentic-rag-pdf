@@ -15,7 +15,9 @@ used only by the benchmark tooling.
 from __future__ import annotations
 
 import io
+import math
 import os
+from collections.abc import Iterator
 
 from ..errors import PDFReadError
 
@@ -25,8 +27,8 @@ def render_page_images(
     page_numbers: list[int],
     *,
     resolution: int = 300,
-    password: str | None = None,
-) -> dict[int, object]:
+    max_pixels: int,
+) -> Iterator[tuple[int, object]]:
     """Render 1-based pages of an in-memory PDF to Pillow images, for OCR (DD-067).
 
     Opens the file once for all pages. Uses the same pdfplumber -> pypdfium2
@@ -40,11 +42,19 @@ def render_page_images(
             "installed. Install it with `pip install pdfplumber`."
         ) from exc
 
-    with pdfplumber.open(io.BytesIO(data), password=password or "") as pdf:
-        return {
-            number: pdf.pages[number - 1].to_image(resolution=resolution).original
-            for number in page_numbers
-        }
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        for number in page_numbers:
+            page = pdf.pages[number - 1]
+            width = math.ceil(page.width * resolution / 72)
+            height = math.ceil(page.height * resolution / 72)
+            if width * height > max_pixels:
+                raise PDFReadError(f"Page {number} exceeds the OCR image size limit.")
+            try:
+                image = page.to_image(resolution=resolution).original
+            except Exception as exc:
+                raise PDFReadError(f"Page {number} could not be rendered for OCR.") from exc
+            with image:
+                yield number, image
 
 
 def render_page_png(

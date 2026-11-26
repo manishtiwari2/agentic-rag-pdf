@@ -34,6 +34,7 @@ own layer and could be swapped through configuration alone.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field, replace
@@ -55,6 +56,7 @@ from .agents.verifier import (
 )
 from .chunking.base import Chunk, build_chunker
 from .config import RAGConfig
+from .deadlines import remaining_seconds, run_question
 from .errors import ConfigurationError, IndexNotBuiltError, IngestionError
 from .generation.backends import LLMBackend
 from .generation.citations import Citation
@@ -63,6 +65,7 @@ from .generation.generator import GeneratedAnswer, GroundedGenerator
 from .generation.prompts import ABSTENTION_SENTENCE
 from .ingestion.document import Document
 from .ingestion.parser import build_parser
+from .request_log import request_scope
 from .versioning import DocumentVersion, resolve_version
 from .reranking.reranker import Reranker, build_reranker, rerank
 from .retrieval.embeddings import build_embedder
@@ -234,6 +237,7 @@ class _RetrieveThenGenerate:
 
     # -- indexing -----------------------------------------------------------
 
+    @request_scope("index PDF")
     def index(self, pdf_path: str | os.PathLike[str], version: str | None = None) -> Document:
         """Parse, chunk and index a PDF. Errors here are explicit by design.
 
@@ -269,6 +273,7 @@ class _RetrieveThenGenerate:
         }
         return document
 
+    @request_scope("index PDFs")
     def index_documents(
         self,
         pdf_paths: Sequence[str | os.PathLike[str]],
@@ -291,6 +296,7 @@ class _RetrieveThenGenerate:
             try:
                 document = self._parser.parse(path)
             except IngestionError as exc:
+                logging.getLogger(__name__).warning("PDF indexing failed (%s)", type(exc).__name__)
                 if on_error is None:
                     raise
                 on_error(path, exc)
@@ -341,6 +347,9 @@ class _RetrieveThenGenerate:
     # -- querying -----------------------------------------------------------
 
     def ask(self, question: str, top_k: int | None = None) -> RAGResult:
+        return run_question(self.config.generation.question_timeout_s, lambda: self._ask(question, top_k))
+
+    def _ask(self, question: str, top_k: int | None) -> RAGResult:
         if not self.is_indexed:
             raise IndexNotBuiltError(
                 "No document has been indexed. Call pipeline.index(pdf_path) "
@@ -382,6 +391,10 @@ class _RetrieveThenGenerate:
         )
 
     def retrieve(self, question: str, k: int | None = None) -> list[RetrievedChunk]:
+        """Rank evidence within the same question budget used by ask."""
+        return run_question(self.config.generation.question_timeout_s, lambda: self._retrieve(question, k))
+
+    def _retrieve(self, question: str, k: int | None) -> list[RetrievedChunk]:
         """Rank chunks without generating an answer.
 
         The benchmark harness uses this to score retrieval at a depth greater
@@ -673,6 +686,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             state.iteration = iteration
             round_ = RetrievalRound(iteration=iteration, queries=list(pending))
             for query in pending:
+                remaining_seconds()
                 _, pool, ranked, _ = self._pools(query)
                 state.reranker_calls += int(self.reranker is not None and bool(pool))
                 pools.append(pool)
@@ -748,7 +762,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
 
     # -- asking --------------------------------------------------------------
 
-    def retrieve(self, question: str, k: int | None = None) -> list[RetrievedChunk]:
+    def _retrieve(self, question: str, k: int | None) -> list[RetrievedChunk]:
         """The final merged ranking, without generating (DD-039, DD-050).
 
         Re-runs the retrieval loop -- plan, rounds, assessment, refinement --
@@ -765,7 +779,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         outcome = self._retrieval_loop(question, self.config.retrieval.top_k, state)
         return outcome.ranking[: k or self.config.retrieval.top_k]
 
-    def ask(self, question: str, top_k: int | None = None) -> RAGResult:
+    def _ask(self, question: str, top_k: int | None) -> RAGResult:
         if not self.is_indexed:
             raise IndexNotBuiltError(
                 "No document has been indexed. Call pipeline.index(pdf_path) "
@@ -807,13 +821,23 @@ class AgenticRAGPipeline(HybridRAGPipeline):
                 generated, verification_status = self._verify_loop(
                     question, context, generated, state
                 )
-                if verification_status == VERIFICATION_FAILED and not generated.abstained:
+                if verification_status == VERIFICATION_UNAVAILABLE:
+                    logging.getLogger(__name__).warning("Verifier unavailable")
+                    if self.config.agents.on_verifier_unavailable == "mark_unverified":
+                        generated = replace(generated, answer=f"Unverified answer: {generated.answer}")
+                    else:
+                        generated = self._refuse(generated.evidence, "verification_unavailable")
+                        abstention_source = "verifier"
+                elif verification_status == VERIFICATION_FAILED and not generated.abstained:
                     generated = self._refuse(generated.evidence, "verification_failed")
                     abstention_source = "verifier"
                 elif generated.abstained:
                     abstention_source = "generator"
 
         state.selected_context = [e.chunk_id for e in generated.evidence]
+        withheld = verification_status == VERIFICATION_UNAVAILABLE and generated.abstained
+        if withheld:
+            draft = None
         state.draft_answer = draft.answer if draft is not None else None
         state.verification_status = verification_status
         state.citations = [c.to_record() for c in generated.citations]
@@ -822,7 +846,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             "abstained": generated.abstained,
             "abstention_source": abstention_source,
         }
-        refinement_changed = self._refinement_counterfactual(
+        refinement_changed = None if withheld else self._refinement_counterfactual(
             question, outcome, draft, context, state
         )
 

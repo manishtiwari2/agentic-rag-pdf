@@ -14,7 +14,7 @@ import pytest
 
 from src.chunking.base import build_chunker
 from src.config import ChunkingConfig, IngestionConfig, RAGConfig
-from src.errors import OCRUnavailableError, ScannedPDFError
+from src.errors import OCRUnavailableError, PDFReadError, ScannedPDFError
 from src.ingestion.ocr import TesseractOcr
 from src.ingestion.parser import build_parser
 from src.pipeline import DenseRAGPipeline
@@ -73,6 +73,10 @@ class TestOnByDefault:
 
 
 class TestScannedPages:
+    def test_pixel_limit_precedes_ocr(self, parser_name):
+        with pytest.raises(PDFReadError, match="OCR image size limit"):
+            _parser(parser_name, NeverOcr(), max_ocr_pixels=100).parse_bytes(pdfs.scanned_pdf(1), "scan.pdf")
+
     def test_a_fully_scanned_pdf_is_ocrd_page_by_page(self, parser_name):
         engine = FakeOcr()
         document = _parser(parser_name, engine).parse_bytes(pdfs.scanned_pdf(3), "scan.pdf")

@@ -25,7 +25,11 @@ class PDFReadError(IngestionError):
 
 
 class EncryptedPDFError(IngestionError):
-    """The PDF is password protected and no usable password was supplied."""
+    """Encrypted documents must be decrypted before ingestion."""
+
+    @classmethod
+    def for_file(cls, name: str) -> "EncryptedPDFError":
+        return cls(f"{name} is encrypted. Remove its password and upload a decrypted copy.")
 
 
 class ScannedPDFError(IngestionError):
@@ -83,6 +87,10 @@ class RerankingError(RAGError):
 
 class GenerationError(RAGError):
     """The generation backend failed or produced unusable output."""
+
+
+class DeadlineExceeded(GenerationError):
+    """The model call or the whole question reached its wall-clock limit."""
 
 
 class ModelLoadError(RAGError):

@@ -36,18 +36,21 @@ from typing import Any
 
 from ..benchmark.schema import Question
 from ..config import SCRIPTED_BACKEND, GenerationConfig
+from ..generation.prompts import DOCUMENT_TEXT_IS_DATA
 from ..pipeline import RAGResult
 
 #: Bump when the prompt or the scale below changes. Two runs judged under
 #: different prompts are not comparable, and section 19 requires the prompt to
 #: be fixed for the experiment.
-JUDGE_PROTOCOL_VERSION = "2026-09-21.1"
+JUDGE_PROTOCOL_VERSION = "2026-11-26.1"
 
 #: EVALUATION_PROTOCOL.md section 20's scale, stated once so it cannot drift.
 JUDGE_SCALE = {0: "incorrect", 1: "partially correct", 2: "correct"}
 JUDGE_MAX = 2
 
-JUDGE_SYSTEM_PROMPT = """You are grading one answer produced by a document question-answering system.
+JUDGE_SYSTEM_PROMPT = f"""You are grading one answer produced by a document question-answering system.
+
+{DOCUMENT_TEXT_IS_DATA}
 
 You are given the question, the reference answer, the system's answer, the evidence passages the system retrieved, and the citations it produced. Use nothing else. You have no web access and no outside knowledge, and you must not use any.
 
@@ -61,7 +64,7 @@ faithfulness         Is every claim in the system answer supported by the eviden
 citation_correctness Do the cited passages actually support the claims they are attached to?
 
 Reply with one JSON object and nothing else:
-{"correctness": 0, "faithfulness": 0, "citation_correctness": 0, "reason": "one short sentence"}"""
+{{"correctness": 0, "faithfulness": 0, "citation_correctness": 0, "reason": "one short sentence"}}"""
 
 JUDGE_USER_TEMPLATE = """QUESTION
 {question}
@@ -190,9 +193,9 @@ class LLMJudge:
             question=question.question,
             reference_answer=question.answer if question.answer else "(none: this question is unanswerable from the document)",
             answer=result.answer,
-            evidence=result.evidence_text or "(none)",
+            evidence="\n\n".join(f"[{e.marker}] {e.text}" for e in result.evidence) or "(none)",
             citations=", ".join(
-                f"[{c.marker}] {c.label}" for c in result.citations
+                f"[{c.marker}]" for c in result.citations
             )
             or "(none)",
         )

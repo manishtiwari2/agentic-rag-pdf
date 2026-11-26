@@ -19,6 +19,7 @@ from typing import Any, Callable, Sequence
 from ..config import RAGConfig
 from ..errors import RAGError
 from ..pipeline import RAGResult, build_pipeline
+from ..request_log import configure_logging, request_scope
 from .session import ChatSession
 
 SYSTEMS = ("dense", "hybrid", "agentic")
@@ -80,6 +81,7 @@ def format_error(source: str, exc: BaseException) -> str:
     return f"**{name}: {type(exc).__name__}.** {exc}"
 
 
+@request_scope("index uploads")
 def load_documents(
     uploads: Sequence[Any] | None,
     system: str,
@@ -250,6 +252,8 @@ def build_app(offline: bool = True, system: str = "agentic") -> Any:
     """The Gradio Blocks app. Gradio is imported here and nowhere else."""
     import gradio as gr  # noqa: PLC0415 - optional, Colab-only dependency
 
+    configure_logging()
+
     chatbot_kwargs: dict[str, Any] = {"label": "Chat", "height": 480}
     if "type" in inspect.signature(gr.Chatbot.__init__).parameters:
         chatbot_kwargs["type"] = "messages"  # Gradio 5; 6 uses messages only
@@ -298,4 +302,5 @@ def build_app(offline: bool = True, system: str = "agentic") -> Any:
 
 def launch(offline: bool = True, share: bool = False, **kwargs: Any) -> Any:
     """Build and launch the app. In Colab, pass ``share=True`` for a public link."""
+    kwargs.setdefault("max_file_size", RAGConfig.default().ingestion.max_upload_mb * 1024**2)
     return build_app(offline=offline).launch(share=share, **kwargs)

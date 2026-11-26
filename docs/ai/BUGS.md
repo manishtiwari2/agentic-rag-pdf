@@ -18,4 +18,8 @@ Type: bug, AI mistake (hallucinated or wrong AI output), or regression.
 | 2 | 2026-11-26 | bug | No logging anywhere in `src/`. | `src/` | open (P1) |
 | 1 | 2026-11-26 | bug | Verifier fails open: an exception becomes "unavailable" and the answer is still served. | `src/pipeline.py:810-811, 942-946` | open (P1) |
 
+P1 branch update (`fix/p1-rag-safety`, pending review): issues 1–6 and 10 have
+local fixes. DD-076 records the defaults. Close the rows with the merge hash
+after review.
+
 Known flake: issue #46 (a test fails only on Python 3.10).
