@@ -11,6 +11,8 @@ Selecting it means accepting AGPL terms for whatever is built on top.
 
 from __future__ import annotations
 
+import logging
+
 from ..config import IngestionConfig
 from ..errors import EncryptedPDFError, PDFReadError
 from .ocr import OcrEngine
@@ -146,6 +148,7 @@ class PyMuPDFParser(BaseParser):
         try:
             found = finder()
         except Exception:
+            logging.getLogger(__name__).warning("Table detection failed on page %s", page.number + 1)
             return []
 
         results = []
@@ -154,6 +157,7 @@ class PyMuPDFParser(BaseParser):
                 rows = table.extract()
                 bbox = tuple(float(v) for v in table.bbox)
             except Exception:
+                logging.getLogger(__name__).warning("Table extraction failed on page %s", page.number + 1)
                 continue
             rendered = render_table(rows)
             if rendered:

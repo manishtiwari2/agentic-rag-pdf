@@ -34,6 +34,7 @@ own layer and could be swapped through configuration alone.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field, replace
@@ -63,6 +64,7 @@ from .generation.generator import GeneratedAnswer, GroundedGenerator
 from .generation.prompts import ABSTENTION_SENTENCE
 from .ingestion.document import Document
 from .ingestion.parser import build_parser
+from .request_log import request_scope
 from .versioning import DocumentVersion, resolve_version
 from .reranking.reranker import Reranker, build_reranker, rerank
 from .retrieval.embeddings import build_embedder
@@ -234,6 +236,7 @@ class _RetrieveThenGenerate:
 
     # -- indexing -----------------------------------------------------------
 
+    @request_scope("index PDF")
     def index(self, pdf_path: str | os.PathLike[str], version: str | None = None) -> Document:
         """Parse, chunk and index a PDF. Errors here are explicit by design.
 
@@ -269,6 +272,7 @@ class _RetrieveThenGenerate:
         }
         return document
 
+    @request_scope("index PDFs")
     def index_documents(
         self,
         pdf_paths: Sequence[str | os.PathLike[str]],
@@ -291,6 +295,7 @@ class _RetrieveThenGenerate:
             try:
                 document = self._parser.parse(path)
             except IngestionError as exc:
+                logging.getLogger(__name__).warning("PDF indexing failed (%s)", type(exc).__name__)
                 if on_error is None:
                     raise
                 on_error(path, exc)

@@ -16,6 +16,7 @@ detail of the library.
 from __future__ import annotations
 
 import io
+import logging
 import statistics
 
 from ..config import IngestionConfig
@@ -139,8 +140,8 @@ class PdfPlumberParser(BaseParser):
             extracted = page.extract_text_lines(
                 layout=False, strip=True, return_chars=True
             )
-        except Exception:
-            return []
+        except Exception as exc:
+            raise PDFReadError(f"Text extraction failed on page {page.page_number}.") from exc
 
         lines: list[dict] = []
         for line in extracted:
@@ -187,6 +188,7 @@ class PdfPlumberParser(BaseParser):
         try:
             found = page.find_tables()
         except Exception:
+            logging.getLogger(__name__).warning("Table detection failed on page %s", page.page_number)
             return []
 
         results: list[tuple[str, tuple[float, float, float, float]]] = []
@@ -195,6 +197,7 @@ class PdfPlumberParser(BaseParser):
                 rows = table.extract()
                 bbox = tuple(float(v) for v in table.bbox)
             except Exception:
+                logging.getLogger(__name__).warning("Table extraction failed on page %s", page.page_number)
                 continue
             rendered = render_table(rows)
             if rendered:

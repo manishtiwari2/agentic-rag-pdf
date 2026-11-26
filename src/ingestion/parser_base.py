@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from ..config import IngestionConfig
 from ..errors import EmptyDocumentError, PDFReadError, ScannedPDFError
+from ..request_log import request_scope
 from .document import Block, BlockKind, Document, Page, make_document_id
 from .ocr import OcrEngine, build_ocr_engine
 from .render import render_page_images
@@ -101,6 +102,7 @@ class BaseParser(ABC):
 
     # -- public -------------------------------------------------------------
 
+    @request_scope("parse PDF")
     def parse(self, path: str | os.PathLike[str]) -> Document:
         path = os.fspath(path)
         if not os.path.exists(path):

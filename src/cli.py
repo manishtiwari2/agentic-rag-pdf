@@ -36,6 +36,7 @@ from .benchmark.validate import validate_benchmark
 from .config import AgentConfig, ChunkingConfig, IngestionConfig, RAGConfig, RetrievalConfig
 from .errors import ConfigurationError, RAGError
 from .pipeline import build_pipeline
+from .request_log import configure_logging
 
 #: Where each system's results go by default (EVALUATION_PROTOCOL.md 27).
 DEFAULT_OUT = {
@@ -448,6 +449,7 @@ def _chat(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_logging()
     parser = argparse.ArgumentParser(prog="src.cli", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
