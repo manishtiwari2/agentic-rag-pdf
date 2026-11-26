@@ -70,22 +70,21 @@ class DenseRetriever:
 
     # -- indexing -----------------------------------------------------------
 
-    def index(self, chunks: Sequence[Chunk]) -> None:
+    def index(self, chunks: Sequence[Chunk], *, store: VectorStore | None = None) -> None:
         """Embed and index the chunks, replacing anything indexed before."""
         if not chunks:
             raise RetrievalError(
                 "No chunks to index. The document parsed but produced no "
                 "retrievable text; check the chunking configuration."
             )
-        vectors = self.embedder.embed_documents([chunk.text for chunk in chunks])
-        if vectors.shape[0] != len(chunks):
-            raise RetrievalError(
-                f"Embedder returned {vectors.shape[0]} vectors for "
-                f"{len(chunks)} chunks."
-            )
-        self._store = build_vector_store(self.config, vectors.shape[1])
+        if store is None:
+            vectors = self.embedder.embed_documents([chunk.text for chunk in chunks])
+            if vectors.ndim != 2 or vectors.shape[0] != len(chunks):
+                raise RetrievalError(f"Embedder must return one vector per chunk, got {vectors.shape}.")
+            store = build_vector_store(self.config, vectors.shape[1])
+            store.add([chunk.chunk_id for chunk in chunks], vectors)
+        self._store = store
         self._chunks = {chunk.chunk_id: chunk for chunk in chunks}
-        self._store.add([chunk.chunk_id for chunk in chunks], vectors)
 
     @property
     def is_indexed(self) -> bool:

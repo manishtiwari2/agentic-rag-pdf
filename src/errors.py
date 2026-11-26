@@ -101,6 +101,14 @@ class ConfigurationError(RAGError):
     """The configuration is internally inconsistent or violates a hard constraint."""
 
 
+class StorageError(RAGError):
+    """The persistent document library could not complete the operation."""
+
+
+class LibraryItemNotFound(StorageError):
+    """The requested library item is absent from the current owner's library."""
+
+
 # --- benchmark ---------------------------------------------------------------
 
 

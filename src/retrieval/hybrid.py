@@ -21,6 +21,7 @@ from ..config import RetrievalConfig
 from ..errors import IndexNotBuiltError, RetrievalError
 from .fusion import reciprocal_rank_fusion
 from .retriever import RetrievedChunk
+from .vector_store import VectorStore
 
 
 @dataclass(frozen=True)
@@ -50,9 +51,12 @@ class HybridRetriever:
         self.retrievers = dict(retrievers)
         self.pool_size = pool_size or self.config.candidate_k
 
-    def index(self, chunks: Sequence[Chunk]) -> None:
-        for retriever in self.retrievers.values():
-            retriever.index(chunks)  # type: ignore[attr-defined]
+    def index(self, chunks: Sequence[Chunk], *, store: VectorStore | None = None) -> None:
+        for name, retriever in self.retrievers.items():
+            if name == "dense" and store is not None:
+                retriever.index(chunks, store=store)  # type: ignore[attr-defined]
+            else:
+                retriever.index(chunks)  # type: ignore[attr-defined]
 
     @property
     def is_indexed(self) -> bool:

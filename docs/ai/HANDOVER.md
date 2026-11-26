@@ -1,11 +1,11 @@
 # Handover (keep to 15 lines; overwrite each session)
 
-- **Updated:** 2026-11-26
+- **Updated:** 2026-11-27
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
-- **Branch:** `fix/p1-rag-safety`, based on `origin/main` at `3616956`.
-- **Work:** verifier policy, seven guarded system prompts, model and question deadlines, PDF and OCR limits, request-scoped JSON logs, corrected config test reference.
-- **Decision:** DD-076 in `docs/DESIGN_DECISIONS.md` records the defaults and native-call timeout behavior.
-- **Key files:** `src/pipeline.py`, `src/config.py`, `src/deadlines.py`, `src/request_log.py`, `src/ingestion/`, `tests/test_safety.py`.
-- **Checks:** `python -m pytest -o addopts="" -q -rs` and `python -m src.cli validate-benchmark`.
-- **Results:** 816 passed, one real OCR test skipped (Tesseract absent), three notebook warnings. Benchmark valid. Offline FinFET answer cited pages 2–3 of `doc5.pdf`.
-- **Next:** review the local P1 diff and approve the commit. Get separate approval for each GitHub write.
+- **Branch:** `feat/p2-persistent-index`, based on P1 merge `fe36bc5`.
+- **Work:** Postgres schema and migration, pgvector adapter, owner-scoped version storage, persistent indexing and duplicate upload protection.
+- **Decision:** DD-077 in `docs/DESIGN_DECISIONS.md` covers the cache, isolation and retrieval.
+- **Key files:** `src/storage/`, `migrations/`, `src/pipeline.py`, `tests/test_postgres_library.py`.
+- **Checks:** run `docker info`, set `RAG_TEST_DATABASE_URL` to a clean Postgres+pgvector database, then run `python -m pytest tests/test_postgres_library.py -o addopts="" -q`.
+- **Results:** 4 Postgres tests passed. The full suite had 820 passed, 1 skipped (Tesseract absent), and 3 notebook warnings. Benchmark validation passed.
+- **Next:** review P2 tests and diff before committing. Get separate approval for each GitHub write.

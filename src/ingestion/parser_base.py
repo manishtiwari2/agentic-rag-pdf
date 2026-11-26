@@ -122,12 +122,15 @@ class BaseParser(ABC):
         if count > self.config.max_pages:
             raise PDFReadError(f"PDF exceeds the {self.config.max_pages}-page limit. Split it before uploading.")
 
-    @request_scope("parse PDF")
-    def parse_bytes(self, data: bytes, source_name: str) -> Document:
+    def validate_bytes(self, data: bytes, source_name: str) -> None:
         if len(data) > self.config.max_upload_mb * 1024**2:
             raise PDFReadError(f"PDF exceeds the {self.config.max_upload_mb} MiB upload limit.")
         if not data.startswith(b"%PDF-"):
             raise PDFReadError(f"{source_name} has no valid PDF header.")
+
+    @request_scope("parse PDF")
+    def parse_bytes(self, data: bytes, source_name: str) -> Document:
+        self.validate_bytes(data, source_name)
         raw_pages, pdf_metadata = self._extract(data, source_name)
         pages, removed = self._finalize_pages(raw_pages)
         ocr_pages: list[int] = []
