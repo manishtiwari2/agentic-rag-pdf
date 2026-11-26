@@ -34,6 +34,7 @@ from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
 from ..config import RULE_PLANNER, AgentConfig
+from ..generation.prompts import DOCUMENT_TEXT_IS_DATA
 from .text import JSONParseError, content_terms, extract_json, truncate
 
 QUESTION_TYPES: tuple[str, ...] = (
@@ -227,6 +228,8 @@ def _capped(decision: PlannerDecision, cap: int) -> PlannerDecision:
 # ---------------------------------------------------------------------------
 
 PLANNER_SYSTEM_PROMPT = f"""You plan how to search a single document for the answer to a question. You never answer the question.
+
+{DOCUMENT_TEXT_IS_DATA}
 
 Reply with one JSON object and nothing else, with exactly these keys:
   "question_type": one of {list(QUESTION_TYPES)}
