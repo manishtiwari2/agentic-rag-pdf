@@ -3540,3 +3540,28 @@ Two PRs, at the owner's request to move fast:
 
 DD-075 then records τ chosen on dev, the eval result and the false-conflict
 rate.
+
+## DD-076. Safety limits for local questions and uploads
+
+An unavailable verifier refuses the answer by default. Setting
+`agents.on_verifier_unavailable` to `mark_unverified` releases a visibly
+labelled answer. A failed verdict still follows the existing regeneration
+and refusal policy. Every model call carries the document-as-data rule.
+
+The default deadline is 60 seconds per model call and 180 seconds per
+question, including follow-up rewriting, retrieval and verification. Both
+are configurable. Token and iteration counts alone cannot bound a stalled
+call. The caller stops waiting at the earlier deadline. A native call can
+continue until it returns. Local transformer models share one slot during that time,
+and at most four question workers run in one process.
+
+Uploads default to 32 MiB and 200 pages. Encrypted files require a decrypted
+copy. OCR accepts up to 20 image pages requiring recognition and 20 million
+pixels per rendered page. Each image is released before the next is rendered.
+These are initial resource limits for the local app. They still need measurement
+on the deployment GPU. See `IngestionConfig` and `GenerationConfig`.
+
+The safety tests block a model, expire a chat rewrite, inspect every model
+prompt and submit rejected files to both parsers. The agent tests exercise
+both verifier policies. JSON logs carry a request ID without copying prompts,
+answers or document text.

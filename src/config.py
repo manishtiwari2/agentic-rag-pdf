@@ -2,7 +2,7 @@
 
 Every model name, chunk size, top-k and threshold in this project comes from
 here. Nothing downstream is allowed to hard-code a model identifier; a test in
-``tests/test_config.py`` enforces that by scanning the source tree.
+``tests/test_architecture.py`` enforces that by scanning the source tree.
 
 Two hard constraints from the specifications are enforced in code rather than
 left as prose:

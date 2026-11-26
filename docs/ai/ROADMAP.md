@@ -8,12 +8,12 @@ FastAPI with an htmx web UI, Ollama by default plus a vLLM option, PostgreSQL
 with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 
 ## P1 Safety fixes (current code)
-- [ ] 1.1 Verifier fails closed: "unavailable" leads to a refusal by default (config flag). Bug #1.
-- [ ] 1.2 Add `DOCUMENT_TEXT_IS_DATA` to the conflict and chat-rewrite prompts, and a test that every prompt has it. Bug #6.
-- [ ] 1.3 Per-call LLM timeout plus a wall-clock budget per question. Bug #4.
-- [ ] 1.4 Upload limits: max MB, max pages, `%PDF` magic bytes, reject encrypted PDFs. Bug #5.
-- [ ] 1.5 stdlib logging (JSON lines, request id). Replace silent excepts. Bugs #2, #3.
-- [ ] 1.6 Fix the `tests/test_config.py` reference. Bug #10.
+- [x] 1.1 Verifier fails closed: "unavailable" leads to a refusal by default (config flag). Bug #1.
+- [x] 1.2 Add `DOCUMENT_TEXT_IS_DATA` to the conflict and chat-rewrite prompts, and a test that every prompt has it. Bug #6.
+- [x] 1.3 Per-call LLM timeout plus a wall-clock budget per question. Bug #4.
+- [x] 1.4 Upload limits: max MB, max pages, `%PDF` magic bytes, reject encrypted PDFs. Bug #5.
+- [x] 1.5 stdlib logging (JSON lines, request id). Replace silent excepts. Bugs #2, #3.
+- [x] 1.6 Fix the `tests/test_config.py` reference. Bug #10.
 
 ## P2 Data layer
 - [ ] 2.1 Postgres + pgvector schema with SQLAlchemy 2 and Alembic (LF line endings).
