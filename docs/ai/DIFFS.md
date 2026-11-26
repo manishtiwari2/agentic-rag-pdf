@@ -1,0 +1,13 @@
+# Approved changes log
+
+One row per merged PR, newest at the top. Fill it in after the merge. Get the
+hash with `git log -n 1 --oneline main`.
+
+| Date | PR | Merge hash | What changed | Approved by |
+|---|---|---|---|---|
+| (next) | | | AI workflow docs (`CLAUDE.md`, `docs/ai/`) | Manish |
+| before 2026-11-26 | #56 | c5b40aa | Basic prompt-injection guard | Manish |
+| before 2026-11-26 | #55 | 83e7c1a | Contributor guide for issues #53, #54, #46 | Manish |
+| before 2026-11-26 | #52 | 3444f20 | Fixed stale claims in README, TRADEOFFS and STATUS | Manish |
+
+Earlier history: `git log --merges -n 20 --oneline`.

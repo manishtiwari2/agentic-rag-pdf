@@ -715,3 +715,13 @@ Before implementation is considered complete, verify:
 * benchmark instrumentation does not change answer behaviour.
 
 Architecture changes should be documented in `DESIGN_DECISIONS.md`.
+
+---
+
+# 27. AI Working Docs
+
+Short, AI-friendly views of this design live in `docs/ai/`:
+`FLOW.md` (data flow diagrams), `MENTAL-MODEL.md` (plain-English summary),
+`CONSTRAINTS.md` (what must not change) and `ROADMAP.md` (the production plan).
+The rules for AI sessions are in the root `CLAUDE.md`. This file stays the
+detailed source of truth.
