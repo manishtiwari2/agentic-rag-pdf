@@ -2,7 +2,7 @@
 
 Every model name, chunk size, top-k and threshold in this project comes from
 here. Nothing downstream is allowed to hard-code a model identifier; a test in
-``tests/test_config.py`` enforces that by scanning the source tree.
+``tests/test_architecture.py`` enforces that by scanning the source tree.
 
 Two hard constraints from the specifications are enforced in code rather than
 left as prose:
@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -223,6 +224,16 @@ class IngestionConfig:
     ocr_languages: str = "eng"
     #: Render resolution for OCR, in DPI; 300 is what Tesseract is tuned for.
     ocr_resolution: int = 300
+    max_upload_mb: int = 32
+    max_pages: int = 200
+    max_ocr_pages: int = 20
+    max_ocr_pixels: int = 20_000_000
+
+    def __post_init__(self) -> None:
+        for name in ("max_upload_mb", "max_pages", "max_ocr_pages", "max_ocr_pixels", "ocr_resolution"):
+            value = getattr(self, name)
+            if type(value) is not int or value <= 0:
+                raise ConfigurationError(f"ingestion.{name} must be a positive integer.")
 
 
 @dataclass(frozen=True)
@@ -333,6 +344,14 @@ class GenerationConfig:
     max_evidence_chars: int = 1600
     #: Set True only to benchmark a research-licensed checkpoint (DD-024).
     allow_non_commercial_model: bool = False
+    call_timeout_s: float = 60.0
+    question_timeout_s: float = 180.0
+
+    def __post_init__(self) -> None:
+        for name in ("call_timeout_s", "question_timeout_s"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ConfigurationError(f"generation.{name} must be finite and positive.")
 
 
 AgentBackend = Literal["llm", "rules"]
@@ -378,6 +397,7 @@ class AgentConfig:
     record_refinement_counterfactual: bool = True
 
     verification_enabled: bool = True
+    on_verifier_unavailable: Literal["refuse", "mark_unverified"] = "refuse"
     verifier: AgentBackend = "llm"
     #: Share of a claim's content terms its cited evidence must contain for the
     #: rule-based verifier to call it supported (DD-054).
@@ -691,6 +711,8 @@ class RAGConfig:
 
     def _validate_agents(self) -> None:
         a = self.agents
+        if a.on_verifier_unavailable not in ("refuse", "mark_unverified"):
+            raise ConfigurationError("agents.on_verifier_unavailable must be refuse or mark_unverified.")
         if a.max_retrieval_iterations < 1:
             raise ConfigurationError(
                 "agents.max_retrieval_iterations counts retrieval rounds, the "

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from ..config import IngestionConfig
 from ..errors import EmptyDocumentError, PDFReadError, ScannedPDFError
+from ..request_log import request_scope
 from .document import Block, BlockKind, Document, Page, make_document_id
 from .ocr import OcrEngine, build_ocr_engine
 from .render import render_page_images
@@ -101,19 +102,32 @@ class BaseParser(ABC):
 
     # -- public -------------------------------------------------------------
 
+    @request_scope("parse PDF")
     def parse(self, path: str | os.PathLike[str]) -> Document:
         path = os.fspath(path)
         if not os.path.exists(path):
             raise PDFReadError(f"No such file: {path!r}.")
         if not os.path.isfile(path):
             raise PDFReadError(f"Not a file: {path!r}.")
-        with open(path, "rb") as handle:
-            data = handle.read()
+        try:
+            with open(path, "rb") as handle:
+                data = handle.read(self.config.max_upload_mb * 1024**2 + 1)
+        except OSError as exc:
+            raise PDFReadError("The PDF could not be read. Check the file and try again.") from exc
         if not data:
             raise PDFReadError(f"{os.path.basename(path)} is empty (0 bytes).")
         return self.parse_bytes(data, os.path.basename(path))
 
+    def _check_page_count(self, count: int) -> None:
+        if count > self.config.max_pages:
+            raise PDFReadError(f"PDF exceeds the {self.config.max_pages}-page limit. Split it before uploading.")
+
+    @request_scope("parse PDF")
     def parse_bytes(self, data: bytes, source_name: str) -> Document:
+        if len(data) > self.config.max_upload_mb * 1024**2:
+            raise PDFReadError(f"PDF exceeds the {self.config.max_upload_mb} MiB upload limit.")
+        if not data.startswith(b"%PDF-"):
+            raise PDFReadError(f"{source_name} has no valid PDF header.")
         raw_pages, pdf_metadata = self._extract(data, source_name)
         pages, removed = self._finalize_pages(raw_pages)
         ocr_pages: list[int] = []
@@ -153,17 +167,16 @@ class BaseParser(ABC):
         needed = [p.page_number for p in pages if not p.text.strip() and p.image_count > 0]
         if not needed:
             return pages, []
+        if len(needed) > self.config.max_ocr_pages:
+            raise PDFReadError(f"PDF exceeds the {self.config.max_ocr_pages}-page OCR limit. Split it before uploading.")
         if self._ocr_engine is None:
             self._ocr_engine = build_ocr_engine(self.config)
-        images = render_page_images(
-            data, needed, resolution=self.config.ocr_resolution, password=self.config.password
-        )
-        replaced = {
-            p.page_number: self._ocr_page(p, images[p.page_number])
-            for p in pages
-            if p.page_number in images
-        }
-        return [replaced.get(p.page_number, p) for p in pages], needed
+        pages = list(pages)
+        for number, image in render_page_images(
+            data, needed, resolution=self.config.ocr_resolution, max_pixels=self.config.max_ocr_pixels
+        ):
+            pages[number - 1] = self._ocr_page(pages[number - 1], image)
+        return pages, needed
 
     def _ocr_page(self, page: Page, image: object) -> Page:
         text = normalize_text(self._ocr_engine.image_to_text(image), self.config)

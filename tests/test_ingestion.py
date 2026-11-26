@@ -73,15 +73,37 @@ class TestFailureModes:
         with pytest.raises(EncryptedPDFError, match="password"):
             parser.parse_bytes(pdfs.encrypted_pdf(), "enc.pdf")
 
-    def test_encrypted_pdf_opens_with_the_password(self, make_parser):
-        parser = make_parser(password="secret")
-        document = parser.parse_bytes(pdfs.encrypted_pdf("secret"), "enc.pdf")
-        assert "Confidential" in document.page(1).text
+    def test_encryption_is_rejected_even_if_the_file_opens_without_a_password(self, parser):
+        with pytest.raises(EncryptedPDFError):
+            parser.parse_bytes(pdfs.encrypted_pdf(user_password=""), "enc.pdf")
 
-    def test_wrong_password_is_reported_as_such(self, make_parser):
-        parser = make_parser(password="wrong")
-        with pytest.raises(EncryptedPDFError, match="rejected"):
+    @pytest.mark.parametrize("password", ["secret", "wrong"])
+    def test_encrypted_upload_is_rejected_even_with_a_password(self, make_parser, password):
+        parser = make_parser(password=password)
+        with pytest.raises(EncryptedPDFError, match="decrypted copy"):
             parser.parse_bytes(pdfs.encrypted_pdf("secret"), "enc.pdf")
+
+    def test_page_cap_precedes_page_extraction(self, make_parser, monkeypatch):
+        parser = make_parser(max_pages=2)
+        data = pdfs.multipage_pdf(2)
+        assert parser.parse_bytes(data, "ok.pdf").page_count == 2
+        monkeypatch.setattr(parser, "_extract_page", lambda *args: pytest.fail("extracted a page"))
+        with pytest.raises(PDFReadError, match="2-page limit"):
+            parser.parse_bytes(pdfs.multipage_pdf(3), "big.pdf")
+
+    def test_file_and_bytes_enforce_size_before_opening_pdf(self, make_parser, tmp_path):
+        parser = make_parser(max_upload_mb=1)
+        data = bytes(1024**2 + 1)
+        path = tmp_path / "big.pdf"
+        path.write_bytes(data)
+        with pytest.raises(PDFReadError, match="1 MiB"):
+            parser.parse(path)
+        with pytest.raises(PDFReadError, match="1 MiB"):
+            parser.parse_bytes(data, "big.pdf")
+
+    def test_ocr_page_limit_precedes_rendering(self, make_parser):
+        with pytest.raises(PDFReadError, match="1-page OCR limit"):
+            make_parser(max_ocr_pages=1).parse_bytes(pdfs.scanned_pdf(2), "scan.pdf")
 
     def test_blank_pdf_raises(self, parser):
         with pytest.raises(EmptyDocumentError):

@@ -22,9 +22,11 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from threading import BoundedSemaphore
 from typing import Protocol, runtime_checkable
 
 from ..config import GenerationConfig
+from ..deadlines import remaining_seconds, run_bounded
 from ..errors import GenerationError, ModelLoadError
 from .prompts import ABSTENTION_SENTENCE, parse_user_prompt
 
@@ -61,11 +63,18 @@ class ScriptedBackend:
     """Extractive answering by weighted term overlap. No model, no downloads."""
 
     name = "scripted"
+    _slot = BoundedSemaphore(1)
 
-    def __init__(self, match_threshold: float = DEFAULT_MATCH_THRESHOLD) -> None:
+    def __init__(self, match_threshold: float = DEFAULT_MATCH_THRESHOLD, config: GenerationConfig | None = None) -> None:
         self.match_threshold = match_threshold
+        self.config = config or GenerationConfig()
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
+        return run_bounded(
+            "Model call", self.config.call_timeout_s, self._slot, lambda: self._answer(user_prompt)
+        )
+
+    def _answer(self, user_prompt: str) -> str:
         question, blocks = parse_user_prompt(user_prompt)
         if not blocks:
             return ABSTENTION_SENTENCE
@@ -172,6 +181,8 @@ class HuggingFaceBackend:
     """A local instruct model via ``transformers``."""
 
     name = "transformers"
+    # A fresh index can create a new backend while an old GPU call is unwinding.
+    _slot = BoundedSemaphore(1)
 
     def __init__(self, config: GenerationConfig) -> None:
         self.config = config
@@ -240,6 +251,12 @@ class HuggingFaceBackend:
         self._model.eval()
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
+        return run_bounded(
+            "Model call", self.config.call_timeout_s, self._slot,
+            lambda: self._generate(system_prompt, user_prompt),
+        )
+
+    def _generate(self, system_prompt: str, user_prompt: str) -> str:
         self._ensure_loaded()
         import torch  # noqa: PLC0415
 
@@ -251,7 +268,7 @@ class HuggingFaceBackend:
             text = self._tokenizer.apply_chat_template(  # type: ignore[misc]
                 messages, tokenize=False, add_generation_prompt=True
             )
-        except Exception:  # pragma: no cover - model without a chat template
+        except ValueError:  # tokenizer without a chat template
             text = f"{system_prompt}\n\n{user_prompt}"
 
         inputs = self._tokenizer(text, return_tensors="pt").to(  # type: ignore[misc]
@@ -270,6 +287,7 @@ class HuggingFaceBackend:
         if not greedy:
             kwargs["temperature"] = self.config.temperature
 
+        kwargs["max_time"] = remaining_seconds()
         try:
             with torch.no_grad():
                 output = self._model.generate(**inputs, **kwargs)  # type: ignore[misc]
@@ -291,5 +309,5 @@ def build_backend(config: GenerationConfig) -> LLMBackend:
     from ..config import SCRIPTED_BACKEND  # noqa: PLC0415
 
     if config.backend == "scripted" or config.model_id == SCRIPTED_BACKEND:
-        return ScriptedBackend()
+        return ScriptedBackend(config=config)
     return HuggingFaceBackend(config)

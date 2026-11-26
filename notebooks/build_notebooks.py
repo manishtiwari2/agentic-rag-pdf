@@ -415,7 +415,7 @@ try:
     from src.chat.ui import build_app
     app = build_app(offline=OFFLINE)
     if IN_COLAB:
-        app.launch(share=True, debug=False)
+        app.launch(share=True, debug=False, max_file_size=make_config("agentic", OFFLINE).ingestion.max_upload_mb * 1024**2)
     else:
         print("Chat app built; call app.launch() to open it.")
 except ImportError:
