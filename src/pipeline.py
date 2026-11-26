@@ -68,11 +68,12 @@ from .ingestion.parser import build_parser
 from .request_log import request_scope
 from .versioning import DocumentVersion, resolve_version
 from .reranking.reranker import Reranker, build_reranker, rerank
-from .retrieval.embeddings import build_embedder
+from .retrieval.embeddings import Embedder, build_embedder
 from .retrieval.fusion import reciprocal_rank_fusion
 from .retrieval.hybrid import Candidates, HybridRetriever
 from .retrieval.lexical import LexicalRetriever
 from .retrieval.retriever import DenseRetriever, RetrievedChunk
+from .retrieval.vector_store import VectorStore
 
 #: The stages each system declares in its per-question metadata. The error
 #: taxonomy's reserved ``reranking`` category can fire only for a system that
@@ -192,7 +193,7 @@ class _RetrieveThenGenerate:
     name = "retrieve_then_generate"
     strategy = ""
 
-    def __init__(self, config: RAGConfig | None = None) -> None:
+    def __init__(self, config: RAGConfig | None = None, *, embedder: Embedder | None = None) -> None:
         self.config = (config or RAGConfig.default()).validate()
         if self.config.retrieval.strategy != self.strategy:
             raise ConfigurationError(
@@ -203,6 +204,7 @@ class _RetrieveThenGenerate:
             )
         self._parser = build_parser(self.config.ingestion)
         self._chunker = build_chunker(self.config.chunking)
+        self._embedder = embedder
         self._retriever = self._build_retriever()
         self._generator = GroundedGenerator(self.config.generation)
         self.document: Document | None = None
@@ -230,12 +232,24 @@ class _RetrieveThenGenerate:
     def _build_retriever(self) -> Any:  # pragma: no cover - abstract
         raise NotImplementedError
 
+    def _dense_retriever(self) -> DenseRetriever:
+        return DenseRetriever(self._embedder or build_embedder(self.config.embedding), self.config.retrieval)
+
     def _rank(
         self, question: str, k: int
     ) -> tuple[list[RetrievedChunk], dict[str, object]]:  # pragma: no cover - abstract
         raise NotImplementedError
 
     # -- indexing -----------------------------------------------------------
+
+    def load_index(
+        self, chunks: Sequence[Chunk], store: VectorStore,
+        versions: dict[str, DocumentVersion], source_names: dict[str, str],
+    ) -> None:
+        """Attach precomputed vectors and rebuild lexical retrieval from the same chunks."""
+        self._retriever.index(chunks, store=store)
+        self.chunks = tuple(chunks)
+        self.versions, self.source_names = dict(versions), dict(source_names)
 
     @request_scope("index PDF")
     def index(self, pdf_path: str | os.PathLike[str], version: str | None = None) -> Document:
@@ -472,7 +486,7 @@ class DenseRAGPipeline(_RetrieveThenGenerate):
     strategy = "dense"
 
     def _build_retriever(self) -> DenseRetriever:
-        return DenseRetriever(build_embedder(self.config.embedding), self.config.retrieval)
+        return self._dense_retriever()
 
     def _rank(
         self, question: str, k: int
@@ -496,18 +510,17 @@ class HybridRAGPipeline(_RetrieveThenGenerate):
     strategy = "hybrid"
 
     def __init__(
-        self, config: RAGConfig | None = None, reranker: Reranker | None = None
+        self, config: RAGConfig | None = None, reranker: Reranker | None = None,
+        *, embedder: Embedder | None = None,
     ) -> None:
-        super().__init__(config)
+        super().__init__(config, embedder=embedder)
         self.reranker: Reranker | None = None
         if self.config.uses_reranker:
             self.reranker = reranker or build_reranker(self.config.reranking)
 
     def _build_retriever(self) -> HybridRetriever:
         available = {
-            "dense": lambda: DenseRetriever(
-                build_embedder(self.config.embedding), self.config.retrieval
-            ),
+            "dense": self._dense_retriever,
             "lexical": lambda: LexicalRetriever(self.config.retrieval),
         }
         return HybridRetriever(
@@ -610,8 +623,10 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         refiner: Refiner | None = None,
         verifier: Verifier | None = None,
         backend: LLMBackend | None = None,
+        *,
+        embedder: Embedder | None = None,
     ) -> None:
-        super().__init__(config, reranker)
+        super().__init__(config, reranker, embedder=embedder)
         if backend is not None:
             self._generator = GroundedGenerator(self.config.generation, backend=backend)
         # One generation model, shared: the LLM agents ask the model the
@@ -1066,7 +1081,7 @@ SYSTEMS: dict[str, type[_RetrieveThenGenerate]] = {
 }
 
 
-def build_pipeline(config: RAGConfig | None = None) -> _RetrieveThenGenerate:
+def build_pipeline(config: RAGConfig | None = None, *, embedder: Embedder | None = None) -> _RetrieveThenGenerate:
     """The system ``config`` describes -- Baseline A, B or the agentic system --
     chosen by configuration alone."""
     config = config or RAGConfig.default()
@@ -1077,4 +1092,4 @@ def build_pipeline(config: RAGConfig | None = None) -> _RetrieveThenGenerate:
             f"Unknown retrieval.strategy {config.retrieval.strategy!r}; "
             f"expected one of {sorted(SYSTEMS)}."
         ) from None
-    return system(config)
+    return system(config, embedder=embedder)
