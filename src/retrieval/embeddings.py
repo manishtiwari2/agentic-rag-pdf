@@ -79,8 +79,9 @@ class HashingEmbedder:
     gets the maximum weight, since a rare term is the informative kind.
     """
 
-    def __init__(self, config: EmbeddingConfig | None = None) -> None:
+    def __init__(self, config: EmbeddingConfig | None = None, *, fit_idf: bool = True) -> None:
         config = config or EmbeddingConfig()
+        self._fit_corpus_idf = fit_idf
         self.model_id = config.model_id
         self.dimension = int(config.hashing_dim)
         if self.dimension <= 0:
@@ -92,7 +93,8 @@ class HashingEmbedder:
 
     def embed_documents(self, texts: Sequence[str]) -> Vectors:
         documents = [list(_features(text)) for text in texts]
-        self._fit_idf(documents)
+        if self._fit_corpus_idf:
+            self._fit_idf(documents)
         if not documents:
             return np.zeros((0, self.dimension), dtype=np.float32)
         return _l2_normalize(
@@ -263,10 +265,10 @@ class HuggingFaceEmbedder:
         return (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
 
-def build_embedder(config: EmbeddingConfig) -> Embedder:
+def build_embedder(config: EmbeddingConfig, *, fit_idf: bool = True) -> Embedder:
     """Construct the embedder named by the configuration (DD-017)."""
     from ..config import HASHING_EMBEDDER  # noqa: PLC0415
 
     if config.model_id == HASHING_EMBEDDER:
-        return HashingEmbedder(config)
+        return HashingEmbedder(config, fit_idf=fit_idf)
     return HuggingFaceEmbedder(config)
