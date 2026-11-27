@@ -30,6 +30,7 @@ from src.api.settings import Settings
 from src.api import worker as ingestion_worker
 from src.api.worker import ingest, shutdown, startup
 from src.config import GenerationConfig
+from src.generation.prompts import ABSTENTION_SENTENCE
 from src.storage.schema import users
 
 from . import pdf_fixtures
@@ -294,3 +295,19 @@ def test_web_pages_use_saved_passages_and_escape_stored_content(settings, engine
         assert "&lt;img src=x onerror=alert(1)&gt;" in saved.text and dangerous not in saved.text
         assert f"Page {page}</a>" in saved.text
         assert other.get(f"/chat?chat_id={chat_id}").status_code == 404
+
+
+def test_configured_reranker_floor_applies_to_an_existing_index(settings, engine, monkeypatch):
+    with client(settings, engine) as browser:
+        csrf = sign_in(browser)
+        owner = UUID(browser.get("/auth/me").json()["user_id"])
+        version = browser.app.state.library.ingest(owner, PDF, "report.pdf")
+
+        monkeypatch.setenv("RAG_RERANKER_MIN_SCORE", "2")
+        with client(Settings.from_env(), engine) as strict:
+            strict.cookies.update(browser.cookies)
+            response = strict.post("/ask", headers=csrf, json={"question": QUESTION, "version_ids": [str(version.id)]})
+            assert response.status_code == 200 and "event: answer" in response.text
+            reply = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")][-1]
+            assert reply["abstained"] and reply["answer"] == ABSTENTION_SENTENCE
+            assert reply["citations"] == []

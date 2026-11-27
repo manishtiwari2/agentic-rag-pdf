@@ -195,6 +195,18 @@ class TestConfiguration:
         assert described["evidence_controller"].startswith("local/rule-based")
         assert described["verifier"].startswith("local/rule-based")
 
+    def test_floor_changes_the_run_fingerprint_without_invalidating_indexes(self):
+        base = agentic_config(RAGConfig.offline())
+        original = dataclasses.replace(base, reranking=dataclasses.replace(base.reranking, min_score=None))
+        graded = dataclasses.replace(
+            original, reranking=dataclasses.replace(original.reranking, min_score=0.5),
+        )
+        assert graded.fingerprint() != original.fingerprint()
+        assert graded.fingerprint(for_index=True) == original.fingerprint()
+        invalid = dataclasses.replace(graded, reranking=dataclasses.replace(graded.reranking, min_score=float("nan")))
+        with pytest.raises(ConfigurationError, match="reranking.min_score must be finite"):
+            invalid.validate()
+
     def test_llm_agents_are_refused_on_the_scripted_backend(self):
         config = dataclasses.replace(
             agentic_config(RAGConfig.offline()), agents=RAGConfig().agents
@@ -392,7 +404,39 @@ class TestEveryLoopStopsAtItsCap:
         assert len(generations) == bounds["regenerations_used"] + 1
         assert verifier.calls == sum(1 for g in generations if not g["abstained"])
         assert result.answer == ABSTENTION_SENTENCE
-        assert result.metadata["abstention_source"] in ("verifier", "generator")
+        assert result.metadata["abstention_source"] in ("verifier", "generator", "reranker")
+        if result.metadata["abstention_source"] == "reranker":
+            assert result.metadata["reranker_grade"]["passed"] is False
+
+
+@pytest.mark.parametrize("score", [0.10, 0.40])
+def test_reranker_floor_uses_raw_scores_after_query_fusion(offline_config, structured_pdf_path, score):
+    question = "How does the branching model differ from trunk-based development?"
+
+    class FixedReranker:
+        model_id = "test/fixed-score"
+
+        def score(self, query, passages):
+            return [0.05 if query == question else score] * len(passages)
+
+    config = agentic_config(offline_config, evidence_controller_enabled=False, verification_enabled=False)
+    config = dataclasses.replace(config, reranking=dataclasses.replace(config.reranking, min_score=0.40))
+    backend = Canned("The hybrid system achieved 0.65 recall. [C1]")
+    pipeline = indexed(config, structured_pdf_path, reranker=FixedReranker(), backend=backend)
+
+    result = pipeline.ask(question)
+
+    assert len(result.metadata["sub_queries"]) > 1
+    assert result.metadata["top_score"] < 0.40
+    passed = score >= 0.40
+    assert result.metadata["reranker_grade"] == {"floor": 0.40, "score": score, "passed": passed}
+    if passed:
+        assert not result.abstained and result.citations and backend.calls == 1
+    else:
+        assert result.abstained and result.answer == ABSTENTION_SENTENCE
+        assert result.metadata["abstention_source"] == "reranker"
+        assert result.metadata["abstention_reason"] == "low_reranker_score"
+        assert not result.citations and backend.calls == 0
 
 
 # ---------------------------------------------------------------------------

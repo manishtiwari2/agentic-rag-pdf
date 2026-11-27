@@ -3666,3 +3666,44 @@ CDN availability. Version 2.0.11 is vendored with its upstream license.
 After the browser flow passed, the FastAPI workspace replaced the Gradio app.
 The `chat` command starts FastAPI. Colab still supports local question
 examples and the follow-up conversation through `ChatSession`.
+
+## DD-080. Decline answers below the reranker score floor
+
+Check the highest raw reranker score among the evidence about to be sent to
+the generator. For a passage found by several queries, use its best score
+from those queries. The check reuses scores the reranker already computed
+and does not affect retrieval or rank fusion. Below the floor, return the
+standard refusal before calling the generator. The basic retrieval threshold
+remains separately configurable for callers who use it.
+
+Term overlap and cross-encoder logits have different scales. Tune the offline
+term-overlap floor independently. The cross-encoder floor is opt-in until a
+model-backed dev run can calibrate it. Dense retrieval and reranker-off runs
+bypass the reranker floor.
+
+### Offline dev decision rule
+
+Run hybrid and agentic on the dev split with the floor off and at 0.10, 0.20,
+0.35, and 0.50. Reject a candidate that lowers answerable accuracy or increases
+answerable refusals in either system. Among the rest, choose the floor with
+the largest combined gain in correct refusals on unanswerable questions, with
+ties going to the lower floor. If none improves refusals, use 0.01 only if it
+passes the same checks. This catches zero-overlap evidence. Leave the floor
+disabled if that fallback also fails. Report paired 95% bootstrap intervals
+against the floor-off run. Use the offline stand-in stack and the dev split
+throughout.
+
+### Dev results
+
+The rule selected the 0.01 floor. For hybrid and agentic, answerable
+accuracy stayed at 8/30. Correct refusals stayed at 0/3 for hybrid and 1/3
+for agentic. The paired 95% intervals for the change in answerable accuracy,
+answerable refusals, and correct refusals were all [0.000, 0.000].
+There were no changed questions at this floor. The 0.35 and 0.50 floors
+caught more unanswerable questions but also refused more answerable ones.
+With three unanswerable questions, this run gives limited coverage.
+
+Use `--reranker-min-score` to set the floor or `--no-reranker-floor` for the
+reference arm and to reproduce the archived Baseline B. The API reads
+`RAG_RERANKER_MIN_SCORE`. Changing the floor changes the run fingerprint
+and keeps the stored index usable.

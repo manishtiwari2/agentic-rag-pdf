@@ -2,12 +2,11 @@
 
 - **Updated:** 2026-11-27
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
-- **Branch:** `feat/p4-web-ui`, based on P3 merge `005b7a8`.
-- **Work:** FastAPI pages, upload progress and status, SSE chat, safe message rendering, and a PDF viewer with owner-checked highlights. Gradio was removed.
-- **Decision:** DD-079 covers server-rendered pages, safe streaming, and citation matching.
-- **Key files:** `src/web/`, `src/ingestion/highlight.py`, `src/api/app.py`, `migrations/versions/0003_job_filename.py`.
-- **Targeted:** after `docker info`, set the Postgres and Redis test URLs and run `python -m pytest tests/test_highlight.py tests/test_api.py tests/test_postgres_library.py -o addopts="" -q -rs --tb=short`. 13 passed on Python 3.10 and 3.13.
-- **Full:** `python -m pytest -o addopts="" -q -rs --tb=short` on Python 3.13 gave 813 passed and one OCR skip (Tesseract absent).
-- **Other checks:** `python -m src.cli validate-benchmark`, `node --check src/web/static/app.js`, the clean wheel, and the offline notebook against `v0.7-gpu-run` passed.
-- **Browser:** Manish verified registration, PDF upload, chat and a highlighted citation in Chrome.
-- **Next:** after approval, commit P4, run `git log origin/main..HEAD` and `git diff origin/main --stat`, then `git push -u origin feat/p4-web-ui` and open the PR. Start P5 after merge.
+- **Branch:** `feat/p5-agent-quality`, based on PR #61 merge `f1d9716`.
+- **P5.1:** Gate generation on raw reranker scores and keep index fingerprints stable when the floor changes.
+- **Decision:** DD-080 chose 0.01 on the offline dev split. Refusals and accuracy were unchanged on those questions. The cross-encoder floor is opt-in.
+- **Key files:** `src/pipeline.py`, `src/config.py`, `src/api/settings.py`, `tests/test_agentic.py`.
+- **Targeted:** after `docker info`, set the Postgres and Redis test URLs. Run `python -m pytest tests/test_agentic.py tests/test_api.py tests/test_postgres_library.py -k "reranker_floor or floor_changes or reuse or versions_change or regenerations_stop_at_the_cap" -o addopts="" -q -rs --tb=short`. Nine passed on Python 3.10 and 3.13.
+- **Full:** `python -m pytest -o addopts="" -q -x -rs --tb=short` with Postgres and Redis returned 817 passed and one OCR skip (Tesseract absent).
+- **Other checks:** `python -m src.cli validate-benchmark` passed. The offline CLI answered with real pages and refused a question with zero overlap.
+- **Next:** P5.2 adds a hint when question terms are missing from the evidence. Keep P5 work on this branch until it is ready for review.

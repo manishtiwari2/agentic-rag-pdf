@@ -83,6 +83,11 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
                 "baseline has no reranker to switch off."
             )
         reranking = replace(reranking, enabled=False)
+    floor = getattr(args, "reranker_min_score", None)
+    if floor is not None or getattr(args, "no_reranker_floor", False):
+        if system == "dense" or not reranking.enabled:
+            raise ConfigurationError("The reranker score floor requires reranking.")
+        reranking = replace(reranking, min_score=floor)
     if getattr(args, "no_hybrid", False):
         if system not in ("hybrid", "agentic"):
             raise ConfigurationError(
@@ -204,6 +209,13 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
         "--no-rerank",
         action="store_true",
         help="Hybrid/agentic: the 'Reranker OFF' ablation (EVALUATION_PROTOCOL.md 24).",
+    )
+    floor = parser.add_mutually_exclusive_group()
+    floor.add_argument(
+        "--reranker-min-score", type=float, help="Refuse below this raw reranker score.",
+    )
+    floor.add_argument(
+        "--no-reranker-floor", action="store_true", help="Turn off the reranker score floor.",
     )
     parser.add_argument(
         "--no-hybrid",

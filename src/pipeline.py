@@ -35,6 +35,7 @@ own layer and could be swapped through configuration alone.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass, field, replace
@@ -82,6 +83,7 @@ STAGE_RETRIEVAL = "retrieval"
 STAGE_RERANKING = "reranking"
 STAGE_CONTEXT_SELECTION = "context-selection"
 STAGE_GENERATION = "generation"
+LOW_RERANKER_SCORE = "low_reranker_score"
 #: The agentic system's stages. ``verification`` is the taxonomy's second
 #: reserved category, which can fire only for a system declaring it (DD-054).
 STAGE_PLANNING = "planning"
@@ -435,19 +437,31 @@ class _RetrieveThenGenerate:
     def _maybe_generate(
         self, question: str, retrieved: list[RetrievedChunk]
     ) -> GeneratedAnswer:
-        """Short-circuit to a refusal when retrieval clearly found nothing.
-
-        The score threshold is disabled by default. EXPERIMENT_PLAN.md section 5
-        is explicit that untuned thresholds do not belong in the system before
-        there is a dev set to tune them on, so out of the box the pipeline only
-        short-circuits when retrieval returned nothing at all.
-        """
+        """Check the retrieval threshold, then grade the context before generation."""
         minimum = self.config.retrieval.min_score
         if minimum is not None and retrieved and retrieved[0].score < minimum:
             retrieved = []
-        if not self.config.conflicts.enabled:
-            return self._generator.generate(question, retrieved)
-        return self._generate_with_conflicts(question, retrieved)
+        grade = self._reranker_grade(retrieved)
+        if self.config.conflicts.enabled and (grade is None or grade["passed"]):
+            return self._generate_with_conflicts(question, retrieved)
+        return self._generate_graded(question, retrieved, grade)
+
+    def _reranker_grade(self, retrieved: list[RetrievedChunk]) -> dict[str, float | bool | None] | None:
+        floor = self.config.reranker_score_floor
+        if floor is None or not retrieved:
+            return None
+        scores = (item.retrieved.reranker_score for item in build_evidence(retrieved, self.config.generation))
+        best = max((score for score in scores if score is not None and math.isfinite(score)), default=None)
+        return {"floor": floor, "score": best, "passed": best is not None and best >= floor}
+
+    def _generate_graded(
+        self, question: str, retrieved: list[RetrievedChunk], grade: dict[str, float | bool | None] | None,
+    ) -> GeneratedAnswer:
+        weak = grade is not None and not grade["passed"]
+        generated = self._generator.generate(question, [] if weak else retrieved)
+        if grade is not None:
+            generated.metadata["reranker_grade"] = grade
+        return replace(generated, abstention_reason=LOW_RERANKER_SCORE) if weak else generated
 
     def _generate_with_conflicts(
         self, question: str, retrieved: list[RetrievedChunk]
@@ -465,7 +479,7 @@ class _RetrieveThenGenerate:
             question,
             retrieved,
             report,
-            lambda chunks: self._generator.generate(question, chunks),
+            lambda chunks: self._generate_graded(question, chunks, self._reranker_grade(chunks)),
             self.config.generation,
             self._generator.backend.name,
         )
@@ -663,8 +677,15 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         if len(rankings) == 1:
             return list(rankings[0])
         fused = reciprocal_rank_fusion(rankings, k=self.config.retrieval.rrf_k)
+        reranker_scores: dict[str, float] = {}
+        for ranking in rankings:
+            for item in ranking:
+                score = item.reranker_score
+                if score is not None and math.isfinite(score):
+                    reranker_scores[item.chunk_id] = max(score, reranker_scores.get(item.chunk_id, score))
         return [
-            replace(item, source="+".join(dict.fromkeys(item.source.split("+"))))
+            replace(item, source="+".join(dict.fromkeys(item.source.split("+"))),
+                    reranker_score=reranker_scores.get(item.chunk_id))
             for item in fused
         ]
 
@@ -850,6 +871,8 @@ class AgenticRAGPipeline(HybridRAGPipeline):
                 elif generated.abstained:
                     abstention_source = "generator"
 
+        if generated.abstention_reason == LOW_RERANKER_SCORE:
+            abstention_source = "reranker"
         state.selected_context = [e.chunk_id for e in generated.evidence]
         withheld = verification_status == VERIFICATION_UNAVAILABLE and generated.abstained
         if withheld:
@@ -862,9 +885,9 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             "abstained": generated.abstained,
             "abstention_source": abstention_source,
         }
-        refinement_changed = None if withheld else self._refinement_counterfactual(
-            question, outcome, draft, context, state
-        )
+        refinement_changed = None
+        if not withheld and abstention_source != "reranker":
+            refinement_changed = self._refinement_counterfactual(question, outcome, draft, context, state)
 
         pre_top = outcome.pre_rerank[:k]
         metadata: dict[str, object] = {

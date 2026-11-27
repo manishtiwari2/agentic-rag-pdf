@@ -62,15 +62,15 @@ def rerank(
     items = list(candidates)
     if not items:
         return []
-    scores = reranker.score(query, [item.chunk.text for item in items])
+    scores = [float(score) for score in reranker.score(query, [item.chunk.text for item in items])]
     if len(scores) != len(items):
         raise RerankingError(
             f"Reranker {reranker.model_id!r} returned {len(scores)} scores for "
             f"{len(items)} candidates."
         )
-    order = sorted(range(len(items)), key=lambda i: (-float(scores[i]), i))
+    order = sorted(range(len(items)), key=lambda i: (-scores[i], i))
     return [
-        replace(items[i], score=float(scores[i]), rank=rank)
+        replace(items[i], score=scores[i], rank=rank, reranker_score=scores[i])
         for rank, i in enumerate(order, start=1)
     ]
 

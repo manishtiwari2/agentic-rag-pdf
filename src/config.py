@@ -300,10 +300,8 @@ class RetrievalConfig:
     bm25_b: float = 0.75
     #: "auto" uses FAISS when importable and falls back to the numpy index.
     index: Literal["auto", "faiss", "numpy"] = "auto"
-    #: Abstain without calling the generator when the best score falls below
-    #: this. ``None`` disables it: EXPERIMENT_PLAN.md forbids introducing an
-    #: untuned threshold, so by default the pipeline only short-circuits when
-    #: retrieval returns nothing at all.
+    #: Optional cutoff on the final ranking's score, separate from the raw
+    #: reranker floor.
     min_score: float | None = None
 
 
@@ -326,6 +324,8 @@ class RerankingConfig:
     #: Size of the fused pool handed to the reranker -- and, with the reranker
     #: off, the depth of the ranking returned unchanged (DD-046).
     candidates: int = 20
+    #: Raw scores use the active reranker's scale (DD-080).
+    min_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -476,7 +476,7 @@ class RAGConfig:
                 quantization="none",
                 device="cpu",
             ),
-            reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu"),
+            reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu", min_score=0.01),
             agents=AgentConfig(
                 planner="rules", evidence_controller="rules", verifier="rules"
             ),
@@ -521,6 +521,10 @@ class RAGConfig:
         return self.is_hybrid and self.reranking.enabled
 
     @property
+    def reranker_score_floor(self) -> float | None:
+        return self.reranking.min_score if self.uses_reranker else None
+
+    @property
     def max_retrieval_iterations(self) -> int | None:
         """The retrieval-round cap actually in force, or None for a baseline.
 
@@ -535,12 +539,15 @@ class RAGConfig:
             return 1
         return a.max_retrieval_iterations
 
-    def fingerprint(self) -> str:
-        """Stable hash of the whole configuration, recorded with every result."""
+    def fingerprint(self, *, for_index: bool = False) -> str:
+        """Stable hash for a run or a stored index."""
         record = dataclasses.asdict(self)
         if not self.conflicts.enabled:
             # DD-074: a run with conflicts off is the run it always was.
             record.pop("conflicts")
+        if for_index or self.reranker_score_floor is None:
+            # The floor controls generation and can change without re-indexing.
+            record["reranking"].pop("min_score")
         blob = json.dumps(record, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -577,6 +584,7 @@ class RAGConfig:
                 (rer.license if rer else "unregistered") if self.uses_reranker else None
             ),
             "rerank_candidates": self.reranking.candidates if hybrid else None,
+            **({"reranker_min_score": self.reranker_score_floor} if self.reranker_score_floor is not None else {}),
             **self._describe_agents(),
             "estimated_vram_gb": self.estimate_vram_gb(),
         }
@@ -635,6 +643,9 @@ class RAGConfig:
         r = self.retrieval
         if r.top_k <= 0:
             raise ConfigurationError("retrieval.top_k must be positive.")
+        floor = self.reranking.min_score
+        if floor is not None and not math.isfinite(floor):
+            raise ConfigurationError("reranking.min_score must be finite.")
         if not r.retrievers or any(name not in RETRIEVERS for name in r.retrievers):
             raise ConfigurationError(
                 f"retrieval.retrievers must be a non-empty selection of "

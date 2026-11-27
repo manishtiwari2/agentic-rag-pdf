@@ -5,6 +5,7 @@ hash with `git log -n 1 --oneline main`.
 
 | Date | PR | Merge hash | What changed | Approved by |
 |---|---|---|---|---|
+| 2026-11-27 | #61 | f1d9716 | Authenticated web workspace and highlighted PDF citations | Manish |
 | 2026-11-27 | #60 | 005b7a8 | Authenticated FastAPI, background ingestion, and SSE questions | Manish |
 | 2026-11-27 | #59 | 6d0af06 | Postgres storage, pgvector search, and persistent PDF indexing | Manish |
 | (next) | | | AI workflow docs (`CLAUDE.md`, `docs/ai/`) | Manish |
