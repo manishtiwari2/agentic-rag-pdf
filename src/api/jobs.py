@@ -72,7 +72,7 @@ class UploadJobs:
             if count >= 10:
                 raise ApiError(429, "upload_queue_full", "Wait for an existing upload to finish.")
             job_id = uuid4()
-            conn.execute(jobs.insert().values(user_id=owner, id=job_id, document_id=document_id))
+            conn.execute(jobs.insert().values(user_id=owner, id=job_id, document_id=document_id, filename=filename))
             conn.execute(job_uploads.insert().values(
                 user_id=owner, id=job_id, file_sha256=digest, filename=filename,
                 version_label=version, data=data, size_bytes=len(data),
@@ -82,7 +82,7 @@ class UploadJobs:
 
     def status(self, owner: UUID, job_id: UUID | None = None):
         c = jobs.c
-        query = select(c.id, c.document_id, c.result_version_id, c.status, c.error_code, c.created_at).where(
+        query = select(c.id, c.document_id, c.result_version_id, c.filename, c.status, c.error_code, c.created_at).where(
             c.user_id == owner,
         )
         with tenant_transaction(self.engine, owner) as conn:
