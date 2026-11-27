@@ -6,7 +6,7 @@ import os
 import socket
 from dataclasses import replace
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -256,3 +256,41 @@ def test_worker_terminates_a_job_that_exceeds_its_deadline(monkeypatch):
 
     asyncio.run(scenario())
     assert failed == [(owner, job, "job_timeout")]
+
+
+def test_web_pages_use_saved_passages_and_escape_stored_content(settings, engine):
+    with client(settings, engine) as browser, client(settings, engine) as other:
+        login = browser.get("/")
+        assert str(login.url).endswith("/login")
+        assert "script-src 'self'" in login.headers["content-security-policy"]
+        assert browser.get("/assets/htmx-2.0.11.min.js").status_code == 200
+        assert browser.get("/register").status_code == 200
+        csrf = sign_in(browser)
+        sign_in(other)
+        owner = UUID(browser.get("/auth/me").json()["user_id"])
+        dangerous = "<img src=x onerror=alert(1)>"
+        version = browser.app.state.library.ingest(owner, PDF, dangerous + ".pdf")
+        library = browser.get("/library")
+        assert library.status_code == 200 and "Upload progress" in library.text
+        assert "&lt;img src=x onerror=alert(1)&gt;.pdf" in library.text
+        assert dangerous not in library.text and dangerous not in other.get("/library").text
+        assert browser.get("/fragments/uploads", headers={"HX-Request": "true"}).status_code == 200
+        response = browser.post("/ask", headers=csrf, json={"question": QUESTION, "version_ids": [str(version.id)]})
+        answer = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")][-1]
+        citation = answer["citations"][0]
+        page = citation["pages"][0]
+        url = f"/citations/{version.id}/{citation['chunk_id']}/pages/{page}"
+        viewer = browser.get(url)
+        assert viewer.status_code == 200
+        assert "with the cited text highlighted" in viewer.text
+        assert "data:image/png;base64," in viewer.text and f"#page={page}" in viewer.text
+        assert other.get(url).status_code == 404
+        assert browser.get(url.rsplit("/", 1)[0] + "/999").status_code == 404
+        assert browser.get(f"/citations/{version.id}/foreign/pages/{page}").status_code == 404
+
+        chat_id = UUID(answer["chat_id"])
+        browser.app.state.history.save(owner, chat_id, "Another question", dangerous, [], new=False)
+        saved = browser.get(f"/chat?chat_id={chat_id}")
+        assert "&lt;img src=x onerror=alert(1)&gt;" in saved.text and dangerous not in saved.text
+        assert f"Page {page}</a>" in saved.text
+        assert other.get(f"/chat?chat_id={chat_id}").status_code == 404

@@ -1,0 +1,23 @@
+<p class="error" role="alert" id="document-error" hidden></p>
+{% for document in documents | reverse %}
+<article class="document">
+  <div class="document-header">
+    <div><h3>{{ document.name }}</h3><p class="help">{{ document.versions|length }} {{ "version" if document.versions|length == 1 else "versions" }}</p></div>
+    <button type="button" class="quiet" data-delete="{{ document.id }}" data-name="{{ document.name }}">Delete</button>
+  </div>
+  <ul class="version-list">
+    {% for version in document.versions | reverse %}
+    <li>
+      <span>
+        {{ version.version.date or "Undated" }}{% if version.version.label %} · {{ version.version.label }}{% endif %}
+        <span class="muted"> · {{ version.page_count }} {{ "page" if version.page_count == 1 else "pages" }}</span>
+      </span>
+      <span class="actions"><a href="/documents/{{ document.id }}/versions/{{ version.id }}/pdf" target="_blank" rel="noopener">PDF</a>
+      <a href="/chat?version={{ version.id }}">Ask</a></span>
+    </li>
+    {% endfor %}
+  </ul>
+</article>
+{% else %}
+<div class="empty"><h3>No documents yet</h3><p>Upload your first PDF to start asking questions.</p></div>
+{% endfor %}

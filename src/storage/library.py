@@ -9,6 +9,7 @@ from sqlalchemy import and_, exists, select
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.dialects.postgresql import insert
 
+from ..chat.session import ChatSession, Turn
 from ..chunking.base import Chunk, build_chunker
 from ..config import RAGConfig
 from ..deadlines import run_question
@@ -39,6 +40,16 @@ class StoredVersion:
             row["id"], row["document_id"], row["source_name"], row["page_count"],
             DocumentVersion(**row["version_info"]),
         )
+
+
+@dataclass(frozen=True)
+class CitationSource:
+    document_id: UUID
+    filename: str
+    pages: tuple[int, ...]
+    text: str
+    pdf: bytes
+    ocr: bool
 
 
 class DocumentLibrary:
@@ -170,6 +181,28 @@ class DocumentLibrary:
         with tenant_transaction(self.engine, user_id) as conn:
             return [StoredVersion.from_row(row) for row in conn.execute(query).mappings()]
 
+    def list_documents(self, user_id: UUID) -> list[dict]:
+        grouped: dict[UUID, list[StoredVersion]] = {}
+        for version in self.list_versions(user_id):
+            grouped.setdefault(version.document_id, []).append(version)
+        return [{"id": key, "name": versions[-1].source_name, "versions": versions}
+                for key, versions in grouped.items()]
+
+    @request_scope("read cited page")
+    def citation_source(self, user_id: UUID, version_id: UUID, chunk_id: str, page: int) -> CitationSource:
+        v, i, f, c = document_versions.c, document_indexes.c, pdf_files.c, chunks.c
+        source = document_versions.join(document_indexes, and_(v.user_id == i.user_id, v.index_id == i.id))
+        source = source.join(pdf_files, and_(i.user_id == f.user_id, i.file_sha256 == f.sha256))
+        source = source.join(chunks, and_(i.user_id == c.user_id, i.id == c.index_id))
+        query = select(v.document_id, v.source_name, c.pages, c.text, f.data, c.details).select_from(source).where(
+            v.user_id == user_id, v.id == version_id, c.chunk_id == chunk_id, c.pages.any(page),
+        )
+        with tenant_transaction(self.engine, user_id) as conn:
+            row = conn.execute(query).one_or_none()
+        if row is None:
+            raise LibraryItemNotFound("The cited passage does not exist.")
+        return CitationSource(row.document_id, row.source_name, tuple(row.pages), row.text, row.data, bool(row.details.get("ocr")))
+
     @request_scope("read PDF")
     def read_pdf(self, user_id: UUID, version_id: UUID) -> bytes:
         v, i, f = document_versions.c, document_indexes.c, pdf_files.c
@@ -218,12 +251,14 @@ class DocumentLibrary:
             conn.execute(audit_log.insert().values(user_id=user_id, action="document_deleted", resource_id=document_id))
 
     @request_scope("ask document library")
-    def ask(self, user_id: UUID, question: str, *, version_ids: Sequence[UUID]) -> RAGResult:
+    def ask(
+        self, user_id: UUID, question: str, *, version_ids: Sequence[UUID], turns: Sequence[Turn] = (),
+    ) -> RAGResult:
         return run_question(
-            self.config.generation.question_timeout_s, lambda: self._ask(user_id, question, version_ids),
+            self.config.generation.question_timeout_s, lambda: self._ask(user_id, question, version_ids, turns),
         )
 
-    def _ask(self, user_id: UUID, question: str, version_ids: Sequence[UUID]) -> RAGResult:
+    def _ask(self, user_id: UUID, question: str, version_ids: Sequence[UUID], turns: Sequence[Turn]) -> RAGResult:
         v, i, c = document_versions.c, document_indexes.c, chunks.c
         selected = set(version_ids)
         if not selected:
@@ -267,4 +302,8 @@ class DocumentLibrary:
             self.config, embedder=self.embedder, backend=self.backend, reranker=self.reranker,
         )
         pipeline.load_index(corpus, store, versions, names)
+        if turns:
+            session = ChatSession(pipeline)
+            session.history = list(turns[-session.max_turns:])
+            return session.ask(question)
         return pipeline.ask(question)

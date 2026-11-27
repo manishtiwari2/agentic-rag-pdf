@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Document library{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><h1>Document library</h1><p>Upload PDFs and choose the versions you want to ask about.</p></div>
+  <a class="button primary" href="/chat">Open chat</a>
+</div>
+<div class="library-grid">
+  <section class="card list-card" aria-labelledby="documents-heading">
+    <h2 id="documents-heading">Your documents</h2>
+    <div id="documents" hx-get="/fragments/documents" hx-trigger="libraryChanged from:body" hx-swap="innerHTML">
+      {% include "documents.html" %}
+    </div>
+  </section>
+  <aside class="stack" aria-label="Uploads">
+    <section class="card">
+      <h2>Upload a PDF</h2>
+      <form id="upload-form" method="post" data-limit="{{ upload_limit }}">
+        <label for="pdf">PDF file</label>
+        <input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required aria-describedby="file-hint">
+        <p id="file-hint" class="help">Up to {{ upload_limit }} MiB per file.</p>
+        <label for="target-document">Add to a document <span class="optional">Optional</span></label>
+        <select id="target-document" name="document_id" hx-get="/fragments/upload-targets"
+                hx-trigger="libraryChanged from:body" hx-swap="innerHTML">
+          {% include "upload_targets.html" %}
+        </select>
+        <label for="version-label">Version date or label <span class="optional">Optional</span></label>
+        <input id="version-label" name="version" maxlength="200" placeholder="2026-11 Final report">
+        <progress id="upload-progress" max="100" value="0" aria-label="Upload progress" hidden></progress>
+        <p id="upload-status" class="help" role="status"></p>
+        <p class="error" role="alert" data-error hidden></p>
+        <button type="submit" class="primary">Upload PDF</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Recent uploads</h2>
+      {% include "uploads.html" %}
+    </section>
+  </aside>
+</div>
+<dialog id="delete-dialog" aria-labelledby="delete-heading">
+  <form method="dialog">
+    <h2 id="delete-heading">Delete document?</h2>
+    <p id="delete-name"></p>
+    <p>All versions of this document will be removed from your library.</p>
+    <div class="actions"><button value="cancel">Cancel</button><button class="danger" value="delete">Delete</button></div>
+  </form>
+</dialog>
+{% endblock %}

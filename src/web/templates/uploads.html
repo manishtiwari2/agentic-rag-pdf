@@ -1,0 +1,24 @@
+{% set queues = jobs|selectattr("status", "in", ("queued", "running"))|list %}
+<div id="uploads" hx-get="/fragments/uploads" hx-swap="outerHTML"
+     hx-trigger="uploadChanged from:body{% if queues %}, every 2s{% endif %}"
+     data-completed="{{ jobs|selectattr('status', 'equalto', 'succeeded')|map(attribute='id')|join(',') }}">
+  {% set names = {"queued":"Queued","running":"Indexing","succeeded":"Ready","failed":"Failed"} %}
+  {% for job in jobs[:6] %}
+  <div class="job">
+    <div><strong>{{ job.filename or "PDF upload" }}</strong>
+      <p class="job-time">{{ job.created_at.strftime("%d %b, %H:%M") }} UTC</p>
+    </div>
+    <span class="job-status status-{{ job.status }}">{{ names[job.status] }}</span>
+    {% if job.error_code %}
+    <p class="help job-error">{{ {
+      "invalid_pdf":"The PDF could not be accepted.",
+      "job_timeout":"Indexing took too long.",
+      "job_memory_limit":"Indexing exceeded its memory limit.",
+      "document_missing":"This document no longer exists."
+    }.get(job.error_code, "Indexing failed. Try uploading again.") }}</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="help">No uploads yet.</p>
+  {% endfor %}
+</div>
