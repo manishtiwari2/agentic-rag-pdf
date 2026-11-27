@@ -52,6 +52,7 @@ AGENT_SWITCHES: dict[str, str] = {
     "no_evidence_controller": "evidence_controller_enabled",
     "no_refinement": "refinement_enabled",
     "no_verification": "verification_enabled",
+    "no_missing_term_hint": "missing_term_hint",
 }
 
 
@@ -251,6 +252,9 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
             action="store_true",
             help=f"Agentic only: the '{label}' ablation (EVALUATION_PROTOCOL.md 24).",
         )
+    parser.add_argument(
+        "--no-missing-term-hint", action="store_true", help="Agentic only: omit the missing question terms hint.",
+    )
     parser.add_argument(
         "--max-iterations",
         type=int,

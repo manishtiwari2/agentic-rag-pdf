@@ -7,7 +7,7 @@ only:
   it never says stop -- the loop enforces the bound, not the component.
 * **Each switch removes its component**: switched off, the component is never
   built and never called, and its stage is absent from the record.
-* **All four switches off is Baseline B**, answer for answer.
+* **With every agent switch off, answers match Baseline B.**
 * **The ``verification`` category fires for a failed verification**, through
   the real harness, and never for a system declaring no verification stage.
 * **A verifier failure is ``unavailable``, never ``passed``** (ARCHITECTURE 24).
@@ -195,14 +195,17 @@ class TestConfiguration:
         assert described["evidence_controller"].startswith("local/rule-based")
         assert described["verifier"].startswith("local/rule-based")
 
-    def test_floor_changes_the_run_fingerprint_without_invalidating_indexes(self):
-        base = agentic_config(RAGConfig.offline())
+    def test_generation_gates_change_the_run_fingerprint_without_invalidating_indexes(self):
+        base = agentic_config(RAGConfig.offline(), missing_term_hint=False)
         original = dataclasses.replace(base, reranking=dataclasses.replace(base.reranking, min_score=None))
         graded = dataclasses.replace(
             original, reranking=dataclasses.replace(original.reranking, min_score=0.5),
         )
         assert graded.fingerprint() != original.fingerprint()
         assert graded.fingerprint(for_index=True) == original.fingerprint()
+        hinted = dataclasses.replace(graded, agents=dataclasses.replace(graded.agents, missing_term_hint=True))
+        assert hinted.fingerprint() != graded.fingerprint()
+        assert hinted.fingerprint(for_index=True) == graded.fingerprint(for_index=True)
         invalid = dataclasses.replace(graded, reranking=dataclasses.replace(graded.reranking, min_score=float("nan")))
         with pytest.raises(ConfigurationError, match="reranking.min_score must be finite"):
             invalid.validate()
@@ -470,11 +473,11 @@ class TestEachSwitchRemovesItsComponent:
             if component == "verifier":
                 assert result.metadata["verification_status"] == VERIFICATION_NOT_RUN
 
-    def test_all_four_off_is_baseline_b(self, offline_config, structured_pdf_path):
+    def test_all_agents_off_is_baseline_b(self, offline_config, structured_pdf_path):
         off = indexed(
             agentic_config(
                 offline_config, planner_enabled=False, evidence_controller_enabled=False,
-                refinement_enabled=False, verification_enabled=False,
+                refinement_enabled=False, verification_enabled=False, missing_term_hint=False,
             ),
             structured_pdf_path,
         )

@@ -5,6 +5,7 @@ Type: bug, AI mistake (hallucinated or wrong AI output), or regression.
 
 | # | Date | Type | What happened | Where | Status |
 |---|---|---|---|---|---|
+| 13 | 2026-11-27 | bug | The dev scorer credited a table excerpt about S1 through S7 as the answer about S17. The excerpt omitted S17 and the correct six-year value. | DD-081, dev question q020 | Open. Check row grounding when scoring table answers. |
 | 12 | 2026-11-26 | AI mistake | An AI review claimed a "shared reranker sigmoid bug" in all three repos. No sigmoid exists in our `src/reranking`. | `source/three-repo-comparison.md` | Closed: claim was false |
 | 11 | 2026-11-26 | AI mistake | A commit and PR body got `Co-Authored-By` and "Generated with Claude Code" lines despite the global rule. | PR #52 | Rule now in `CLAUDE.md` |
 | 10 | 2026-11-26 | bug | `src/config.py:4` names `tests/test_config.py`, which does not exist. | `src/config.py:4` | open |

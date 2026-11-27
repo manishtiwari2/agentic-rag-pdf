@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from ..agents.text import missing_question_terms
 from ..config import GenerationConfig
 from ..retrieval.retriever import RetrievedChunk
 from .abstention import AbstentionVerdict, detect_abstention
@@ -62,10 +63,12 @@ class GroundedGenerator:
     """Builds the evidence prompt, calls the backend, resolves the citations."""
 
     def __init__(
-        self, config: GenerationConfig | None = None, backend: LLMBackend | None = None
+        self, config: GenerationConfig | None = None, backend: LLMBackend | None = None,
+        *, hint_missing_terms: bool = False,
     ) -> None:
         self.config = config or GenerationConfig()
         self.backend = backend or build_backend(self.config)
+        self.hint_missing_terms = hint_missing_terms
 
     def generate(
         self, question: str, retrieved: list[RetrievedChunk]
@@ -84,7 +87,10 @@ class GroundedGenerator:
                 latency=time.perf_counter() - started,
             )
 
-        prompt = build_user_prompt(question, evidence_blocks(evidence))
+        blocks = evidence_blocks(evidence)
+        missing = missing_question_terms(question, "\n".join(text for _, text in blocks)) if self.hint_missing_terms else ()
+        hint = {"missing_question_terms": list(missing)} if missing else {}
+        prompt = build_user_prompt(question, blocks, missing_terms=missing)
         raw = self.backend.generate(SYSTEM_PROMPT, prompt)
 
         resolution = resolve_citations(raw, evidence)
@@ -93,13 +99,15 @@ class GroundedGenerator:
         if verdict.abstained:
             # A refusal cites nothing. Keeping citations on it would let a
             # citation metric score a system that answered nothing.
-            return self._refusal(
+            refusal = self._refusal(
                 evidence=tuple(evidence),
                 reason=verdict.reason,
                 latency=time.perf_counter() - started,
                 raw=raw,
                 resolution=resolution,
             )
+            refusal.metadata.update(hint)
+            return refusal
 
         return GeneratedAnswer(
             answer=resolution.answer,
@@ -115,6 +123,7 @@ class GroundedGenerator:
             metadata={
                 "evidence_count": len(evidence),
                 "uncited": not resolution.has_citations,
+                **hint,
             },
         )
 

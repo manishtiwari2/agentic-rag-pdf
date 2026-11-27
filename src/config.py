@@ -395,6 +395,7 @@ class AgentConfig:
     #: so the record says whether iteration 2 changed the answer (DD-053). A
     #: diagnostic: never returned, and not counted as a system model call.
     record_refinement_counterfactual: bool = True
+    missing_term_hint: bool = True
 
     verification_enabled: bool = True
     on_verifier_unavailable: Literal["refuse", "mark_unverified"] = "refuse"
@@ -516,6 +517,10 @@ class RAGConfig:
         return self.retrieval.strategy == "agentic"
 
     @property
+    def uses_missing_term_hint(self) -> bool:
+        return self.is_agentic and self.agents.missing_term_hint
+
+    @property
     def uses_reranker(self) -> bool:
         """Only hybrid retrieval reranks; the dense baseline never loads one."""
         return self.is_hybrid and self.reranking.enabled
@@ -548,6 +553,8 @@ class RAGConfig:
         if for_index or self.reranker_score_floor is None:
             # The floor controls generation and can change without re-indexing.
             record["reranking"].pop("min_score")
+        if for_index or not self.uses_missing_term_hint:
+            record["agents"].pop("missing_term_hint")
         blob = json.dumps(record, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -612,6 +619,7 @@ class RAGConfig:
                 a.sufficiency_threshold if agentic and a.evidence_controller_enabled else None
             ),
             "refinement_enabled": a.refinement_enabled if agentic else None,
+            "missing_term_hint": self.uses_missing_term_hint if agentic else None,
             "max_retrieval_iterations": self.max_retrieval_iterations,
             "verification_enabled": a.verification_enabled if agentic else None,
             "verifier": backend(a.verification_enabled, a.verifier, RULE_VERIFIER),

@@ -211,7 +211,9 @@ class _RetrieveThenGenerate:
         self._chunker = build_chunker(self.config.chunking)
         self._embedder = embedder
         self._retriever = self._build_retriever()
-        self._generator = GroundedGenerator(self.config.generation, backend=backend)
+        self._generator = GroundedGenerator(
+            self.config.generation, backend=backend, hint_missing_terms=self.config.uses_missing_term_hint,
+        )
         self.document: Document | None = None
         self.documents: tuple[Document, ...] = ()
         self.chunks: tuple[Chunk, ...] = ()

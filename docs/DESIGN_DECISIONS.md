@@ -3707,3 +3707,38 @@ Use `--reranker-min-score` to set the floor or `--no-reranker-floor` for the
 reference arm and to reproduce the archived Baseline B. The API reads
 `RAG_RERANKER_MIN_SCORE`. Changing the floor changes the run fingerprint
 and keeps the stored index usable.
+
+## DD-081. Flag question terms missing from the evidence
+
+Before agentic generation, compare explicit numbers and likely names in the
+question with the exact passages selected for the prompt. Reuse the rule
+agents' number tokens and compare names case-insensitively. A capital at the
+start of the question alone is ambiguous. Number matching handles the
+tokenizer's thousands separators. This check is a lexical hint and may miss
+lowercase names or alternate spellings.
+
+When terms are absent, put a bounded list before the evidence. Ask the model
+to prefer the standard refusal if answering depends on those terms. The
+scripted backend uses the hint to refuse. An advisory prompt lets the model
+consider equivalent wording that is explicitly supported. Baselines keep the
+reference prompt. Use `--no-missing-term-hint` for the agentic reference run.
+The feature changes the generation prompt and run fingerprint. Existing
+indexes can be reused.
+
+Compare both settings on the offline dev split. Report paired 95% intervals
+for answerable accuracy, answerable refusals, and correct refusals. This
+comparison measures the heuristic with the scripted backend. The targeted
+checks cover missing terms, present terms, and truncated evidence.
+
+### Dev results
+
+On the 33-question offline dev split, measured answerable accuracy went from
+8/30 to 7/30 (paired change −0.033, 95% CI [−0.100, 0.000]). Answerable
+refusals went from 4/30 to 5/30 (change +0.033, 95% CI [0.000, 0.100]).
+Correct refusals stayed at 1/3 (change 0.000, 95% CI [0.000, 0.000]).
+
+The changed question asked about student S17. The prompt evidence lacked
+S17, so the hinted run refused. The reference run quoted rows S1 through
+S7. The scorer credited the reference answer despite the wrong rows and
+the missing six-year value (bug #13). Keep the hint enabled to follow the
+grounding rule.

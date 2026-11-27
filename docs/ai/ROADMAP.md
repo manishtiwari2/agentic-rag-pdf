@@ -34,7 +34,7 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 
 ## P5 Agent quality
 - [x] 5.1 Reranker-score floor as a free grader, and set `min_score`. Bug #9.
-- [ ] 5.2 Missing-term hint (a name, number or year missing from all evidence).
+- [x] 5.2 Missing-term hint (a name, number or year missing from all evidence).
 - [ ] 5.3 Adaptive strategy: answer, verify, and escalate only on failure. Bug #8.
 - [ ] 5.4 Table calculator: code does the arithmetic on cited cells.
 - [ ] 5.5 Adaptive vs agentic paired bootstrap on dev, with the rule written first.

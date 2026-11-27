@@ -28,7 +28,7 @@ from typing import Protocol, runtime_checkable
 from ..config import GenerationConfig
 from ..deadlines import remaining_seconds, run_bounded
 from ..errors import GenerationError, ModelLoadError
-from .prompts import ABSTENTION_SENTENCE, parse_user_prompt
+from .prompts import ABSTENTION_SENTENCE, MISSING_TERMS_HEADER, parse_user_prompt
 
 
 @runtime_checkable
@@ -75,6 +75,8 @@ class ScriptedBackend:
         )
 
     def _answer(self, user_prompt: str) -> str:
+        if user_prompt.startswith(MISSING_TERMS_HEADER):
+            return ABSTENTION_SENTENCE
         question, blocks = parse_user_prompt(user_prompt)
         if not blocks:
             return ABSTENTION_SENTENCE
