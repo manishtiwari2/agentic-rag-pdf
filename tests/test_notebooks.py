@@ -130,9 +130,12 @@ class TestDeliverable:
         # Headline figures appear only by being read from a report.
         assert not re.search(r"\b0\.\d{3}\b", self.SOURCE)
 
-    def test_it_installs_tesseract_and_the_colab_requirements(self):
-        assert '"tesseract-ocr"' in self.SOURCE and "requirements-colab.txt" in self.SOURCE
-
+    @pytest.mark.parametrize("notebook", NOTEBOOKS)
+    def test_colab_installs_model_requirements_and_ocr(self, notebook):
+        source = "\n".join(_code(notebook))
+        assert '"tesseract-ocr"' in source
+        assert '"requirements-models.txt", "pytesseract>=0.3.10"' in source
+        assert "requirements-colab.txt" not in source
 
     @pytest.mark.skipif(
         os.environ.get("SKIP_NOTEBOOK_EXECUTION") == "1", reason="SKIP_NOTEBOOK_EXECUTION=1"
@@ -177,7 +180,7 @@ class TestRestartAfterInstall:
     extension in memory and broke cell 5b ("takes at most 16 arguments").
     """
 
-    INSTALL = next(s for s in _code(build_notebooks.DELIVERABLE) if "requirements-colab.txt" in s)
+    INSTALL = next(s for s in _code(build_notebooks.DELIVERABLE) if "requirements-models.txt" in s)
 
     def _run(self, monkeypatch, bump: str | None):
         import importlib.metadata

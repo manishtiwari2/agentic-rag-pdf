@@ -115,7 +115,7 @@ def deliverable(ref: str) -> nbformat.NotebookNode:
 
 This notebook is the project's entry point (DD-002). It runs the whole pipeline on a PDF you
 upload: parsing (with OCR for scanned pages), chunking, indexing, a dense baseline, the agentic
-system, a chat interface, and the benchmark metrics. The code lives in the repository's `src/`
+system, a short conversation, and the benchmark metrics. The code lives in the repository's `src/`
 package; this notebook calls it and copies none of it (DD-034).
 
 **Two modes, chosen automatically in cell 2:**
@@ -141,10 +141,10 @@ one every answer below came from.
         _md("""
 ## 2. Dependencies
 
-In Colab this installs the Tesseract OCR engine (a system package; OCR is on by default, DD-067)
-and `requirements-colab.txt`: the model stack, Gradio for the chat interface and pytesseract.
+In Colab this installs the Tesseract OCR engine (a system package; OCR is on by default, DD-067),
+the model stack from `requirements-models.txt` and pytesseract.
 Every licence is permissive; they are listed in `NOTICE`. Outside Colab nothing is installed:
-install `requirements-colab.txt` yourself, or rely on the offline stack.
+install the model requirements and pytesseract yourself, or rely on the offline stack.
 
 Colab imports some packages (Pillow among them) before this cell runs. If the install changes one
 of those, the old copy in memory and the new one on disk get mixed, and later cells fail with
@@ -175,7 +175,8 @@ if IN_COLAB:
 
     before = imported_versions()
     sh("apt-get", "install", "-y", "-qq", "tesseract-ocr")
-    sh(sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-colab.txt")
+    sh(sys.executable, "-m", "pip", "install", "-q", "-r",
+       "requirements-models.txt", "pytesseract>=0.3.10")
     after = imported_versions()
     changed = {name: (old, after.get(name)) for name, old in before.items() if after.get(name) != old}
     if changed:
@@ -189,7 +190,7 @@ if IN_COLAB:
         os.kill(os.getpid(), signal.SIGKILL)
     print("Dependencies ready; no restart needed.")
 else:
-    print("Not in Colab: skipping installs. For everything: pip install -r requirements-colab.txt")
+    print('Not in Colab. Model setup: pip install -r requirements-models.txt "pytesseract>=0.3.10"')
 '''),
         _md("""
 ## 3. Mode switch and model loading
@@ -202,6 +203,7 @@ lazily, on the first question.
 """),
         _code('''
 import json
+from dataclasses import replace
 
 try:
     import torch
@@ -222,7 +224,13 @@ else:
     print("MODEL STACK on", torch.cuda.get_device_name(0))
     print(banner)
 
-from src.chat.ui import make_config
+from src.config import RAGConfig
+
+
+def make_config(system, *, offline):
+    config = RAGConfig.offline() if offline else RAGConfig.default()
+    return replace(config, retrieval=replace(config.retrieval, strategy=system))
+
 
 config = make_config("agentic", offline=OFFLINE)
 print(json.dumps(config.describe(), indent=2))
@@ -372,13 +380,16 @@ The same questions, both systems. **Refused** marks an abstention. Pages come fr
 each marker points at.
 """),
         _code('''
+from html import escape
 from IPython.display import Markdown, display
 
-from src.chat.ui import format_answer
+def format_answer(result):
+    label = "**Refused:** " if result.abstained else ""
+    return label + result.format()
 
 
 def cell(result):
-    return format_answer(result).replace("\\n", "<br>").replace("|", "\\\\|")
+    return escape(format_answer(result)).replace("\\n", "<br>").replace("|", "\\\\|")
 
 
 rows = ["| Question | Dense RAG | Agentic RAG |", "| --- | --- | --- |"]
@@ -394,32 +405,20 @@ round with the evidence controller's verdict, why the loop stopped, and the veri
 The full trace is in `result.metadata["agent_trace"]`.
 """),
         _code('''
-from src.chat.ui import format_trace
-
-display(Markdown(format_trace(agentic_results[0])))
-bounds = agentic_results[0].metadata["agent_trace"]["bounds"]
-print(json.dumps(bounds, indent=2))
+trace = agentic_results[0].metadata["agent_trace"]
+print(json.dumps(trace, indent=2))
 '''),
         _md("""
-## 10. The chat interface
+## 10. The web workspace
 
-A Gradio app over the same pipeline (DD-066): upload one or more PDFs (text or scanned), choose
-dense, hybrid or agentic, and chat. Follow-up questions ("what about its latency?") are rewritten
-into standalone ones before retrieval (DD-065). In Colab, `share=True` prints a public link.
-Outside Colab the app is built but not launched.
+The authenticated FastAPI workspace has a document library, chat history and PDF citation
+highlights (DD-079). It runs separately from Colab and needs Postgres, Redis and an ingestion
+worker. See the repository README for startup instructions. Section 15 shows a follow-up
+conversation directly in the notebook.
 """),
         _code('''
 del agentic
 free_memory()
-try:
-    from src.chat.ui import build_app
-    app = build_app(offline=OFFLINE)
-    if IN_COLAB:
-        app.launch(share=True, debug=False, max_file_size=make_config("agentic", OFFLINE).ingestion.max_upload_mb * 1024**2)
-    else:
-        print("Chat app built; call app.launch() to open it.")
-except ImportError:
-    print("Gradio is not installed: pip install -r requirements-colab.txt")
 '''),
         _md("""
 ## 11. Benchmark execution (optional, slow)
@@ -568,7 +567,8 @@ if not CODE.exists():
 os.chdir(CODE)
 sys.path.insert(0, str(CODE))
 sh("apt-get", "install", "-y", "-qq", "tesseract-ocr")
-sh(sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-colab.txt")
+sh(sys.executable, "-m", "pip", "install", "-q", "-r",
+   "requirements-models.txt", "pytesseract>=0.3.10")
 '''
 
 #: (label, run-benchmark flags, output directory under R). The same arms and

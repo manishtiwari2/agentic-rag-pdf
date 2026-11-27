@@ -4,10 +4,21 @@ hand on a user-supplied PDF."""
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from src.cli import main
 
 from . import pdf_fixtures as pdfs
+
+
+def test_chat_serves_the_authenticated_workspace(monkeypatch):
+    app, launch = object(), Mock()
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=launch))
+    monkeypatch.setitem(sys.modules, "src.api.app", SimpleNamespace(create_app=lambda: app))
+    assert main(["chat", "--port", "8123"]) == 0
+    launch.assert_called_once_with(app, host="127.0.0.1", port=8123)
 
 
 def _pdf(tmp_path, data: bytes = None):

@@ -543,8 +543,8 @@ class TestDependencyLicences:
             package = re.split(r"[<>=!~\[\s]", line.strip(), maxsplit=1)[0].lower()
             assert package in notice, f"{path.name}: {package} is not in NOTICE"
 
-    def test_gradio_is_imported_only_by_the_chat_interface(self):
+    def test_gradio_is_absent_from_source_and_dependency_manifests(self):
         for path in SRC.rglob("*.py"):
-            if path.relative_to(SRC).as_posix() == "chat/ui.py":
-                continue
             assert "import gradio" not in path.read_text(encoding="utf-8"), path
+        for name in ("pyproject.toml", "requirements-colab.txt"):
+            assert "gradio" not in (self.ROOT / name).read_text(encoding="utf-8").lower()
