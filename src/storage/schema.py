@@ -144,13 +144,27 @@ jobs = Table(
     "jobs", metadata, owner(),
     Column("id", Uuid, primary_key=True),
     Column("document_id", Uuid),
+    Column("result_version_id", Uuid),
     Column("status", String(9), nullable=False, server_default="queued"),
     Column("error_code", Text),
     timestamp(),
     timestamp("updated_at"),
     scoped_fk("document_id", "documents", cascade=True),
+    scoped_fk("result_version_id", "document_versions", cascade=True),
     CheckConstraint("status IN ('queued', 'running', 'succeeded', 'failed')", name="status"),
     Index("ix_jobs_owner_document", "user_id", "document_id"),
+)
+job_uploads = Table(
+    "job_uploads", metadata,
+    Column("user_id", Uuid, primary_key=True),
+    Column("id", Uuid, primary_key=True),
+    Column("file_sha256", String(64), nullable=False),
+    Column("data", LargeBinary, nullable=False),
+    Column("size_bytes", Integer, nullable=False),
+    Column("filename", Text, nullable=False),
+    Column("version_label", Text),
+    scoped_fk("id", "jobs", cascade=True),
+    CheckConstraint("size_bytes = octet_length(data) AND size_bytes > 0", name="size"),
 )
 audit_log = Table(
     "audit_log", metadata, owner(),
