@@ -1,6 +1,6 @@
 """Store and query a user's PDF library through the existing RAG pipeline."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID, uuid4
@@ -13,13 +13,15 @@ from ..chunking.base import Chunk, build_chunker
 from ..config import RAGConfig
 from ..deadlines import run_question
 from ..errors import ConfigurationError, LibraryItemNotFound, PDFReadError, RetrievalError
+from ..generation.backends import LLMBackend
 from ..ingestion.parser import build_parser
 from ..pipeline import RAGResult, build_pipeline
 from ..request_log import request_scope
+from ..reranking.reranker import Reranker
 from ..retrieval.embeddings import Embedder, build_embedder
 from ..versioning import DocumentVersion, resolve_version
 from .database import tenant_transaction
-from .schema import chunks, document_indexes, document_versions, documents, pdf_files, users
+from .schema import audit_log, chunks, document_indexes, document_versions, documents, pdf_files, users
 from .vector_store import PgVectorStore
 
 
@@ -41,7 +43,9 @@ class StoredVersion:
 
 class DocumentLibrary:
     def __init__(
-        self, engine: Engine, config: RAGConfig, code_version: str, *, embedder: Embedder | None = None,
+        self, engine: Engine, config: RAGConfig, code_version: str, *,
+        embedder: Embedder | None = None, backend: LLMBackend | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         if not code_version.strip():
             raise ConfigurationError("A code version is required for persistent indexing.")
@@ -53,6 +57,8 @@ class DocumentLibrary:
         self.chunker = build_chunker(config.chunking)
         # Corpus-fitted IDF would make saved vectors depend on the user's other uploads.
         self.embedder = embedder or build_embedder(config.embedding, fit_idf=False)
+        self.backend = backend
+        self.reranker = reranker
 
     @staticmethod
     def _lock_owner(conn: Connection, user_id: UUID) -> None:
@@ -70,6 +76,7 @@ class DocumentLibrary:
     def ingest(
         self, user_id: UUID, data: bytes, source_name: str, *,
         document_id: UUID | None = None, version: str | None = None,
+        on_indexed: Callable[[Connection, StoredVersion], None] | None = None,
     ) -> StoredVersion:
         """Publish the PDF, chunks, vectors and version in one transaction."""
         source_name = source_name.replace("\\", "/").rsplit("/", 1)[-1]
@@ -106,7 +113,10 @@ class DocumentLibrary:
                     v.document_id == document_id, v.index_id == index_id,
                 )).mappings().one_or_none()
                 if previous is not None:
-                    return StoredVersion.from_row(previous)
+                    stored = StoredVersion.from_row(previous)
+                    if on_indexed is not None:
+                        on_indexed(conn, stored)
+                    return stored
 
             version_id = uuid4()
             resolved = resolve_version(source_name, {"pdf_creation_date": creation_date}, version)
@@ -114,7 +124,10 @@ class DocumentLibrary:
                 user_id=user_id, id=version_id, document_id=document_id, index_id=index_id,
                 source_name=source_name, version_info=resolved.to_record(),
             ))
-            return StoredVersion(version_id, document_id, source_name, page_count, resolved)
+            stored = StoredVersion(version_id, document_id, source_name, page_count, resolved)
+            if on_indexed is not None:
+                on_indexed(conn, stored)
+            return stored
 
     def _index_pdf(
         self, conn: Connection, user_id: UUID, data: bytes, source_name: str, digest: str,
@@ -170,6 +183,17 @@ class DocumentLibrary:
             raise LibraryItemNotFound("The document version does not exist.")
         return data
 
+    def require_versions(self, user_id: UUID, version_ids: Sequence[UUID]) -> None:
+        selected = set(version_ids)
+        if not selected:
+            raise LibraryItemNotFound("Select at least one document version.")
+        with tenant_transaction(self.engine, user_id) as conn:
+            actual = set(conn.scalars(select(document_versions.c.id).where(
+                document_versions.c.user_id == user_id, document_versions.c.id.in_(selected),
+            )))
+        if actual != selected:
+            raise LibraryItemNotFound("One or more document versions do not exist.")
+
     @request_scope("delete document")
     def delete_document(self, user_id: UUID, document_id: UUID) -> None:
         v, i, f = document_versions.c, document_indexes.c, pdf_files.c
@@ -191,6 +215,7 @@ class DocumentLibrary:
                 f.user_id == user_id, f.sha256.in_(unused_files),
                 ~exists(select(1).where(i.user_id == user_id, i.file_sha256 == f.sha256)),
             ))
+            conn.execute(audit_log.insert().values(user_id=user_id, action="document_deleted", resource_id=document_id))
 
     @request_scope("ask document library")
     def ask(self, user_id: UUID, question: str, *, version_ids: Sequence[UUID]) -> RAGResult:
@@ -238,6 +263,8 @@ class DocumentLibrary:
                 {**row["details"], "source_name": names[version_id]},
             ))
         store = PgVectorStore(self.engine, user_id, tuple(index_versions), dimension)
-        pipeline = build_pipeline(self.config, embedder=self.embedder)
+        pipeline = build_pipeline(
+            self.config, embedder=self.embedder, backend=self.backend, reranker=self.reranker,
+        )
         pipeline.load_index(corpus, store, versions, names)
         return pipeline.ask(question)
