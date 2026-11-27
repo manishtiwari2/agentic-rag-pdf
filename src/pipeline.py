@@ -193,7 +193,10 @@ class _RetrieveThenGenerate:
     name = "retrieve_then_generate"
     strategy = ""
 
-    def __init__(self, config: RAGConfig | None = None, *, embedder: Embedder | None = None) -> None:
+    def __init__(
+        self, config: RAGConfig | None = None, *,
+        embedder: Embedder | None = None, backend: LLMBackend | None = None,
+    ) -> None:
         self.config = (config or RAGConfig.default()).validate()
         if self.config.retrieval.strategy != self.strategy:
             raise ConfigurationError(
@@ -206,7 +209,7 @@ class _RetrieveThenGenerate:
         self._chunker = build_chunker(self.config.chunking)
         self._embedder = embedder
         self._retriever = self._build_retriever()
-        self._generator = GroundedGenerator(self.config.generation)
+        self._generator = GroundedGenerator(self.config.generation, backend=backend)
         self.document: Document | None = None
         self.documents: tuple[Document, ...] = ()
         self.chunks: tuple[Chunk, ...] = ()
@@ -511,9 +514,9 @@ class HybridRAGPipeline(_RetrieveThenGenerate):
 
     def __init__(
         self, config: RAGConfig | None = None, reranker: Reranker | None = None,
-        *, embedder: Embedder | None = None,
+        *, embedder: Embedder | None = None, backend: LLMBackend | None = None,
     ) -> None:
-        super().__init__(config, embedder=embedder)
+        super().__init__(config, embedder=embedder, backend=backend)
         self.reranker: Reranker | None = None
         if self.config.uses_reranker:
             self.reranker = reranker or build_reranker(self.config.reranking)
@@ -626,9 +629,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         *,
         embedder: Embedder | None = None,
     ) -> None:
-        super().__init__(config, reranker, embedder=embedder)
-        if backend is not None:
-            self._generator = GroundedGenerator(self.config.generation, backend=backend)
+        super().__init__(config, reranker, embedder=embedder, backend=backend)
         # One generation model, shared: the LLM agents ask the model the
         # generator already loaded (ARCHITECTURE.md section 21).
         shared = self._generator.backend
@@ -1081,7 +1082,10 @@ SYSTEMS: dict[str, type[_RetrieveThenGenerate]] = {
 }
 
 
-def build_pipeline(config: RAGConfig | None = None, *, embedder: Embedder | None = None) -> _RetrieveThenGenerate:
+def build_pipeline(
+    config: RAGConfig | None = None, *, embedder: Embedder | None = None,
+    backend: LLMBackend | None = None, reranker: Reranker | None = None,
+) -> _RetrieveThenGenerate:
     """The system ``config`` describes -- Baseline A, B or the agentic system --
     chosen by configuration alone."""
     config = config or RAGConfig.default()
@@ -1092,4 +1096,6 @@ def build_pipeline(config: RAGConfig | None = None, *, embedder: Embedder | None
             f"Unknown retrieval.strategy {config.retrieval.strategy!r}; "
             f"expected one of {sorted(SYSTEMS)}."
         ) from None
-    return system(config, embedder=embedder)
+    if issubclass(system, HybridRAGPipeline):
+        return system(config, reranker=reranker, embedder=embedder, backend=backend)
+    return system(config, embedder=embedder, backend=backend)
