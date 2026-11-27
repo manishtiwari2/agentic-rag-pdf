@@ -3636,3 +3636,33 @@ the upload as a new version. Check the returned job ID at `GET /jobs/{id}`.
 `POST /ask` accepts JSON with `question`, `version_ids`, and an optional
 `chat_id`. The stream sends `start` with the chat ID, then `answer` or
 `error`. Read saved exchanges at `GET /chats/{id}/messages`.
+
+## DD-079. Render the document workspace in FastAPI
+
+FastAPI serves Jinja templates and local htmx assets. The browser reuses the
+API session and CSRF token for changes. htmx refreshes the document list
+and job status. An XMLHttpRequest reports PDF transfer progress, and a
+stream reader handles verified answers from the existing SSE endpoint.
+Jinja autoescapes saved messages. The live conversation inserts answer text
+with `textContent`. A content security policy limits the UI to local scripts.
+
+A citation link carries its version ID, chunk ID, and page number. The
+server checks all three against the owner-scoped index before loading the
+source PDF. The viewer matches the stored passage to page words and paints
+their rectangles. OCR pages use English OCR coordinates when available.
+The viewer also shows the stored passage and links to the original PDF at
+the cited page when it cannot locate a highlight. No page or highlight is
+chosen by the model.
+
+The worker retains the upload filename in its job row so indexing and failure
+statuses are identifiable after the staged PDF bytes are removed. The API
+uses up to five saved exchanges when all their cited versions are still
+selected. This reuses the original chat rewriter.
+
+Server rendering keeps the web assets in the Python package and avoids a Node
+build. Serving htmx from the same origin keeps the workspace independent of
+CDN availability. Version 2.0.11 is vendored with its upstream license.
+
+After the browser flow passed, the FastAPI workspace replaced the Gradio app.
+The `chat` command starts FastAPI. Colab still supports local question
+examples and the follow-up conversation through `ChatSession`.

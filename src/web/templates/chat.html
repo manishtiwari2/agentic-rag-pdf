@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h1>Chat with your documents</h1><p>Ask about selected versions and review the source pages.</p></div>
+  <a class="button" href="/chat">New chat</a>
+</div>
+<div class="chat-grid">
+  <aside class="stack" aria-label="Chat settings">
+    <section class="card sources">
+      <h2 id="sources-heading">Sources</h2>
+      <fieldset form="question-form" aria-labelledby="sources-heading">
+        {% for document in documents %}
+        <div class="source-group">
+          <h3>{{ document.name }}</h3>
+          {% for version in document.versions | reverse %}
+          <label class="checkbox"><input type="checkbox" name="version_ids" value="{{ version.id }}" form="question-form"
+            {% if version.id == selected or (not selected and loop.first) %}checked{% endif %}>
+            {{ version.version.date or "Undated" }}{% if version.version.label %} · {{ version.version.label }}{% endif %}
+            <small>{{ version.page_count }} pg</small>
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}<p class="help">No PDFs ready. <a href="/library">Upload a document</a>.</p>{% endfor %}
+      </fieldset>
+    </section>
+    <section class="card">
+      <h2>Chat history</h2>
+      {% if chats %}<ul id="chat-list" class="chat-list">
+        {% for chat in chats %}<li><a href="/chat?chat_id={{ chat.id }}"{% if chat.id == chat_id %} aria-current="page"{% endif %}>{{ chat.title }}</a></li>{% endfor %}
+      </ul>{% else %}<ul id="chat-list" class="chat-list"></ul><p class="help" id="no-chats">No saved chats.</p>{% endif %}
+    </section>
+  </aside>
+  <section class="card conversation" aria-label="Conversation">
+    <div id="messages" class="messages" role="log" aria-label="Messages" aria-live="polite">
+      {% for message in messages %}
+      <article class="message message-{{ message.role }}">
+        <h3>{{ "You" if message.role == "user" else "Answer" }}</h3>
+        <p class="message-text">{{ message.content }}</p>
+        {% if message.citations %}
+        <div class="citations" aria-label="Source pages">
+          {% for citation in message.citations %}{% for page in citation.pages %}
+          <a href="/citations/{{ citation.document_id }}/{{ citation.chunk_id|urlencode }}/pages/{{ page }}" target="_blank" rel="noopener">[{{ citation.marker }}] Page {{ page }}</a>
+          {% endfor %}{% endfor %}
+        </div>
+        {% endif %}
+      </article>
+      {% else %}<div class="empty chat-empty" id="empty-chat"><h2>Start a conversation</h2><p>Select source versions and ask a question.</p></div>{% endfor %}
+    </div>
+    <form id="question-form" class="composer" method="post" data-chat-id="{{ chat_id or '' }}">
+      <label for="question">Question</label>
+      <textarea id="question" name="question" rows="2" maxlength="{{ max_question_chars }}"
+                placeholder="What do the documents say about…?" required {% if not documents %}disabled{% endif %}></textarea>
+      <div class="composer-footer">
+        <p class="error" role="alert" data-error hidden></p>
+        <button type="submit" class="primary" {% if not documents %}disabled{% endif %}>Ask</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

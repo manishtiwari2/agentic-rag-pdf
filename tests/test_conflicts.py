@@ -114,6 +114,7 @@ class TestPolicy:
 
 @pytest.mark.parametrize("offline", [True])
 def test_the_chat_app_turns_conflict_checking_on(offline):
-    from src.chat.ui import make_config
+    from src.api.settings import Settings
 
-    assert make_config("hybrid", offline).conflicts.enabled
+    settings = Settings("postgresql://local/database", "redis://local/0", "test", offline=offline)
+    assert settings.rag_config().conflicts.enabled

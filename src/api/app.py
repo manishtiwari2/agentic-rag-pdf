@@ -13,6 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, generate_latest
 from redis.asyncio import ConnectionPool
 from redis.exceptions import RedisError
@@ -24,6 +25,7 @@ from ..reranking.reranker import build_reranker
 from ..storage.database import build_engine
 from ..storage.library import DocumentLibrary
 from ..storage.schema import users
+from ..web.router import router as web_router, static_dir
 from .auth import CSRF_COOKIE, SESSION_COOKIE, Accounts, Identity, email_address
 from .errors import ApiError, error_body, public_error
 from .history import History
@@ -99,6 +101,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
             app.state.accounts = Accounts(db, settings.session_seconds)
             app.state.jobs = UploadJobs(library, settings.storage_bytes, settings.job_timeout_s)
             app.state.history = History(db)
+            app.state.max_question_chars = settings.max_question_chars
             yield
         finally:
             await redis.aclose(close_connection_pool=True)
@@ -108,6 +111,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
                 db.dispose()
 
     app = FastAPI(lifespan=lifespan, debug=False)
+    app.mount("/assets", StaticFiles(directory=static_dir), name="web_assets")
     app.add_middleware(
         CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE"], allow_headers=["Content-Type", "X-CSRF-Token"],
@@ -150,6 +154,11 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
             requests.labels(method, route, str(response.status_code)).inc()
             response.headers["X-Request-ID"] = request_id.get()
             response.headers.setdefault("Cache-Control", "no-store")
+            if response.headers.get("content-type", "").startswith("text/html") and not request.url.path.startswith(("/docs", "/redoc")):
+                response.headers["Content-Security-Policy"] = (
+                    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                    "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+                )
             return response
 
     def identity(request: Request) -> Identity:
@@ -252,11 +261,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
 
     @app.get("/documents")
     def list_documents(request: Request, current: Identity = Depends(identity)):
-        versions = request.app.state.library.list_versions(current.user_id)
-        grouped = {}
-        for version in versions:
-            grouped.setdefault(version.document_id, []).append(version)
-        return [{"id": key, "name": value[-1].source_name, "versions": value} for key, value in grouped.items()]
+        return request.app.state.library.list_documents(current.user_id)
 
     @app.get("/documents/{document_id}/versions")
     def list_versions(request: Request, document_id: UUID, current: Identity = Depends(identity)):
@@ -308,12 +313,13 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
         await take(state.redis, ("ask-ip", _client_ip(request), 30, 60), ("ask-user", str(owner), 12, 60),
                    ("questions-per-day", f"{owner}:{day}", settings.daily_questions, ttl))
         await run_in_threadpool(state.library.require_versions, owner, version_ids)
-        if requested_chat is not None:
-            await run_in_threadpool(state.history.verify, owner, chat_id)
+        turns = await run_in_threadpool(state.history.recent_turns, owner, chat_id, version_ids) if requested_chat is not None else []
 
         async def events():
             yield _sse("start", {"chat_id": chat_id})
-            work = asyncio.create_task(run_in_threadpool(state.library.ask, owner, question, version_ids=version_ids))
+            work = asyncio.create_task(run_in_threadpool(
+                state.library.ask, owner, question, version_ids=version_ids, turns=turns,
+            ))
             try:
                 while not work.done():
                     done, _ = await asyncio.wait({work}, timeout=10)
@@ -337,4 +343,5 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
+    app.include_router(web_router)
     return app

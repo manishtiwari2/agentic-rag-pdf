@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from ..chat.session import DEFAULT_MAX_TURNS, Turn
 from ..storage.database import tenant_transaction
 from ..storage.schema import audit_log, chats, messages
 from .errors import ApiError
@@ -18,10 +19,6 @@ class History:
         query = select(chats.c.id).where(chats.c.user_id == owner, chats.c.id == chat_id)
         if conn.scalar(query.with_for_update() if lock else query) is None:
             raise ApiError(404, "not_found", "The chat does not exist.")
-
-    def verify(self, owner: UUID, chat_id: UUID) -> None:
-        with tenant_transaction(self.engine, owner) as conn:
-            self._chat(conn, owner, chat_id)
 
     def list_chats(self, owner: UUID) -> list[dict]:
         c = chats.c
@@ -40,6 +37,16 @@ class History:
             if before is not None:
                 query = query.where(m.id < before)
             return [dict(row) for row in reversed(conn.execute(query.order_by(m.id.desc()).limit(100)).mappings().all())]
+
+    def recent_turns(self, owner: UUID, chat_id: UUID, version_ids: tuple[UUID, ...]) -> list[Turn]:
+        selected = {str(version) for version in version_ids}
+        messages = self.read(owner, chat_id)[-2 * DEFAULT_MAX_TURNS:]
+        turns = []
+        for question, answer in zip(messages[::2], messages[1::2]):
+            sources = {citation["document_id"] for citation in answer["citations"]}
+            if question["role"] == "user" and answer["role"] == "assistant" and sources and sources <= selected:
+                turns.append(Turn(question["content"], question["content"], answer["content"]))
+        return turns
 
     def save(
         self, owner: UUID, chat_id: UUID, question: str, answer: str, citations: list[dict], *, new: bool,

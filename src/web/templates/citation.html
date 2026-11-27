@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Page {{ number }} · {{ source.filename }}{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><h1>{{ source.filename }}</h1><p>Cited page {{ number }}</p></div>
+  <a class="button" href="/documents/{{ source.document_id }}/versions/{{ version_id }}/pdf#page={{ number }}" target="_blank" rel="noopener">Open original PDF</a>
+</div>
+{% if source.pages|length > 1 %}
+<nav class="page-tabs" aria-label="Cited pages">
+  {% for page in source.pages %}
+  <a class="button" href="/citations/{{ version_id }}/{{ chunk_id|urlencode }}/pages/{{ page }}"{% if page == number %} aria-current="page"{% endif %}>Page {{ page }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+<div class="viewer-grid">
+  <section class="card passage"><h2>Cited passage</h2><p>{{ source.text }}</p>
+    {% if not highlighted %}<p class="help">The passage could not be positioned on this page. Use the text here to check the original PDF.</p>{% endif %}
+  </section>
+  {% if preview %}
+  <figure class="page-preview"><img src="data:image/png;base64,{{ preview }}" alt="Page {{ number }} of {{ source.filename }}{% if highlighted %}, with the cited text highlighted{% endif %}"></figure>
+  {% endif %}
+</div>
+{% endblock %}

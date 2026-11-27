@@ -1,36 +1,41 @@
 # Flow: how data moves today
 
-Today there is no API server, no database and no login. Data moves through a
-CLI or a Gradio UI, inside one Python process. The planned production flow
-(FastAPI, Postgres, Ollama) is in `ROADMAP.md`. Update this file when it lands.
+The authenticated web workspace uses FastAPI, Postgres, Redis, and an
+OpenAI-compatible model server. The CLI and notebook can also run a local
+pipeline for experiments.
 
 ## 1. Entry points
 ```mermaid
 flowchart LR
   U[User] -->|python -m src.cli ask| CLI[src/cli.py]
-  U -->|python -m src.cli chat| UI[Gradio UI src/chat/ui.py]
-  CLI --> BP[build_pipeline src/pipeline.py:1045]
-  UI --> BP
+  U -->|Sign in| UI[FastAPI workspace]
+  UI --> LIB[Owner-scoped document library]
+  LIB --> BP[build_pipeline]
+  CLI --> BP
   BP --> D[Dense system]
   BP --> H[Hybrid system]
   BP --> A[Agentic system]
 ```
-The strategy is fixed by config (`retrieval.strategy`, default `dense`). There is no
-routing at runtime.
+The web workspace uses the agentic strategy. The CLI selects a strategy
+through its existing configuration.
 
 ## 2. Ingestion (once per PDF)
 ```mermaid
 flowchart LR
-  PDF[PDF file] --> P[Parser: pdfplumber]
+  PDF[PDF upload] --> J[Postgres upload job]
+  J --> A[Redis and arq worker]
+  A --> P[Parser: pdfplumber]
   P -->|image-only page| OCR[Tesseract eng, 300 DPI]
   P --> N[Normalise, strip headers/footers]
   OCR --> N
   N --> C[Structure chunker: 1200 chars, 150 overlap]
   C --> E[bge-m3 embeddings]
-  C --> B[BM25 index]
-  E --> S[(In-memory store: FAISS or numpy)]
+  C --> S[(Postgres chunks and pgvector)]
+  E --> S
 ```
-The index lives in memory only. Restarting the app or clicking Index again rebuilds it.
+The web library reuses saved vectors by owner, file hash, config fingerprint,
+and code version. It builds BM25 from the versions selected for a question.
+The local CLI and notebook keep their indexes in memory.
 
 ## 3. Answering a question (agentic strategy)
 ```mermaid
@@ -40,17 +45,20 @@ flowchart TD
   R --> RR[Reranker bge-reranker-v2-m3]
   RR --> EV{Evidence coverage >= 0.5?}
   EV -->|no, rounds left| RF[Refine: missing-term queries] --> R
-  EV -->|yes or out of rounds| G[Generate with C1..Cn labels]
+  EV -->|sufficient| CF[Check conflicting sources]
+  EV -->|insufficient, no rounds left| OUT[Answer or refusal]
+  CF --> G[Generate with C1..Cn labels]
   G --> V{Verifier}
   V -->|failed| RG[Regenerate once without blamed evidence] --> V
-  V -->|ok| CF[Conflict check, chat only]
-  CF --> CT[Resolve Cn to real pages in code]
-  CT --> OUT[Answer + citations or refusal]
+  V -->|passed| CT[Attach resolved pages to the answer]
+  V -->|unavailable by default| OUT
+  CT --> SSE[Save the exchange and stream the answer]
+  SSE --> VIEW[Open a cited page and highlight the stored passage]
 ```
 
 ## 4. State
-- Settings: one frozen config object (`src/config.py`). Nothing is read from env vars.
-- Per question: `AgentState` counts rounds and model calls (`src/pipeline.py`).
-- Per chat: `src/chat/session.py` keeps the history and rewrites follow-up questions.
-- Models: loaded lazily per pipeline instance (`src/generation/backends.py:181`).
-- Auth: none. `--share` makes a public Gradio link with no login.
+- The API and worker read connection and deployment settings from the environment.
+- Postgres stores upload state, sessions, document versions, and chat history under their owner.
+- Redis holds the ingestion queue and request counters.
+- Each API process shares its embedder, reranker, and model client.
+- The pipeline records its per-question decisions in `AgentState`.

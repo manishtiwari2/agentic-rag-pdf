@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"historyCacheSize":0}'>
+  <title>{% block title %}{% endblock %} · PDF RAG</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script defer src="/assets/htmx-2.0.11.min.js"></script>
+  <script defer src="/assets/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a href="/" class="brand"><span class="brand-mark" aria-hidden="true">P</span> PDF RAG</a>
+      {% if account %}
+      <nav aria-label="Workspace">
+        <a href="/library"{% if active == 'library' %} aria-current="page"{% endif %}>Library</a>
+        <a href="/chat"{% if active == 'chat' %} aria-current="page"{% endif %}>Chat</a>
+      </nav>
+      <button type="button" class="quiet signout" data-logout>Sign out</button>
+      {% else %}
+      <nav aria-label="Account">
+        <a href="/login">Sign in</a>
+        <a href="/register">Create account</a>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+  <main id="main" class="shell {% block layout %}{% endblock %}">
+    <p id="session-error" class="error" role="alert" hidden></p>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

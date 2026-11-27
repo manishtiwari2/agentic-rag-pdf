@@ -1,8 +1,4 @@
-"""Conversation layer (DD-065) and chat interface logic (DD-066).
-
-Everything here runs without gradio: the UI's behaviour lives in plain
-functions, and only ``build_app`` touches the library.
-"""
+"""Follow-up rewriting and conversation history."""
 
 from __future__ import annotations
 
@@ -10,8 +6,6 @@ import dataclasses
 
 import pytest
 
-from src.chat import ui
-from src.config import IngestionConfig
 from src.chat.session import (
     ChatSession,
     LLMRewriter,
@@ -21,9 +15,7 @@ from src.chat.session import (
     is_follow_up,
 )
 from src.generation.prompts import ABSTENTION_SENTENCE
-from src.pipeline import RAGResult, build_pipeline
-
-from . import pdf_fixtures as pdfs
+from src.pipeline import build_pipeline
 
 
 class Canned:
@@ -156,195 +148,3 @@ def test_results_stay_frozen(pipeline):
     result = ChatSession(pipeline).ask(FIRST)
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.answer = "changed"
-
-
-# ---------------------------------------------------------------------------
-# Chat interface logic (DD-066), without gradio
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def uploads(tmp_path):
-    def write(name, data):
-        path = tmp_path / name
-        path.write_bytes(data)
-        return str(path)
-
-    return write
-
-
-class TestIndexing:
-    def test_nothing_uploaded_asks_for_a_file(self):
-        state, status = ui.load_documents([], "agentic", ui.ChatState())
-        assert not state.ready and "Upload" in status
-
-    def test_a_pdf_is_indexed_with_its_counts(self, uploads):
-        path = uploads("structured.pdf", pdfs.structured_pdf())
-        state, status = ui.load_documents([path], "agentic", ui.ChatState())
-        assert state.ready and state.system == "agentic"
-        (doc,) = state.documents
-        assert doc["source_name"] == "structured.pdf" and doc["pages"] == 2
-        assert doc["chunks"] >= 1 and doc["ocr_pages"] == []
-        assert "| structured.pdf | 2 | 0 |" in status
-        assert "offline stand-in stack" in status
-
-    def test_several_pdfs_share_one_index(self, uploads):
-        paths = [
-            uploads("structured.pdf", pdfs.structured_pdf()),
-            uploads("multipage.pdf", pdfs.multipage_pdf(3)),
-        ]
-        state, _ = ui.load_documents(paths, "hybrid", ui.ChatState())
-        assert [d["source_name"] for d in state.documents] == ["structured.pdf", "multipage.pdf"]
-        assert len(state.pipeline.chunks) == sum(d["chunks"] for d in state.documents)
-
-    def test_an_encrypted_pdf_is_reported_with_its_remedy_and_skipped(self, uploads):
-        paths = [
-            uploads("locked.pdf", pdfs.encrypted_pdf()),
-            uploads("structured.pdf", pdfs.structured_pdf()),
-        ]
-        state, status = ui.load_documents(paths, "dense", ui.ChatState())
-        assert [d["source_name"] for d in state.documents] == ["structured.pdf"]
-        assert "locked.pdf: EncryptedPDFError" in status and "password" in status
-
-    def test_a_scanned_pdf_is_ocrd_and_its_pages_reported(self, uploads, monkeypatch):
-        class FakeOcr:
-            name = "test/fake-ocr"
-
-            def image_to_text(self, image):
-                return "The scanned page reports a median latency of 4.2 seconds."
-
-        monkeypatch.setattr(
-            "src.ingestion.parser_base.build_ocr_engine", lambda config: FakeOcr()
-        )
-        path = uploads("scan.pdf", pdfs.scanned_pdf(2))
-        state, status = ui.load_documents([path], "dense", ui.ChatState())
-        assert state.documents[0]["ocr_pages"] == [1, 2]
-        assert "| scan.pdf | 2 | 2 |" in status
-
-    def test_only_unreadable_pdfs_leave_nothing_to_ask(self, uploads):
-        path = uploads("locked.pdf", pdfs.encrypted_pdf())
-        state, status = ui.load_documents([path], "dense", ui.ChatState())
-        assert not state.ready and "Nothing was indexed" in status
-        history, _, _ = ui.respond("Anything?", [], state)
-        assert "Index" in history[-1]["content"]
-
-
-class TestResponding:
-    def test_asking_before_indexing_says_what_to_do(self):
-        history, _, trace = ui.respond("What recall?", [], ui.ChatState())
-        assert history[0] == {"role": "user", "content": "What recall?"}
-        assert "Upload a PDF" in history[1]["content"] and trace == ""
-
-    def test_an_empty_message_changes_nothing(self):
-        history, _, _ = ui.respond("   ", [], ui.ChatState())
-        assert history == []
-
-    def test_an_answer_carries_page_citations_and_a_trace(self, uploads):
-        path = uploads("structured.pdf", pdfs.structured_pdf())
-        state, _ = ui.load_documents([path], "agentic", ui.ChatState())
-        history, state, trace = ui.respond(FIRST, [], state)
-        answer = history[-1]["content"]
-        assert history[-1]["role"] == "assistant"
-        assert "**Sources**" in answer and "page" in answer
-        assert "**Round 1:**" in trace and "**Verifier:**" in trace
-        history, state, trace = ui.respond("What about its latency?", history, state)
-        assert len(history) == 4 and "Follow-up rewritten" in trace
-
-    def test_a_baseline_trace_says_there_is_no_agent_loop(self, uploads):
-        path = uploads("structured.pdf", pdfs.structured_pdf())
-        state, _ = ui.load_documents([path], "dense", ui.ChatState())
-        _, _, trace = ui.respond(FIRST, [], state)
-        assert "no agent loop" in trace
-
-
-class TestFormatting:
-    def test_a_refusal_is_shown_as_one(self):
-        result = RAGResult(
-            question="q", answer=ABSTENTION_SENTENCE, citations=(), evidence=(),
-            retrieved=(), abstained=True,
-        )
-        assert ui.format_answer(result) == f"**Refused:** {ABSTENTION_SENTENCE}"
-
-    def test_an_error_names_the_file_and_keeps_the_remedy(self):
-        text = ui.format_error("/tmp/x/scan.pdf", RuntimeError("Run OCR first: install it."))
-        assert text == "**scan.pdf: RuntimeError.** Run OCR first: install it."
-
-    def test_an_unknown_system_is_refused(self):
-        with pytest.raises(ValueError):
-            ui.make_config("magic", offline=True)
-
-
-def test_the_gradio_app_builds_when_gradio_is_installed():
-    gradio = pytest.importorskip("gradio")
-    app = ui.build_app(offline=True)
-    assert isinstance(app, gradio.Blocks)
-
-
-class TestChatCommand:
-    """`python -m src.cli chat`: the web app without the notebook."""
-
-    class FakeApp:
-        def __init__(self):
-            self.launched = None
-
-        def launch(self, **kwargs):
-            self.launched = kwargs
-
-    def _serve(self, monkeypatch, argv):
-        from src import cli
-
-        built, app = {}, self.FakeApp()
-
-        def fake_build_app(**kwargs):
-            built.update(kwargs)
-            return app
-
-        monkeypatch.setattr(ui, "build_app", fake_build_app)
-        return cli.main(["chat", *argv]), built, app.launched
-
-    def test_offline_serves_the_app_with_its_flags(self, monkeypatch):
-        code, built, launched = self._serve(
-            monkeypatch, ["--offline", "--system", "hybrid", "--share", "--port", "8000"])
-        assert code == 0
-        assert built == {"offline": True, "system": "hybrid"}
-        assert launched == {"share": True, "server_name": "127.0.0.1", "server_port": 8000,
-                            "max_file_size": IngestionConfig().max_upload_mb * 1024**2}
-
-    def test_the_defaults_are_agentic_local_and_private(self, monkeypatch):
-        _, built, launched = self._serve(monkeypatch, ["--offline"])
-        assert built["system"] == "agentic"
-        assert launched == {"share": False, "server_name": "127.0.0.1", "server_port": 7860,
-                            "max_file_size": IngestionConfig().max_upload_mb * 1024**2}
-
-    def test_the_model_stack_without_a_gpu_is_refused_with_the_remedy(self, monkeypatch, capsys):
-        import sys
-
-        monkeypatch.setitem(sys.modules, "torch", None)  # no torch, so no GPU
-        code, built, launched = self._serve(monkeypatch, [])
-        assert code == 1 and built == {} and launched is None
-        assert "--offline" in capsys.readouterr().err
-
-    def test_missing_gradio_says_how_to_install_it(self, monkeypatch, capsys):
-        import sys
-
-        from src import cli
-
-        monkeypatch.setitem(sys.modules, "gradio", None)
-        assert cli.main(["chat", "--offline"]) == 1
-        assert "pip install -r requirements-colab.txt" in capsys.readouterr().err
-
-    def test_it_takes_no_ablation_flags(self):
-        from src import cli
-
-        with pytest.raises(SystemExit):
-            cli.main(["chat", "--offline", "--no-rerank"])
-
-    def test_a_busy_port_is_a_message_not_a_traceback(self, monkeypatch, capsys):
-        from src import cli
-
-        class BusyApp:
-            def launch(self, **kwargs):
-                raise OSError("Cannot find empty port in range: 7860-7860.")
-
-        monkeypatch.setattr(ui, "build_app", lambda **kwargs: BusyApp())
-        assert cli.main(["chat", "--offline"]) == 1
-        assert "Pass another --port" in capsys.readouterr().err

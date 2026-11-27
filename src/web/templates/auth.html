@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ "Create account" if register else "Sign in" }}{% endblock %}
+{% block layout %}auth-layout{% endblock %}
+{% block content %}
+<section class="auth-intro">
+  <h1>Ask your PDFs.<br>Check the sources.</h1>
+  <p>Upload documents to your private library and open the exact pages behind an answer.</p>
+  <div class="paper-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+</section>
+<section class="card auth-card">
+  <h2>{{ "Create your account" if register else "Sign in" }}</h2>
+  <form id="account-form" data-action="{{ 'register' if register else 'login' }}" method="post">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="{{ 'new-password' if register else 'current-password' }}"
+           maxlength="256" {% if register %}minlength="12" aria-describedby="password-hint"{% endif %} required>
+    {% if register %}<p id="password-hint" class="help">Use at least 12 characters.</p>{% endif %}
+    <p class="error" role="alert" data-error hidden></p>
+    <button type="submit" class="primary">{{ "Create account" if register else "Sign in" }}</button>
+  </form>
+  <p class="help">
+    {% if register %}Have an account? <a href="/login">Sign in</a>.
+    {% else %}New to PDF RAG? <a href="/register">Create an account</a>.{% endif %}
+  </p>
+</section>
+{% endblock %}

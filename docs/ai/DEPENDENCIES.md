@@ -14,7 +14,6 @@ OK and a new row here, with its licence. No AGPL code at runtime.
 | accelerate | requirements-models.txt | Apache-2.0 | `device_map="auto"` |
 | bitsandbytes | requirements-models.txt | MIT | 4-bit NF4 on a T4 |
 | sentencepiece | requirements-models.txt | Apache-2.0 | BGE tokenizer |
-| gradio (<7) | requirements-colab.txt | Apache-2.0 | Current chat UI (to be removed in P4) |
 | pytesseract | requirements-colab.txt | Apache-2.0 | OCR for scanned pages |
 | pytest | requirements-dev.txt | MIT | Tests |
 | nbformat, nbclient, ipykernel | requirements-dev.txt | BSD-3 | Run the notebooks in tests |

@@ -145,6 +145,7 @@ jobs = Table(
     Column("id", Uuid, primary_key=True),
     Column("document_id", Uuid),
     Column("result_version_id", Uuid),
+    Column("filename", Text),
     Column("status", String(9), nullable=False, server_default="queued"),
     Column("error_code", Text),
     timestamp(),
