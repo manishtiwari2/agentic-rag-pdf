@@ -15,7 +15,7 @@ if not DATABASE_URL:
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import event, func, select, text
+from sqlalchemy import func, select, text
 
 from src.config import RAGConfig
 from src.errors import LibraryItemNotFound, RetrievalError
@@ -36,10 +36,11 @@ def engine():
     admin = build_engine(DATABASE_URL)
     suffix = uuid4().hex
     schema, role = f"test_rag_{suffix}", f"test_role_{suffix}"
+    password = uuid4().hex
     try:
         with admin.begin() as conn:
             conn.execute(text(f"CREATE SCHEMA {schema}"))
-            conn.execute(text(f"CREATE ROLE {role} NOLOGIN NOBYPASSRLS"))
+            conn.execute(text(f"CREATE ROLE {role} LOGIN NOBYPASSRLS PASSWORD '{password}'"))
             conn.execute(text(f"SET LOCAL search_path TO {schema}, public"))
             config = Config(str(ROOT / "alembic.ini"))
             config.attributes["connection"] = conn
@@ -49,15 +50,11 @@ def engine():
             command.check(config)
             conn.execute(text(f"GRANT USAGE ON SCHEMA {schema} TO {role}"))
             conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema} TO {role}"))
+            conn.execute(text(f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA {schema} TO {role}"))
+            conn.execute(text(f"ALTER ROLE {role} SET search_path TO {schema}, public"))
 
-        app = build_engine(DATABASE_URL)
-
-        @event.listens_for(app, "connect")
-        def _configure(dbapi_connection, _record):
-            with dbapi_connection.cursor() as cursor:
-                cursor.execute(f"SET search_path TO {schema}, public")
-                cursor.execute(f"SET ROLE {role}")
-            dbapi_connection.commit()
+        app_url = admin.url.set(username=role, password=password)
+        app = build_engine(app_url.render_as_string(hide_password=False))
 
         try:
             yield app
