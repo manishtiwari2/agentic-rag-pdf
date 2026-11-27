@@ -787,6 +787,8 @@ def _probe(system: Any, question: str, result: RAGResult) -> Sequence[Any]:
     which case the shallower depth shows up in the record's ``capped_ks``
     rather than being passed off as a depth-10 figure.
     """
+    if result.ranking is not None:
+        return result.ranking[:RETRIEVAL_METRIC_DEPTH]
     retrieve = getattr(system, "retrieve", None)
     if retrieve is None:
         return result.retrieved

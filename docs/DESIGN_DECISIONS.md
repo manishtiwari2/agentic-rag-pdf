@@ -3742,3 +3742,22 @@ S17, so the hinted run refused. The reference run quoted rows S1 through
 S7. The scorer credited the reference answer despite the wrong rows and
 the missing six-year value (bug #13). Keep the hint enabled to follow the
 grounding rule.
+
+## DD-082. Verify one hybrid answer before escalating
+
+Adaptive runs one hybrid query with reranking and attempts one grounded
+answer. It returns a cited answer after the verifier passes it. A refusal,
+missing citation, failed verdict or unavailable verifier sends the question
+through the existing agentic loop with the same deadline. The loop can reuse
+the original query's ranking. A conflict refusal with unresolved source dates
+ends the request so a different ranking cannot bypass the version policy.
+
+The answer record reports which path ran and includes both attempts in the
+cost and latency figures. The benchmark scores the ranking used by that path.
+The adaptive mode shares stored indexes with agentic when the index settings
+and code version match.
+
+Use `--system adaptive` in the CLI or `RAG_RETRIEVAL_STRATEGY=adaptive` for the
+API. Agentic remains the API default until the P5.5 dev comparison meets its
+decision rule. Tests cover first-pass verification, fallback, index reuse
+and unresolved conflicts.

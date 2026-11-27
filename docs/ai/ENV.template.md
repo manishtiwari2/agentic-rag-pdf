@@ -19,6 +19,9 @@ Set `RAG_RERANKER_MIN_SCORE` to a finite raw score to enable or override the
 reranker floor for the API. Use a score calibrated for the active reranker.
 The model-backed preset leaves the floor off when this variable is unset.
 
+Set `RAG_RETRIEVAL_STRATEGY=adaptive` to try a verified hybrid answer before
+running the full agent loop. The API defaults to `agentic`.
+
 ## Planned (from ROADMAP P3 to P7; goes into `.env.example`)
 Never put real values in git. Use `.env` locally (gitignored) and secrets on the server.
 

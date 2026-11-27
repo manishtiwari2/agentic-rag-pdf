@@ -42,7 +42,7 @@ from src.agents.verifier import (
 from src.benchmark.schema import Question, load_questions
 from src.config import RULE_PLANNER, RAGConfig
 from src.errors import ConfigurationError
-from src.evaluation.benchmark import run_benchmark_cli, score_result
+from src.evaluation.benchmark import _probe, run_benchmark_cli, score_result
 from src.evaluation.metrics import (
     ABSTENTION_FAILURE,
     ERROR_CATEGORIES,
@@ -60,6 +60,7 @@ from src.pipeline import (
     STAGE_EVIDENCE_ASSESSMENT,
     STAGE_PLANNING,
     STAGE_REFINEMENT,
+    AdaptiveRAGPipeline,
     AgenticRAGPipeline,
     HybridRAGPipeline,
     RAGResult,
@@ -178,6 +179,91 @@ class Canned:
     def generate(self, system_prompt, user_prompt):
         self.calls += 1
         return self.text
+
+
+class TestAdaptive:
+    QUESTION = "What recall did the hybrid system achieve?"
+    ANSWER = "The hybrid system achieved 0.65 recall. [C1]"
+
+    @staticmethod
+    def config(base):
+        agentic = agentic_config(base, evidence_controller_enabled=False)
+        return dataclasses.replace(agentic, retrieval=dataclasses.replace(agentic.retrieval, strategy="adaptive"))
+
+    def test_adaptive_is_opt_in_and_reuses_agentic_indexes(self, offline_config, monkeypatch):
+        from src.api.settings import Settings
+
+        for key, value in (
+            ("DATABASE_URL", "postgresql://local/database"),
+            ("REDIS_URL", "redis://local/0"),
+            ("RAG_CODE_VERSION", "test"),
+            ("RAG_OFFLINE", "1"),
+        ):
+            monkeypatch.setenv(key, value)
+        monkeypatch.delenv("RAG_RETRIEVAL_STRATEGY", raising=False)
+        original = Settings.from_env().rag_config()
+        monkeypatch.setenv("RAG_RETRIEVAL_STRATEGY", "adaptive")
+        adaptive = Settings.from_env().rag_config()
+        assert original.retrieval.strategy == "agentic"
+        assert isinstance(build_pipeline(adaptive), AdaptiveRAGPipeline)
+        assert adaptive.fingerprint() != original.fingerprint()
+        assert adaptive.fingerprint(for_index=True) == original.fingerprint(for_index=True)
+        invalid = dataclasses.replace(adaptive, agents=dataclasses.replace(adaptive.agents, verification_enabled=False))
+        with pytest.raises(ConfigurationError, match="adaptive strategy requires verification"):
+            invalid.validate()
+
+    @pytest.mark.parametrize("failure", [None, "refusal", "uncited", "failed", "unavailable"])
+    def test_adaptive_runs_the_full_loop_only_when_needed(self, offline_config, structured_pdf_path, failure):
+        first = {
+            "refusal": ABSTENTION_SENTENCE,
+            "uncited": "A first draft without citations.",
+        }.get(failure, self.ANSWER)
+        answers = iter((first, self.ANSWER))
+
+        class Backend(Canned):
+            def generate(self, system_prompt, user_prompt):
+                self.calls += 1
+                return next(answers)
+
+        class Verifier:
+            def __init__(self):
+                self.calls = 0
+
+            def verify(self, question, answer, evidence):
+                self.calls += 1
+                if self.calls == 1 and failure in ("failed", "unavailable"):
+                    return Verification(UNSUPPORTED, failure, model_calls=1)
+                return Verification(SUPPORTED, VERIFICATION_PASSED, model_calls=1)
+
+        backend, verifier = Backend(""), Verifier()
+        pipeline = AdaptiveRAGPipeline(
+            self.config(offline_config), backend=backend, verifier=verifier,
+            planner=Exploding() if failure is None else None,
+        )
+        pipeline.index(structured_pdf_path)
+        result = pipeline.ask(self.QUESTION)
+
+        assert not result.abstained and result.citations
+        assert result.metadata["verification_status"] == VERIFICATION_PASSED
+        assert result.metadata["adaptive_path"] == ("first_pass" if failure is None else "agentic")
+        assert (STAGE_PLANNING in result.metadata["stages"]) == (failure is not None)
+        assert backend.calls == (1 if failure is None else 2)
+        assert verifier.calls == (2 if failure in ("failed", "unavailable") else 1)
+        assert result.metadata["model_calls"] == backend.calls + verifier.calls
+        assert result.metadata["reranker_calls"] == 1
+        assert result.ranking and _probe(Exploding(), self.QUESTION, result) == result.ranking[:10]
+
+    def test_adaptive_refuses_when_both_verifications_are_unavailable(self, offline_config, structured_pdf_path):
+        backend = Canned(self.ANSWER)
+        pipeline = AdaptiveRAGPipeline(self.config(offline_config), backend=backend, verifier=Raising())
+        pipeline.index(structured_pdf_path)
+        result = pipeline.ask(self.QUESTION)
+
+        assert backend.calls == 2
+        assert result.metadata["adaptive_reason"] == "verification_unavailable"
+        assert result.metadata["verification_status"] == VERIFICATION_UNAVAILABLE
+        assert result.answer == ABSTENTION_SENTENCE and not result.citations
+        assert "draft_answer" not in result.metadata
 
 
 # ---------------------------------------------------------------------------

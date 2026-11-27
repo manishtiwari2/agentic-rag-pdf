@@ -43,6 +43,7 @@ DEFAULT_OUT = {
     "dense": "results/baseline",
     "hybrid": "results/hybrid",
     "agentic": "results/agentic",
+    "adaptive": "results/adaptive",
 }
 
 #: The agentic ablation switches of EVALUATION_PROTOCOL.md section 24, each one
@@ -78,9 +79,9 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
 
     reranking = config.reranking
     if getattr(args, "no_rerank", False):
-        if system not in ("hybrid", "agentic"):
+        if system == "dense":
             raise ConfigurationError(
-                "--no-rerank applies to --system hybrid or agentic; the dense "
+                "--no-rerank applies to hybrid retrieval systems. The dense "
                 "baseline has no reranker to switch off."
             )
         reranking = replace(reranking, enabled=False)
@@ -90,17 +91,17 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
             raise ConfigurationError("The reranker score floor requires reranking.")
         reranking = replace(reranking, min_score=floor)
     if getattr(args, "no_hybrid", False):
-        if system not in ("hybrid", "agentic"):
+        if system == "dense":
             raise ConfigurationError(
-                "--no-hybrid applies to --system hybrid or agentic; the dense "
+                "--no-hybrid applies to hybrid retrieval systems. The dense "
                 "baseline already retrieves with the dense retriever alone."
             )
         # The "Hybrid retrieval OFF" ablation: this one field, nothing else.
         retrieval = replace(retrieval, retrievers=("dense",))
     if getattr(args, "lexical_only", False):
-        if system not in ("hybrid", "agentic"):
+        if system == "dense":
             raise ConfigurationError(
-                "--lexical-only applies to --system hybrid or agentic, whose "
+                "--lexical-only applies to hybrid retrieval systems, whose "
                 "fusion and reranker it keeps."
             )
         if getattr(args, "no_hybrid", False):
@@ -113,9 +114,9 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
     }
     fusion_flags = {k: v for k, v in fusion_flags.items() if v is not None}
     if fusion_flags:
-        if system not in ("hybrid", "agentic"):
+        if system == "dense":
             raise ConfigurationError(
-                "--rrf-k and --candidate-k apply to --system hybrid or agentic; "
+                "--rrf-k and --candidate-k apply to hybrid retrieval systems. "
                 "the dense baseline fuses nothing."
             )
         retrieval = replace(retrieval, **fusion_flags)
@@ -124,14 +125,14 @@ def _build_config(args: argparse.Namespace) -> RAGConfig:
     requested = [flag for flag in AGENT_SWITCHES if getattr(args, flag, False)]
     iterations = getattr(args, "max_iterations", None)
     threshold = getattr(args, "sufficiency_threshold", None)
-    if (requested or iterations is not None or threshold is not None) and system != "agentic":
+    if (requested or iterations is not None or threshold is not None) and system not in ("agentic", "adaptive"):
         flags = [f"--{f.replace('_', '-')}" for f in requested]
         if iterations is not None:
             flags.append("--max-iterations")
         if threshold is not None:
             flags.append("--sufficiency-threshold")
         raise ConfigurationError(
-            f"{', '.join(flags)} apply to --system agentic; the {system} "
+            f"{', '.join(flags)} apply to --system agentic or adaptive. The {system} "
             "baseline has no agent components to switch off."
         )
     for flag in requested:
@@ -198,12 +199,12 @@ def _fusion_wins(args: argparse.Namespace) -> int:
 def _add_system(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--system",
-        choices=["dense", "hybrid", "agentic"],
+        choices=["dense", "hybrid", "agentic", "adaptive"],
         default="dense",
         help=(
             "dense = Baseline A; hybrid = Baseline B (dense + BM25, RRF, rerank); "
             "agentic = Baseline B's retrieval driven by planner, evidence "
-            "controller, refinement and verifier."
+            "controller, refinement and verifier. Adaptive verifies one hybrid answer before escalating."
         ),
     )
     parser.add_argument(
@@ -250,15 +251,15 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
             flag,
             action="store_true",
-            help=f"Agentic only: the '{label}' ablation (EVALUATION_PROTOCOL.md 24).",
+            help=f"Agentic and adaptive: the '{label}' ablation (EVALUATION_PROTOCOL.md 24).",
         )
     parser.add_argument(
-        "--no-missing-term-hint", action="store_true", help="Agentic only: omit the missing question terms hint.",
+        "--no-missing-term-hint", action="store_true", help="Omit the hint for question terms absent from evidence.",
     )
     parser.add_argument(
         "--max-iterations",
         type=int,
-        help="Agentic only: MAX_RETRIEVAL_ITERATIONS (default 2; open question 3).",
+        help="Agentic loop round limit (default 2, open question 3).",
     )
     parser.add_argument(
         "--sufficiency-threshold",

@@ -283,7 +283,7 @@ class RetrievalConfig:
     #: of section 9 (DD-050). The strategy decides which pipeline
     #: ``build_pipeline`` builds, so the system under test is chosen by
     #: configuration alone (DD-017).
-    strategy: Literal["dense", "hybrid", "agentic"] = "dense"
+    strategy: Literal["dense", "hybrid", "agentic", "adaptive"] = "dense"
     #: Which retrievers a hybrid system fuses, in tie-break priority order
     #: (DD-045). ("dense",) or ("lexical",) are the ablation arms
     #: EVALUATION_PROTOCOL.md section 24 and DD-007 ask for.
@@ -510,11 +510,12 @@ class RAGConfig:
         """Does the system run hybrid retrieval? Baseline B and the agentic
         system do: the agentic system reuses Baseline B's retrieval, fusion and
         reranking unchanged (DD-050)."""
-        return self.retrieval.strategy in ("hybrid", "agentic")
+        return self.retrieval.strategy in ("hybrid", "agentic", "adaptive")
 
     @property
     def is_agentic(self) -> bool:
-        return self.retrieval.strategy == "agentic"
+        """Whether the strategy uses the agent components."""
+        return self.retrieval.strategy in ("agentic", "adaptive")
 
     @property
     def uses_missing_term_hint(self) -> bool:
@@ -555,6 +556,8 @@ class RAGConfig:
             record["reranking"].pop("min_score")
         if for_index or not self.uses_missing_term_hint:
             record["agents"].pop("missing_term_hint")
+        if for_index and self.retrieval.strategy == "adaptive":
+            record["retrieval"]["strategy"] = "agentic"
         blob = json.dumps(record, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -661,7 +664,7 @@ class RAGConfig:
             )
         if len(set(r.retrievers)) != len(r.retrievers):
             raise ConfigurationError("retrieval.retrievers lists a retriever twice.")
-        if r.strategy == "hybrid":
+        if r.strategy in ("hybrid", "adaptive"):
             if r.candidate_k < r.top_k:
                 raise ConfigurationError(
                     f"retrieval.candidate_k ({r.candidate_k}) must be at least "
@@ -687,6 +690,8 @@ class RAGConfig:
 
         if self.is_agentic:
             self._validate_agents()
+        if r.strategy == "adaptive" and not self.agents.verification_enabled:
+            raise ConfigurationError("The adaptive strategy requires verification.")
 
         if self.generation.temperature < 0:
             raise ConfigurationError("generation.temperature must not be negative.")

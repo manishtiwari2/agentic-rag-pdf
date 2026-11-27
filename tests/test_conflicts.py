@@ -34,12 +34,12 @@ def _pdf(path, customers: str, date: str | None = None):
     return path
 
 
-def _pipeline(enabled: bool = True):
+def _pipeline(enabled: bool = True, *, strategy="hybrid"):
     base = RAGConfig.offline()
     return build_pipeline(
         dataclasses.replace(
             base,
-            retrieval=dataclasses.replace(base.retrieval, strategy="hybrid"),
+            retrieval=dataclasses.replace(base.retrieval, strategy=strategy),
             conflicts=ConflictConfig(enabled=enabled, detector="rules"),
         )
     )
@@ -86,6 +86,16 @@ class TestPolicy:
         assert result.metadata["conflict_policy"] == "refused"
         assert result.abstained
         assert "412,000" in result.answer and "405,000" in result.answer
+
+    def test_adaptive_preserves_the_conflict_refusal(self, tmp_path):
+        new = _pdf(tmp_path / "new.pdf", "412,000", "D:20250215000000")
+        memo = _pdf(tmp_path / "memo.pdf", "405,000")
+        pipeline = _pipeline(strategy="adaptive")
+        pipeline.index_documents([new, memo])
+        result = pipeline.ask(QUESTION)
+        assert result.abstained and result.metadata["conflict_policy"] == "refused"
+        assert result.metadata["adaptive_reason"] == "conflict_refused"
+        assert result.metadata["model_calls"] == 0
 
     def test_a_user_date_can_settle_an_undated_document(self, tmp_path):
         new = _pdf(tmp_path / "new.pdf", "412,000", "D:20250215000000")

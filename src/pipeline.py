@@ -41,7 +41,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
 
-from .agents.conflicts import apply_policy, build_conflict_detector
+from .agents.conflicts import POLICY_REFUSED, apply_policy, build_conflict_detector
 from .agents.evidence import ABSTAIN, ANSWER, RETRIEVE_AGAIN, EvidenceController, build_evidence_controller
 from .agents.planner import Planner, build_planner
 from .agents.refinement import MissingTermsRefiner, Refiner
@@ -49,6 +49,7 @@ from .agents.state import AgentState, RetrievalRound
 from .agents.verifier import (
     STATUS_FAILED as VERIFICATION_FAILED,
     STATUS_NOT_RUN as VERIFICATION_NOT_RUN,
+    STATUS_PASSED as VERIFICATION_PASSED,
     STATUS_UNAVAILABLE as VERIFICATION_UNAVAILABLE,
     Verification,
     Verifier,
@@ -103,6 +104,7 @@ class RAGResult:
     retrieved: tuple[RetrievedChunk, ...]
     abstained: bool
     metadata: dict[str, object] = field(default_factory=dict)
+    ranking: tuple[RetrievedChunk, ...] | None = field(default=None, repr=False, compare=False)
 
     @property
     def cited_pages(self) -> tuple[int, ...]:
@@ -691,7 +693,10 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             for item in fused
         ]
 
-    def _retrieval_loop(self, question: str, k: int, state: AgentState) -> _LoopOutcome:
+    def _retrieval_loop(
+        self, question: str, k: int, state: AgentState,
+        first_ranking: tuple[list[RetrievedChunk], list[RetrievedChunk]] | None = None,
+    ) -> _LoopOutcome:
         """Plan, retrieve, assess and refine, within the configured caps."""
         agents = self.config.agents
         queries = [question]
@@ -726,8 +731,11 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             round_ = RetrievalRound(iteration=iteration, queries=list(pending))
             for query in pending:
                 remaining_seconds()
-                _, pool, ranked, _ = self._pools(query)
-                state.reranker_calls += int(self.reranker is not None and bool(pool))
+                if query == question and first_ranking is not None:
+                    pool, ranked = first_ranking
+                else:
+                    _, pool, ranked, _ = self._pools(query)
+                    state.reranker_calls += int(self.reranker is not None and bool(pool))
                 pools.append(pool)
                 rankings.append(ranked)
                 issued.append(query)
@@ -819,6 +827,12 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         return outcome.ranking[: k or self.config.retrieval.top_k]
 
     def _ask(self, question: str, top_k: int | None) -> RAGResult:
+        return self._run_agentic(question, top_k)
+
+    def _run_agentic(
+        self, question: str, top_k: int | None,
+        first_ranking: tuple[list[RetrievedChunk], list[RetrievedChunk]] | None = None,
+    ) -> RAGResult:
         if not self.is_indexed:
             raise IndexNotBuiltError(
                 "No document has been indexed. Call pipeline.index(pdf_path) "
@@ -827,7 +841,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         started = time.perf_counter()
         k = top_k or self.config.retrieval.top_k
         state = AgentState(query=question)
-        outcome = self._retrieval_loop(question, k, state)
+        outcome = self._retrieval_loop(question, k, state, first_ranking)
         context = outcome.ranking[:k]
         retrieved_at = time.perf_counter()
         state.retrieved_chunk_ids = [r.chunk_id for r in outcome.pre_rerank[:k]]
@@ -873,14 +887,29 @@ class AgenticRAGPipeline(HybridRAGPipeline):
                 elif generated.abstained:
                     abstention_source = "generator"
 
+        if self.strategy == "adaptive" and not generated.abstained and not generated.citations:
+            generated = self._refuse(generated.evidence, "uncited")
+            abstention_source = "generator"
         if generated.abstention_reason == LOW_RERANKER_SCORE:
             abstention_source = "reranker"
+        state.verification_status = verification_status
+        return self._finish(
+            k, outcome, generated, state, stages, started=started, retrieved_at=retrieved_at,
+            abstention_source=abstention_source, draft=draft,
+        )
+
+    def _finish(
+        self, k: int, outcome: _LoopOutcome, generated: GeneratedAnswer, state: AgentState,
+        stages: list[str], *, started: float, retrieved_at: float,
+        abstention_source: str | None = None, draft: GeneratedAnswer | None = None,
+    ) -> RAGResult:
+        question, verification_status = state.query, state.verification_status
+        context = outcome.ranking[:k]
         state.selected_context = [e.chunk_id for e in generated.evidence]
         withheld = verification_status == VERIFICATION_UNAVAILABLE and generated.abstained
         if withheld:
             draft = None
         state.draft_answer = draft.answer if draft is not None else None
-        state.verification_status = verification_status
         state.citations = [c.to_record() for c in generated.citations]
         state.final = {
             "answer": generated.answer,
@@ -944,6 +973,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
             retrieved=tuple(context),
             abstained=generated.abstained,
             metadata=metadata,
+            ranking=tuple(outcome.ranking) if self.strategy == "adaptive" else None,
         )
 
     # -- helpers ---------------------------------------------------------------
@@ -956,7 +986,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         diagnostic: bool = False,
     ) -> GeneratedAnswer:
         generated = self._maybe_generate(question, context)
-        called = int(bool(generated.evidence))  # no evidence, no model call
+        called = int(bool(generated.evidence) and generated.metadata.get("conflict_policy") != POLICY_REFUSED)
         if diagnostic:
             state.diagnostic_model_calls += called
         else:
@@ -1087,6 +1117,80 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         return changed
 
 
+class AdaptiveRAGPipeline(AgenticRAGPipeline):
+    """Try one hybrid answer and use the agentic loop if it cannot be verified."""
+
+    name = "adaptive"
+    strategy = "adaptive"
+
+    def _retrieve(self, question: str, k: int | None) -> list[RetrievedChunk]:
+        return HybridRAGPipeline._retrieve(self, question, k)
+
+    def _ask(self, question: str, top_k: int | None) -> RAGResult:
+        if not self.is_indexed:
+            raise IndexNotBuiltError(
+                "No document has been indexed. Call pipeline.index(pdf_path) before asking a question."
+            )
+        started = time.perf_counter()
+        k = top_k or self.config.retrieval.top_k
+        _, pool, ranking, _ = self._pools(question)
+        retrieved_at = time.perf_counter()
+        context = ranking[:k]
+        state = AgentState(query=question, query_variants=[question], iteration=1)
+        state.reranker_calls = int(self.reranker is not None and bool(pool))
+        state.retrieved_chunk_ids = [item.chunk_id for item in pool[:k]]
+        state.reranked_chunk_ids = [item.chunk_id for item in context]
+        state.rounds.append(RetrievalRound(
+            iteration=1, queries=[question],
+            candidates={question: [item.chunk_id for item in pool]},
+            reranked={question: [item.chunk_id for item in ranking]},
+            merged_chunk_ids=state.reranked_chunk_ids,
+        ))
+        stages = list(self.stages)
+        draft = self._generate(question, context, state)
+        if not draft.abstained and draft.citations:
+            stages.append(STAGE_VERIFICATION)
+            state.verification_status = self._verify_once(question, draft, state).status
+
+        conflict = draft.metadata.get("conflict_policy") == POLICY_REFUSED
+        accepted = state.verification_status == VERIFICATION_PASSED
+        if conflict or accepted:
+            state.stop_reason = "conflict_refused" if conflict else "verified"
+            outcome = _LoopOutcome(ranking, pool, ANSWER, context)
+            result = self._finish(
+                k, outcome, draft, state, stages, started=started, retrieved_at=retrieved_at,
+                abstention_source="conflicts" if conflict else None, draft=draft if accepted else None,
+            )
+            result.metadata.update(adaptive_path="first_pass", adaptive_reason=state.stop_reason)
+            return result
+
+        if draft.abstained:
+            reason = draft.abstention_reason
+        elif not draft.citations:
+            reason = "uncited"
+        else:
+            reason = f"verification_{state.verification_status}"
+        fallback_started = time.perf_counter()
+        result = self._run_agentic(question, k, first_ranking=(pool, ranking))
+        metadata = result.metadata
+        metadata.update(
+            adaptive_path="agentic", adaptive_reason=reason,
+            adaptive_first_pass={
+                "verification_status": state.verification_status,
+                "model_calls": state.total_model_calls,
+                "reranker_calls": state.reranker_calls,
+            },
+            retrieval_s=round(float(metadata["retrieval_s"]) + retrieved_at - started, 3),
+            generation_s=round(float(metadata["generation_s"]) + fallback_started - retrieved_at, 3),
+            latency_s=round(time.perf_counter() - started, 3),
+            model_calls=int(metadata["model_calls"]) + state.total_model_calls,
+            reranker_calls=int(metadata["reranker_calls"]) + state.reranker_calls,
+            llm_decisions=int(metadata["llm_decisions"]) + state.llm_decisions,
+            llm_parse_failures=int(metadata["llm_parse_failures"]) + state.llm_parse_failures,
+        )
+        return result
+
+
 @dataclass(frozen=True)
 class _LoopOutcome:
     ranking: list[RetrievedChunk]
@@ -1104,6 +1208,7 @@ SYSTEMS: dict[str, type[_RetrieveThenGenerate]] = {
     DenseRAGPipeline.strategy: DenseRAGPipeline,
     HybridRAGPipeline.strategy: HybridRAGPipeline,
     AgenticRAGPipeline.strategy: AgenticRAGPipeline,
+    AdaptiveRAGPipeline.strategy: AdaptiveRAGPipeline,
 }
 
 
