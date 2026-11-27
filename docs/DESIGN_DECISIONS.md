@@ -3823,3 +3823,30 @@ python -m src.cli run-benchmark --offline --system agentic --split dev --out "$a
 python -m src.cli run-benchmark --offline --system adaptive --split dev --out "$adaptiveStudy/adaptive"
 python -m src.cli compare-runs --baseline "$adaptiveStudy/agentic" --system "$adaptiveStudy/adaptive" --split dev --out "$adaptiveStudy/comparison.json"
 ```
+
+### Offline dev results
+
+Both arms completed the same 33 dev questions without execution errors.
+The hashing embedder, term-overlap reranker, scripted generator and rule
+agents ran on CPU with Python 3.13. The strategy was the only config change.
+
+| Metric | Pairs | Agentic | Adaptive | Paired change [95% CI] |
+|---|---:|---:|---:|---:|
+| Accuracy overall | 33 | 8/33 | 7/33 | −0.030 [−0.091, 0.000] |
+| Accuracy on answerable questions | 30 | 7/30 | 7/30 | 0.000 [0.000, 0.000] |
+| Token faithfulness | 33 | 0.818 | 0.879 | +0.061 [0.000, +0.152] |
+| False answers on unanswerable questions | 3 | 2/3 | 3/3 | +0.333 [0.000, +1.000] |
+| Refusals on answerable questions | 30 | 5/30 | 4/30 | −0.033 [−0.100, 0.000] |
+| Unsupported answer rate | 33 | 0.000 | 0.000 | 0.000 [0.000, 0.000] |
+| Mean latency (seconds) | 33 | 0.023519 | 0.007974 | −0.015545 [−0.020866, −0.010986] |
+| Mean generation calls | 33 | 0.848 | 1.061 | +0.212 [+0.091, +0.364] |
+
+Observed P95 latency was 0.0579 s for agentic and 0.0181 s for adaptive.
+Adaptive used the first pass for 27 questions and the full loop for six.
+The accuracy and faithfulness gates passed. The safety gate failed on an
+extra false answer. In dev question q057, first-pass verification passed
+an excerpt about a current employer for a question about the previous
+employer (bug #14). The cost gate failed on mean calls.
+
+Keep agentic as the default. Adaptive remains available for opt-in use.
+There was no model-backed comparison.
