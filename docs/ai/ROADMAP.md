@@ -28,9 +28,9 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 3.5 Rate limits, quotas, question length cap, CORS allowlist, JSON errors.
 
 ## P4 Web UI
-- [ ] 4.1 Jinja + htmx pages: login, library, chat.
-- [ ] 4.2 Clickable citations that open the PDF page with the text highlighted; a conflict banner.
-- [ ] 4.3 Remove Gradio once the new UI works.
+- [x] 4.1 Jinja + htmx pages: login, library, chat.
+- [x] 4.2 Clickable citations that open the PDF page with the text highlighted and a conflict banner.
+- [x] 4.3 Remove Gradio once the new UI works.
 
 ## P5 Agent quality
 - [ ] 5.1 Reranker-score floor as a free grader, and set `min_score`. Bug #9.

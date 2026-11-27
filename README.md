@@ -348,13 +348,13 @@ Each cell is the value and its 95% percentile-bootstrap CI over questions (2,000
 choose a T4 runtime, then *Run all*. With no GPU it runs the offline stack and
 says so.
 
-**Chat app:**
-
-```bash
-pip install -r requirements-colab.txt
-python -m src.cli chat --offline          # local, CPU, stand-in stack
-python -m src.cli chat --share            # model stack, prints a public gradio.live link
-```
+**Web workspace:** set up Postgres and Redis, run the migrations, and start the
+FastAPI service and arq worker as described in
+[DD-078](docs/DESIGN_DECISIONS.md#dd-078-keep-api-sessions-and-upload-jobs-in-postgres).
+Open the service URL and create an account to reach the document library.
+Upload a PDF, wait for **Ready**, then choose a version in chat. Select a
+citation to open its cited page and passage. With the service settings in
+place, `python -m src.cli chat` starts the workspace on port 7860.
 
 **CLI:**
 
