@@ -3598,3 +3598,41 @@ for a migration role and run `python -m alembic upgrade head`. To run the
 integration tests, check `docker info`, set `RAG_TEST_DATABASE_URL` to a
 disposable Postgres 16 server with pgvector and run
 `python -m pytest tests/test_postgres_library.py -o addopts="" -q`.
+
+## DD-078. Keep API sessions and upload jobs in Postgres
+
+The FastAPI app uses Argon2id passwords and database sessions. Cookies carry
+an opaque session token, and Postgres stores only its hash. State-changing
+requests with a session also need a CSRF token. Roles live on the user row
+and do not bypass owner checks. Redis counts login attempts and questions
+across API processes. The daily quota resets at midnight UTC.
+
+An upload transfers a raw `application/pdf` body. The API reserves its
+bytes and saves the upload and job together before enqueueing its ID in arq.
+The worker can re-enqueue pending jobs from Postgres after a Redis failure.
+The ingestion subprocess has a wall-clock limit and a POSIX address-space
+limit. The completed job and new index commit together. This avoids leaving
+the user with a failed job after a version has already been published.
+
+The ask endpoint opens an SSE stream and sends a heartbeat while the
+pipeline works. It publishes the answer and citations after verification
+and saves the exchange in Postgres first. This keeps unverified drafts out
+of the stream. The API uses one OpenAI-compatible client per process and
+loads the embedder and reranker at startup.
+
+Install with `python -m pip install -e ".[postgres,api,models]"`. Run the
+migrations with a migration role, then set `DATABASE_URL` to the application
+role, `REDIS_URL`, and `RAG_CODE_VERSION` in both processes. Start the API
+with `uvicorn src.api.app:create_app --factory` and start the worker with
+`arq src.api.worker.WorkerSettings`. Use HTTPS for the secure cookies.
+`RAG_OFFLINE=1` enables the CPU stand-ins for integration tests.
+
+Register and log in with JSON fields `email` and `password`. Use the
+returned CSRF token as the `X-CSRF-Token` header for logout, uploads,
+deletes, and questions. Upload to `POST /documents?filename=report.pdf`
+with `Content-Type: application/pdf`. The optional `document_id` attaches
+the upload as a new version. Check the returned job ID at `GET /jobs/{id}`.
+
+`POST /ask` accepts JSON with `question`, `version_ids`, and an optional
+`chat_id`. The stream sends `start` with the chat ID, then `answer` or
+`error`. Read saved exchanges at `GET /chats/{id}/messages`.

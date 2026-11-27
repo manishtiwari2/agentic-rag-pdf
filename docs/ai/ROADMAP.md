@@ -21,11 +21,11 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 2.3 Index keyed by (file sha256, config fingerprint, code version). No re-embedding of the same file.
 
 ## P3 API + auth
-- [ ] 3.1 FastAPI app: /health, /ready, /metrics.
-- [ ] 3.2 Register, login and logout: argon2, httponly cookie, CSRF, roles.
-- [ ] 3.3 Upload, list, delete and version documents. Ingestion runs as an arq job.
-- [ ] 3.4 Ask with SSE streaming, and chat history. Every query filtered by user_id.
-- [ ] 3.5 Rate limits, quotas, question length cap, CORS allowlist, JSON errors.
+- [x] 3.1 FastAPI app: /health, /ready, /metrics.
+- [x] 3.2 Register, login and logout: argon2, httponly cookie, CSRF, roles.
+- [x] 3.3 Upload, list, delete and version documents. Ingestion runs as an arq job.
+- [x] 3.4 Ask with SSE streaming, and chat history. Every query filtered by user_id.
+- [x] 3.5 Rate limits, quotas, question length cap, CORS allowlist, JSON errors.
 
 ## P4 Web UI
 - [ ] 4.1 Jinja + htmx pages: login, library, chat.

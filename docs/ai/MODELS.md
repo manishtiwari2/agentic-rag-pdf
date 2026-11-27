@@ -8,6 +8,7 @@ Add a row per merged PR. If no AI was used, write "none". A human
 
 | Date | PR / task | Subsystem | AI tool and model | Human reviewer |
 |---|---|---|---|---|
+| 2026-11-27 | #59 | Postgres storage and persistent indexing | Codex, GPT-6.2 | Manish |
 | (next) | AI workflow docs | `CLAUDE.md`, `docs/ai/` | Claude Code, Opus 5.5 | Manish |
 | 2026-11 | #52 | Docs fixes | Claude Code, Opus 5.5 | Manish |
 
