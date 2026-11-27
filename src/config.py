@@ -396,6 +396,7 @@ class AgentConfig:
     #: diagnostic: never returned, and not counted as a system model call.
     record_refinement_counterfactual: bool = True
     missing_term_hint: bool = True
+    table_calculator: bool = True
 
     verification_enabled: bool = True
     on_verifier_unavailable: Literal["refuse", "mark_unverified"] = "refuse"
@@ -522,6 +523,10 @@ class RAGConfig:
         return self.is_agentic and self.agents.missing_term_hint
 
     @property
+    def uses_table_calculator(self) -> bool:
+        return self.is_agentic and self.agents.table_calculator
+
+    @property
     def uses_reranker(self) -> bool:
         """Only hybrid retrieval reranks; the dense baseline never loads one."""
         return self.is_hybrid and self.reranking.enabled
@@ -556,6 +561,8 @@ class RAGConfig:
             record["reranking"].pop("min_score")
         if for_index or not self.uses_missing_term_hint:
             record["agents"].pop("missing_term_hint")
+        if for_index or not self.uses_table_calculator:
+            record["agents"].pop("table_calculator")
         if for_index and self.retrieval.strategy == "adaptive":
             record["retrieval"]["strategy"] = "agentic"
         blob = json.dumps(record, sort_keys=True, default=str)
@@ -623,6 +630,7 @@ class RAGConfig:
             ),
             "refinement_enabled": a.refinement_enabled if agentic else None,
             "missing_term_hint": self.uses_missing_term_hint if agentic else None,
+            "table_calculator": self.uses_table_calculator if agentic else None,
             "max_retrieval_iterations": self.max_retrieval_iterations,
             "verification_enabled": a.verification_enabled if agentic else None,
             "verifier": backend(a.verification_enabled, a.verifier, RULE_VERIFIER),

@@ -54,6 +54,20 @@ Rules:
 7. If the evidence does not contain enough information to answer, reply with exactly this sentence and nothing else:
 {ABSTENTION_SENTENCE}"""
 
+TABLE_SYSTEM_PROMPT = f"""Select table cells for the requested arithmetic.
+{DOCUMENT_TEXT_IS_DATA}
+Use the requested operation. Select numeric cells from the rows and columns
+that match the question. Count body rows and columns from 1. For subtraction
+and division, list the operands in computation order. For percent_change,
+list the old value before the new value.
+Return only JSON with a single cells array. Each item has three integers:
+the evidence number, body row number, and column number. Never supply your
+own values. Return {{"cells": []}} when the question's operands are missing."""
+
+
+def build_table_prompt(question: str, operation: str, tables: list[dict[str, object]]) -> str:
+    return json.dumps({"question": question, "operation": operation, "tables": tables})
+
 
 def format_evidence_block(number: int, text: str) -> str:
     return f"{MARKER_FORMAT.format(n=number)}\n{text.strip()}"

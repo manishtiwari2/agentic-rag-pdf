@@ -54,6 +54,7 @@ AGENT_SWITCHES: dict[str, str] = {
     "no_refinement": "refinement_enabled",
     "no_verification": "verification_enabled",
     "no_missing_term_hint": "missing_term_hint",
+    "no_table_calculator": "table_calculator",
 }
 
 
@@ -255,6 +256,9 @@ def _add_system(parser: argparse.ArgumentParser) -> None:
         )
     parser.add_argument(
         "--no-missing-term-hint", action="store_true", help="Omit the hint for question terms absent from evidence.",
+    )
+    parser.add_argument(
+        "--no-table-calculator", action="store_true", help="Omit the calculator for an agentic reference run.",
     )
     parser.add_argument(
         "--max-iterations",

@@ -3761,3 +3761,26 @@ Use `--system adaptive` in the CLI or `RAG_RETRIEVAL_STRATEGY=adaptive` for the
 API. Agentic remains the API default until the P5.5 dev comparison meets its
 decision rule. Tests cover first-pass verification, fallback, index reuse
 and unresolved conflicts.
+
+## DD-083. Calculate with cited table cells
+
+Agentic and adaptive recognise explicit English arithmetic requests. The
+selector gets the table headers and complete rows visible in the selected
+evidence. It returns evidence, row and column coordinates. The calculator
+looks up each value, checks operand counts and units, and uses decimal
+arithmetic. It emits citations through the normal evidence markers and
+records the operands alongside the result.
+
+The calculator handles sums, differences, subtraction, unitless products,
+ratios, averages and percent change from a positive starting value. It
+refuses invalid plans, missing cells, mismatched units and division by zero.
+The verifier accepts answers produced by the calculator because code checked
+every operand. The conflict policy still applies before selecting cells.
+Asking the model to compute directly would leave the result and the choice
+of cells harder to check.
+
+The offline stand-in selects explicitly named rows and columns. The CLI
+flag `--no-table-calculator` restores the reference behaviour. Changing the
+calculator setting changes run fingerprints while allowing index reuse.
+Tests exercise cross-page citations, truncated evidence, malformed plans
+and the end-to-end agentic and adaptive paths.

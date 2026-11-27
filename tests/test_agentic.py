@@ -282,7 +282,7 @@ class TestConfiguration:
         assert described["verifier"].startswith("local/rule-based")
 
     def test_generation_gates_change_the_run_fingerprint_without_invalidating_indexes(self):
-        base = agentic_config(RAGConfig.offline(), missing_term_hint=False)
+        base = agentic_config(RAGConfig.offline(), missing_term_hint=False, table_calculator=False)
         original = dataclasses.replace(base, reranking=dataclasses.replace(base.reranking, min_score=None))
         graded = dataclasses.replace(
             original, reranking=dataclasses.replace(original.reranking, min_score=0.5),
@@ -292,6 +292,9 @@ class TestConfiguration:
         hinted = dataclasses.replace(graded, agents=dataclasses.replace(graded.agents, missing_term_hint=True))
         assert hinted.fingerprint() != graded.fingerprint()
         assert hinted.fingerprint(for_index=True) == graded.fingerprint(for_index=True)
+        calculated = dataclasses.replace(hinted, agents=dataclasses.replace(hinted.agents, table_calculator=True))
+        assert calculated.fingerprint() != hinted.fingerprint()
+        assert calculated.fingerprint(for_index=True) == hinted.fingerprint(for_index=True)
         invalid = dataclasses.replace(graded, reranking=dataclasses.replace(graded.reranking, min_score=float("nan")))
         with pytest.raises(ConfigurationError, match="reranking.min_score must be finite"):
             invalid.validate()
@@ -563,7 +566,7 @@ class TestEachSwitchRemovesItsComponent:
         off = indexed(
             agentic_config(
                 offline_config, planner_enabled=False, evidence_controller_enabled=False,
-                refinement_enabled=False, verification_enabled=False, missing_term_hint=False,
+                refinement_enabled=False, verification_enabled=False, missing_term_hint=False, table_calculator=False,
             ),
             structured_pdf_path,
         )

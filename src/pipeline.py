@@ -51,6 +51,7 @@ from .agents.verifier import (
     STATUS_NOT_RUN as VERIFICATION_NOT_RUN,
     STATUS_PASSED as VERIFICATION_PASSED,
     STATUS_UNAVAILABLE as VERIFICATION_UNAVAILABLE,
+    SUPPORTED,
     Verification,
     Verifier,
     build_verifier,
@@ -215,6 +216,7 @@ class _RetrieveThenGenerate:
         self._retriever = self._build_retriever()
         self._generator = GroundedGenerator(
             self.config.generation, backend=backend, hint_missing_terms=self.config.uses_missing_term_hint,
+            table_calculator=self.config.uses_table_calculator,
         )
         self.document: Document | None = None
         self.documents: tuple[Document, ...] = ()
@@ -986,7 +988,7 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         diagnostic: bool = False,
     ) -> GeneratedAnswer:
         generated = self._maybe_generate(question, context)
-        called = int(bool(generated.evidence) and generated.metadata.get("conflict_policy") != POLICY_REFUSED)
+        called = generated.model_calls
         if diagnostic:
             state.diagnostic_model_calls += called
         else:
@@ -1031,9 +1033,15 @@ class AgenticRAGPipeline(HybridRAGPipeline):
         self, question: str, generated: GeneratedAnswer, state: AgentState
     ) -> Verification:
         try:
-            verification = self.verifier.verify(  # type: ignore[union-attr]
-                question, generated.answer, generated.evidence
-            )
+            if generated.calculation is not None:
+                verification = Verification(
+                    SUPPORTED, VERIFICATION_PASSED, backend="table_calculator",
+                    reason="Code calculated the result from validated table cells",
+                )
+            else:
+                verification = self.verifier.verify(  # type: ignore[union-attr]
+                    question, generated.answer, generated.evidence
+                )
         except Exception as exc:  # noqa: BLE001 - ARCHITECTURE.md section 24
             verification = unavailable(getattr(self.verifier, "name", "verifier"), exc)
         state.count(
