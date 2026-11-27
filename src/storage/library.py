@@ -63,7 +63,7 @@ class DocumentLibrary:
         self.engine = engine
         self.config = config.validate()
         self.code_version = code_version
-        self.fingerprint = config.fingerprint()
+        self.fingerprint = config.fingerprint(for_index=True)
         self.parser = build_parser(config.ingestion)
         self.chunker = build_chunker(config.chunking)
         # Corpus-fitted IDF would make saved vectors depend on the user's other uploads.

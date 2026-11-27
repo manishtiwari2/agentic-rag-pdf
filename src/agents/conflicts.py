@@ -27,7 +27,7 @@ agent decision (DD-055):
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from ..config import RULE_CONFLICT_DETECTOR, ConflictConfig
@@ -493,17 +493,11 @@ def apply_policy(
         )
     answer = generated.answer + "\n\n" + "\n".join(dict.fromkeys(notes))
     return (
-        GeneratedAnswer(
+        replace(
+            generated,
             answer=answer,
-            raw_answer=generated.raw_answer,
             citations=tuple(dict.fromkeys(citations)),
             evidence=tuple(evidence),
-            abstained=False,
-            abstention_reason=generated.abstention_reason,
-            dropped_markers=generated.dropped_markers,
-            fabricated_page_mentions=generated.fabricated_page_mentions,
-            backend=generated.backend,
-            latency_s=generated.latency_s,
             metadata={**generated.metadata, "evidence_count": len(evidence)},
         ),
         POLICY_NEWER,

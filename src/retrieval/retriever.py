@@ -34,6 +34,7 @@ class RetrievedChunk:
     score: float
     rank: int
     source: str = "dense"
+    reranker_score: float | None = None
 
     @property
     def chunk_id(self) -> str:

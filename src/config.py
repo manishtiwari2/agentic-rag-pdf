@@ -283,7 +283,7 @@ class RetrievalConfig:
     #: of section 9 (DD-050). The strategy decides which pipeline
     #: ``build_pipeline`` builds, so the system under test is chosen by
     #: configuration alone (DD-017).
-    strategy: Literal["dense", "hybrid", "agentic"] = "dense"
+    strategy: Literal["dense", "hybrid", "agentic", "adaptive"] = "dense"
     #: Which retrievers a hybrid system fuses, in tie-break priority order
     #: (DD-045). ("dense",) or ("lexical",) are the ablation arms
     #: EVALUATION_PROTOCOL.md section 24 and DD-007 ask for.
@@ -300,10 +300,8 @@ class RetrievalConfig:
     bm25_b: float = 0.75
     #: "auto" uses FAISS when importable and falls back to the numpy index.
     index: Literal["auto", "faiss", "numpy"] = "auto"
-    #: Abstain without calling the generator when the best score falls below
-    #: this. ``None`` disables it: EXPERIMENT_PLAN.md forbids introducing an
-    #: untuned threshold, so by default the pipeline only short-circuits when
-    #: retrieval returns nothing at all.
+    #: Optional cutoff on the final ranking's score, separate from the raw
+    #: reranker floor.
     min_score: float | None = None
 
 
@@ -326,6 +324,8 @@ class RerankingConfig:
     #: Size of the fused pool handed to the reranker -- and, with the reranker
     #: off, the depth of the ranking returned unchanged (DD-046).
     candidates: int = 20
+    #: Raw scores use the active reranker's scale (DD-080).
+    min_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -395,6 +395,8 @@ class AgentConfig:
     #: so the record says whether iteration 2 changed the answer (DD-053). A
     #: diagnostic: never returned, and not counted as a system model call.
     record_refinement_counterfactual: bool = True
+    missing_term_hint: bool = True
+    table_calculator: bool = True
 
     verification_enabled: bool = True
     on_verifier_unavailable: Literal["refuse", "mark_unverified"] = "refuse"
@@ -476,7 +478,7 @@ class RAGConfig:
                 quantization="none",
                 device="cpu",
             ),
-            reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu"),
+            reranking=RerankingConfig(model_id=OVERLAP_RERANKER, device="cpu", min_score=0.01),
             agents=AgentConfig(
                 planner="rules", evidence_controller="rules", verifier="rules"
             ),
@@ -509,16 +511,29 @@ class RAGConfig:
         """Does the system run hybrid retrieval? Baseline B and the agentic
         system do: the agentic system reuses Baseline B's retrieval, fusion and
         reranking unchanged (DD-050)."""
-        return self.retrieval.strategy in ("hybrid", "agentic")
+        return self.retrieval.strategy in ("hybrid", "agentic", "adaptive")
 
     @property
     def is_agentic(self) -> bool:
-        return self.retrieval.strategy == "agentic"
+        """Whether the strategy uses the agent components."""
+        return self.retrieval.strategy in ("agentic", "adaptive")
+
+    @property
+    def uses_missing_term_hint(self) -> bool:
+        return self.is_agentic and self.agents.missing_term_hint
+
+    @property
+    def uses_table_calculator(self) -> bool:
+        return self.is_agentic and self.agents.table_calculator
 
     @property
     def uses_reranker(self) -> bool:
         """Only hybrid retrieval reranks; the dense baseline never loads one."""
         return self.is_hybrid and self.reranking.enabled
+
+    @property
+    def reranker_score_floor(self) -> float | None:
+        return self.reranking.min_score if self.uses_reranker else None
 
     @property
     def max_retrieval_iterations(self) -> int | None:
@@ -535,12 +550,21 @@ class RAGConfig:
             return 1
         return a.max_retrieval_iterations
 
-    def fingerprint(self) -> str:
-        """Stable hash of the whole configuration, recorded with every result."""
+    def fingerprint(self, *, for_index: bool = False) -> str:
+        """Stable hash for a run or a stored index."""
         record = dataclasses.asdict(self)
         if not self.conflicts.enabled:
             # DD-074: a run with conflicts off is the run it always was.
             record.pop("conflicts")
+        if for_index or self.reranker_score_floor is None:
+            # The floor controls generation and can change without re-indexing.
+            record["reranking"].pop("min_score")
+        if for_index or not self.uses_missing_term_hint:
+            record["agents"].pop("missing_term_hint")
+        if for_index or not self.uses_table_calculator:
+            record["agents"].pop("table_calculator")
+        if for_index and self.retrieval.strategy == "adaptive":
+            record["retrieval"]["strategy"] = "agentic"
         blob = json.dumps(record, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -577,6 +601,7 @@ class RAGConfig:
                 (rer.license if rer else "unregistered") if self.uses_reranker else None
             ),
             "rerank_candidates": self.reranking.candidates if hybrid else None,
+            **({"reranker_min_score": self.reranker_score_floor} if self.reranker_score_floor is not None else {}),
             **self._describe_agents(),
             "estimated_vram_gb": self.estimate_vram_gb(),
         }
@@ -604,6 +629,8 @@ class RAGConfig:
                 a.sufficiency_threshold if agentic and a.evidence_controller_enabled else None
             ),
             "refinement_enabled": a.refinement_enabled if agentic else None,
+            "missing_term_hint": self.uses_missing_term_hint if agentic else None,
+            "table_calculator": self.uses_table_calculator if agentic else None,
             "max_retrieval_iterations": self.max_retrieval_iterations,
             "verification_enabled": a.verification_enabled if agentic else None,
             "verifier": backend(a.verification_enabled, a.verifier, RULE_VERIFIER),
@@ -635,6 +662,9 @@ class RAGConfig:
         r = self.retrieval
         if r.top_k <= 0:
             raise ConfigurationError("retrieval.top_k must be positive.")
+        floor = self.reranking.min_score
+        if floor is not None and not math.isfinite(floor):
+            raise ConfigurationError("reranking.min_score must be finite.")
         if not r.retrievers or any(name not in RETRIEVERS for name in r.retrievers):
             raise ConfigurationError(
                 f"retrieval.retrievers must be a non-empty selection of "
@@ -642,7 +672,7 @@ class RAGConfig:
             )
         if len(set(r.retrievers)) != len(r.retrievers):
             raise ConfigurationError("retrieval.retrievers lists a retriever twice.")
-        if r.strategy == "hybrid":
+        if r.strategy in ("hybrid", "adaptive"):
             if r.candidate_k < r.top_k:
                 raise ConfigurationError(
                     f"retrieval.candidate_k ({r.candidate_k}) must be at least "
@@ -668,6 +698,8 @@ class RAGConfig:
 
         if self.is_agentic:
             self._validate_agents()
+        if r.strategy == "adaptive" and not self.agents.verification_enabled:
+            raise ConfigurationError("The adaptive strategy requires verification.")
 
         if self.generation.temperature < 0:
             raise ConfigurationError("generation.temperature must not be negative.")

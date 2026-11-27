@@ -7,7 +7,7 @@ only:
   it never says stop -- the loop enforces the bound, not the component.
 * **Each switch removes its component**: switched off, the component is never
   built and never called, and its stage is absent from the record.
-* **All four switches off is Baseline B**, answer for answer.
+* **With every agent switch off, answers match Baseline B.**
 * **The ``verification`` category fires for a failed verification**, through
   the real harness, and never for a system declaring no verification stage.
 * **A verifier failure is ``unavailable``, never ``passed``** (ARCHITECTURE 24).
@@ -42,7 +42,7 @@ from src.agents.verifier import (
 from src.benchmark.schema import Question, load_questions
 from src.config import RULE_PLANNER, RAGConfig
 from src.errors import ConfigurationError
-from src.evaluation.benchmark import run_benchmark_cli, score_result
+from src.evaluation.benchmark import _probe, run_benchmark_cli, score_result
 from src.evaluation.metrics import (
     ABSTENTION_FAILURE,
     ERROR_CATEGORIES,
@@ -60,6 +60,7 @@ from src.pipeline import (
     STAGE_EVIDENCE_ASSESSMENT,
     STAGE_PLANNING,
     STAGE_REFINEMENT,
+    AdaptiveRAGPipeline,
     AgenticRAGPipeline,
     HybridRAGPipeline,
     RAGResult,
@@ -180,6 +181,91 @@ class Canned:
         return self.text
 
 
+class TestAdaptive:
+    QUESTION = "What recall did the hybrid system achieve?"
+    ANSWER = "The hybrid system achieved 0.65 recall. [C1]"
+
+    @staticmethod
+    def config(base):
+        agentic = agentic_config(base, evidence_controller_enabled=False)
+        return dataclasses.replace(agentic, retrieval=dataclasses.replace(agentic.retrieval, strategy="adaptive"))
+
+    def test_adaptive_is_opt_in_and_reuses_agentic_indexes(self, offline_config, monkeypatch):
+        from src.api.settings import Settings
+
+        for key, value in (
+            ("DATABASE_URL", "postgresql://local/database"),
+            ("REDIS_URL", "redis://local/0"),
+            ("RAG_CODE_VERSION", "test"),
+            ("RAG_OFFLINE", "1"),
+        ):
+            monkeypatch.setenv(key, value)
+        monkeypatch.delenv("RAG_RETRIEVAL_STRATEGY", raising=False)
+        original = Settings.from_env().rag_config()
+        monkeypatch.setenv("RAG_RETRIEVAL_STRATEGY", "adaptive")
+        adaptive = Settings.from_env().rag_config()
+        assert original.retrieval.strategy == "agentic"
+        assert isinstance(build_pipeline(adaptive), AdaptiveRAGPipeline)
+        assert adaptive.fingerprint() != original.fingerprint()
+        assert adaptive.fingerprint(for_index=True) == original.fingerprint(for_index=True)
+        invalid = dataclasses.replace(adaptive, agents=dataclasses.replace(adaptive.agents, verification_enabled=False))
+        with pytest.raises(ConfigurationError, match="adaptive strategy requires verification"):
+            invalid.validate()
+
+    @pytest.mark.parametrize("failure", [None, "refusal", "uncited", "failed", "unavailable"])
+    def test_adaptive_runs_the_full_loop_only_when_needed(self, offline_config, structured_pdf_path, failure):
+        first = {
+            "refusal": ABSTENTION_SENTENCE,
+            "uncited": "A first draft without citations.",
+        }.get(failure, self.ANSWER)
+        answers = iter((first, self.ANSWER))
+
+        class Backend(Canned):
+            def generate(self, system_prompt, user_prompt):
+                self.calls += 1
+                return next(answers)
+
+        class Verifier:
+            def __init__(self):
+                self.calls = 0
+
+            def verify(self, question, answer, evidence):
+                self.calls += 1
+                if self.calls == 1 and failure in ("failed", "unavailable"):
+                    return Verification(UNSUPPORTED, failure, model_calls=1)
+                return Verification(SUPPORTED, VERIFICATION_PASSED, model_calls=1)
+
+        backend, verifier = Backend(""), Verifier()
+        pipeline = AdaptiveRAGPipeline(
+            self.config(offline_config), backend=backend, verifier=verifier,
+            planner=Exploding() if failure is None else None,
+        )
+        pipeline.index(structured_pdf_path)
+        result = pipeline.ask(self.QUESTION)
+
+        assert not result.abstained and result.citations
+        assert result.metadata["verification_status"] == VERIFICATION_PASSED
+        assert result.metadata["adaptive_path"] == ("first_pass" if failure is None else "agentic")
+        assert (STAGE_PLANNING in result.metadata["stages"]) == (failure is not None)
+        assert backend.calls == (1 if failure is None else 2)
+        assert verifier.calls == (2 if failure in ("failed", "unavailable") else 1)
+        assert result.metadata["model_calls"] == backend.calls + verifier.calls
+        assert result.metadata["reranker_calls"] == 1
+        assert result.ranking and _probe(Exploding(), self.QUESTION, result) == result.ranking[:10]
+
+    def test_adaptive_refuses_when_both_verifications_are_unavailable(self, offline_config, structured_pdf_path):
+        backend = Canned(self.ANSWER)
+        pipeline = AdaptiveRAGPipeline(self.config(offline_config), backend=backend, verifier=Raising())
+        pipeline.index(structured_pdf_path)
+        result = pipeline.ask(self.QUESTION)
+
+        assert backend.calls == 2
+        assert result.metadata["adaptive_reason"] == "verification_unavailable"
+        assert result.metadata["verification_status"] == VERIFICATION_UNAVAILABLE
+        assert result.answer == ABSTENTION_SENTENCE and not result.citations
+        assert "draft_answer" not in result.metadata
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -194,6 +280,24 @@ class TestConfiguration:
         assert described["planner"] == RULE_PLANNER
         assert described["evidence_controller"].startswith("local/rule-based")
         assert described["verifier"].startswith("local/rule-based")
+
+    def test_generation_gates_change_the_run_fingerprint_without_invalidating_indexes(self):
+        base = agentic_config(RAGConfig.offline(), missing_term_hint=False, table_calculator=False)
+        original = dataclasses.replace(base, reranking=dataclasses.replace(base.reranking, min_score=None))
+        graded = dataclasses.replace(
+            original, reranking=dataclasses.replace(original.reranking, min_score=0.5),
+        )
+        assert graded.fingerprint() != original.fingerprint()
+        assert graded.fingerprint(for_index=True) == original.fingerprint()
+        hinted = dataclasses.replace(graded, agents=dataclasses.replace(graded.agents, missing_term_hint=True))
+        assert hinted.fingerprint() != graded.fingerprint()
+        assert hinted.fingerprint(for_index=True) == graded.fingerprint(for_index=True)
+        calculated = dataclasses.replace(hinted, agents=dataclasses.replace(hinted.agents, table_calculator=True))
+        assert calculated.fingerprint() != hinted.fingerprint()
+        assert calculated.fingerprint(for_index=True) == hinted.fingerprint(for_index=True)
+        invalid = dataclasses.replace(graded, reranking=dataclasses.replace(graded.reranking, min_score=float("nan")))
+        with pytest.raises(ConfigurationError, match="reranking.min_score must be finite"):
+            invalid.validate()
 
     def test_llm_agents_are_refused_on_the_scripted_backend(self):
         config = dataclasses.replace(
@@ -392,7 +496,39 @@ class TestEveryLoopStopsAtItsCap:
         assert len(generations) == bounds["regenerations_used"] + 1
         assert verifier.calls == sum(1 for g in generations if not g["abstained"])
         assert result.answer == ABSTENTION_SENTENCE
-        assert result.metadata["abstention_source"] in ("verifier", "generator")
+        assert result.metadata["abstention_source"] in ("verifier", "generator", "reranker")
+        if result.metadata["abstention_source"] == "reranker":
+            assert result.metadata["reranker_grade"]["passed"] is False
+
+
+@pytest.mark.parametrize("score", [0.10, 0.40])
+def test_reranker_floor_uses_raw_scores_after_query_fusion(offline_config, structured_pdf_path, score):
+    question = "How does the branching model differ from trunk-based development?"
+
+    class FixedReranker:
+        model_id = "test/fixed-score"
+
+        def score(self, query, passages):
+            return [0.05 if query == question else score] * len(passages)
+
+    config = agentic_config(offline_config, evidence_controller_enabled=False, verification_enabled=False)
+    config = dataclasses.replace(config, reranking=dataclasses.replace(config.reranking, min_score=0.40))
+    backend = Canned("The hybrid system achieved 0.65 recall. [C1]")
+    pipeline = indexed(config, structured_pdf_path, reranker=FixedReranker(), backend=backend)
+
+    result = pipeline.ask(question)
+
+    assert len(result.metadata["sub_queries"]) > 1
+    assert result.metadata["top_score"] < 0.40
+    passed = score >= 0.40
+    assert result.metadata["reranker_grade"] == {"floor": 0.40, "score": score, "passed": passed}
+    if passed:
+        assert not result.abstained and result.citations and backend.calls == 1
+    else:
+        assert result.abstained and result.answer == ABSTENTION_SENTENCE
+        assert result.metadata["abstention_source"] == "reranker"
+        assert result.metadata["abstention_reason"] == "low_reranker_score"
+        assert not result.citations and backend.calls == 0
 
 
 # ---------------------------------------------------------------------------
@@ -426,11 +562,11 @@ class TestEachSwitchRemovesItsComponent:
             if component == "verifier":
                 assert result.metadata["verification_status"] == VERIFICATION_NOT_RUN
 
-    def test_all_four_off_is_baseline_b(self, offline_config, structured_pdf_path):
+    def test_all_agents_off_is_baseline_b(self, offline_config, structured_pdf_path):
         off = indexed(
             agentic_config(
                 offline_config, planner_enabled=False, evidence_controller_enabled=False,
-                refinement_enabled=False, verification_enabled=False,
+                refinement_enabled=False, verification_enabled=False, missing_term_hint=False, table_calculator=False,
             ),
             structured_pdf_path,
         )

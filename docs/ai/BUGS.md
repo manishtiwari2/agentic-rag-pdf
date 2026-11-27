@@ -5,10 +5,12 @@ Type: bug, AI mistake (hallucinated or wrong AI output), or regression.
 
 | # | Date | Type | What happened | Where | Status |
 |---|---|---|---|---|---|
+| 14 | 2026-11-27 | bug | The adaptive stand-in verifier passed a current-employer excerpt for an unanswerable question about the previous employer. The agentic evidence controller refused it. | DD-084, dev question q057 | Open. Check the question premise before accepting a first-pass draft. |
+| 13 | 2026-11-27 | bug | The dev scorer credited a table excerpt about S1 through S7 as the answer about S17. The excerpt omitted S17 and the correct six-year value. | DD-081, dev question q020 | Open. Check row grounding when scoring table answers. |
 | 12 | 2026-11-26 | AI mistake | An AI review claimed a "shared reranker sigmoid bug" in all three repos. No sigmoid exists in our `src/reranking`. | `source/three-repo-comparison.md` | Closed: claim was false |
 | 11 | 2026-11-26 | AI mistake | A commit and PR body got `Co-Authored-By` and "Generated with Claude Code" lines despite the global rule. | PR #52 | Rule now in `CLAUDE.md` |
 | 10 | 2026-11-26 | bug | `src/config.py:4` names `tests/test_config.py`, which does not exist. | `src/config.py:4` | open |
-| 9 | 2026-11-26 | bug | Refusal accuracy 0.000 on the stand-in stack; `min_score` is None. | `src/config.py:296` | open (ROADMAP P5) |
+| 9 | 2026-11-26 | bug | Refusal accuracy 0.000 in the hybrid stand-in run. | `src/config.py` | Open. DD-080 adds a floor for weak scores. Dev refusal accuracy was unchanged. |
 | 8 | 2026-11-26 | regression | The always-on agent loop lowered faithfulness by -0.079 (CI -0.145 to -0.026). | `src/pipeline.py` agentic | open (ROADMAP P5) |
 | 7 | 2026-11-26 | bug | Models reload on every Index click; the index is memory-only. | `src/chat/ui.py:98-99` | open (P2) |
 | 6 | 2026-11-26 | bug | `DOCUMENT_TEXT_IS_DATA` is missing from the conflict and chat-rewrite prompts. | `src/agents/conflicts.py:308`, `src/chat/session.py:101` | open (P1) |

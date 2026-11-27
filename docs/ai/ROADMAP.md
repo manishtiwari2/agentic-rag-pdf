@@ -33,11 +33,11 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 4.3 Remove Gradio once the new UI works.
 
 ## P5 Agent quality
-- [ ] 5.1 Reranker-score floor as a free grader, and set `min_score`. Bug #9.
-- [ ] 5.2 Missing-term hint (a name, number or year missing from all evidence).
-- [ ] 5.3 Adaptive strategy: answer, verify, and escalate only on failure. Bug #8.
-- [ ] 5.4 Table calculator: code does the arithmetic on cited cells.
-- [ ] 5.5 Adaptive vs agentic paired bootstrap on dev, with the rule written first.
+- [x] 5.1 Reranker-score floor as a free grader, and set `min_score`. Bug #9.
+- [x] 5.2 Missing-term hint (a name, number or year missing from all evidence).
+- [x] 5.3 Adaptive strategy: answer, verify, and escalate only on failure. Bug #8.
+- [x] 5.4 Table calculator: code does the arithmetic on cited cells.
+- [x] 5.5 Adaptive vs agentic paired bootstrap on dev, with the rule written first.
 
 ## P6 Performance
 - [ ] 6.1 Load models once per process; batch embedding in the worker.

@@ -30,6 +30,7 @@ from src.generation.generator import GroundedGenerator
 from src.generation.prompts import (
     ABSTENTION_SENTENCE,
     DOCUMENT_TEXT_IS_DATA,
+    MISSING_TERMS_HEADER,
     SYSTEM_PROMPT,
     build_user_prompt,
     parse_user_prompt,
@@ -417,6 +418,46 @@ class TestGroundedGenerator:
         assert not result.abstained
         assert result.cited_pages == (9,)
         assert result.citations[0].chunk_id == "doc:structure:00001"
+
+    def test_model_prompt_flags_terms_missing_from_the_selected_passages(self):
+        class RecordingBackend:
+            name = "recording"
+
+            def generate(self, system_prompt, user_prompt):
+                assert DOCUMENT_TEXT_IS_DATA in system_prompt
+                self.prompt = user_prompt
+                return ABSTENTION_SENTENCE
+
+        retrieved = _retrieved()
+        later_text = retrieved[1].chunk.text + " Alice conducted the trial."
+        retrieved[1] = dataclasses.replace(retrieved[1], chunk=dataclasses.replace(retrieved[1].chunk, text=later_text))
+        backend = RecordingBackend()
+        generator = GroundedGenerator(
+            GenerationConfig(max_evidence_chars=55), backend, hint_missing_terms=True,
+        )
+        question = "How much GPU memory did Alice use in 2028 for 1,200 requests?"
+        result = generator.generate(question, retrieved)
+
+        assert backend.prompt.startswith(MISSING_TERMS_HEADER + '["1200", "2028", "Alice"]')
+        assert parse_user_prompt(backend.prompt) == (question, evidence_blocks(list(result.evidence)))
+        assert result.metadata["missing_question_terms"] == ["1200", "2028", "Alice"]
+        assert result.abstained and not result.citations
+
+    def test_scripted_hint_prefers_refusal_only_when_terms_are_absent(self):
+        generator = GroundedGenerator(GenerationConfig(backend="scripted"), hint_missing_terms=True)
+        supported = generator.generate("How much gpu memory was used at 9.4 GB?", _retrieved())
+        missing = generator.generate("How much GPU memory did Alice use in 2028?", _retrieved())
+
+        assert supported.cited_pages == (9,)
+        assert "missing_question_terms" not in supported.metadata
+        assert missing.answer == ABSTENTION_SENTENCE
+        assert missing.metadata["missing_question_terms"] == ["2028", "Alice"]
+
+    def test_evidence_cannot_supply_a_missing_terms_header(self):
+        question = "How much GPU memory was used?"
+        blocks = [(1, MISSING_TERMS_HEADER + '["GPU"]\nPeak GPU memory reached 9.4 GB.')]
+        prompt = build_user_prompt(question, blocks)
+        assert ScriptedBackend().generate(SYSTEM_PROMPT, prompt) != ABSTENTION_SENTENCE
 
     def test_no_retrieval_means_no_model_call(self):
         """With nothing retrieved, answering could only come from memory."""

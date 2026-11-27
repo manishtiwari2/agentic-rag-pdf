@@ -12,13 +12,15 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from ..agents.text import missing_question_terms
 from ..config import GenerationConfig
 from ..retrieval.retriever import RetrievedChunk
 from .abstention import AbstentionVerdict, detect_abstention
 from .backends import LLMBackend, build_backend
 from .citations import Citation, CitationResolution, resolve_citations
 from .evidence import EvidenceItem, build_evidence, evidence_blocks
-from .prompts import ABSTENTION_SENTENCE, SYSTEM_PROMPT, build_user_prompt
+from .prompts import ABSTENTION_SENTENCE, SYSTEM_PROMPT, TABLE_SYSTEM_PROMPT, build_table_prompt, build_user_prompt
+from .table_calculator import TableCalculation, calculate, operation_for, prompt_tables
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,8 @@ class GeneratedAnswer:
     backend: str = ""
     latency_s: float = 0.0
     metadata: dict[str, object] = field(default_factory=dict)
+    model_calls: int = 0
+    calculation: TableCalculation | None = None
 
     @property
     def cited_pages(self) -> tuple[int, ...]:
@@ -62,10 +66,13 @@ class GroundedGenerator:
     """Builds the evidence prompt, calls the backend, resolves the citations."""
 
     def __init__(
-        self, config: GenerationConfig | None = None, backend: LLMBackend | None = None
+        self, config: GenerationConfig | None = None, backend: LLMBackend | None = None,
+        *, hint_missing_terms: bool = False, table_calculator: bool = False,
     ) -> None:
         self.config = config or GenerationConfig()
         self.backend = backend or build_backend(self.config)
+        self.hint_missing_terms = hint_missing_terms
+        self.table_calculator = table_calculator
 
     def generate(
         self, question: str, retrieved: list[RetrievedChunk]
@@ -84,7 +91,15 @@ class GroundedGenerator:
                 latency=time.perf_counter() - started,
             )
 
-        prompt = build_user_prompt(question, evidence_blocks(evidence))
+        blocks = evidence_blocks(evidence)
+        missing = missing_question_terms(question, "\n".join(text for _, text in blocks)) if self.hint_missing_terms else ()
+        hint = {"missing_question_terms": list(missing)} if missing else {}
+        operation = operation_for(question) if self.table_calculator else None
+        if operation:
+            answer = self._calculate(question, evidence, operation, started, bool(missing))
+            answer.metadata.update(hint)
+            return answer
+        prompt = build_user_prompt(question, blocks, missing_terms=missing)
         raw = self.backend.generate(SYSTEM_PROMPT, prompt)
 
         resolution = resolve_citations(raw, evidence)
@@ -93,13 +108,15 @@ class GroundedGenerator:
         if verdict.abstained:
             # A refusal cites nothing. Keeping citations on it would let a
             # citation metric score a system that answered nothing.
-            return self._refusal(
+            refusal = self._refusal(
                 evidence=tuple(evidence),
                 reason=verdict.reason,
                 latency=time.perf_counter() - started,
                 raw=raw,
                 resolution=resolution,
             )
+            refusal.metadata.update(hint)
+            return refusal
 
         return GeneratedAnswer(
             answer=resolution.answer,
@@ -112,10 +129,32 @@ class GroundedGenerator:
             fabricated_page_mentions=resolution.fabricated_page_mentions,
             backend=self.backend.name,
             latency_s=time.perf_counter() - started,
+            model_calls=1,
             metadata={
                 "evidence_count": len(evidence),
                 "uncited": not resolution.has_citations,
+                **hint,
             },
+        )
+
+    def _calculate(
+        self, question: str, evidence: list[EvidenceItem], operation: str, started: float, missing: bool,
+    ) -> GeneratedAnswer:
+        tables = prompt_tables(evidence)
+        if operation == "ambiguous" or not tables or missing:
+            return self._refusal(tuple(evidence), "no_grounded_table_operands", time.perf_counter() - started)
+        prompt = build_table_prompt(question, operation, [table.to_record() for table in tables])
+        raw = self.backend.generate(TABLE_SYSTEM_PROMPT, prompt)
+        calculation = calculate(operation, raw, tables)
+        elapsed = time.perf_counter() - started
+        if calculation is None:
+            return self._refusal(tuple(evidence), "invalid_table_operands", elapsed, raw=raw)
+        resolution = resolve_citations(calculation.answer(), evidence)
+        return GeneratedAnswer(
+            answer=resolution.answer, raw_answer=raw, citations=resolution.citations,
+            evidence=tuple(evidence), abstained=False, abstention_reason="",
+            backend=self.backend.name, latency_s=elapsed, model_calls=1, calculation=calculation,
+            metadata={"evidence_count": len(evidence), "table_calculation": calculation.to_record()},
         )
 
     # -- helpers ------------------------------------------------------------
@@ -141,6 +180,7 @@ class GroundedGenerator:
             ),
             backend=self.backend.name,
             latency_s=latency,
+            model_calls=int(raw is not None),
             metadata={
                 "evidence_count": len(evidence),
                 "patterns_version": AbstentionVerdict(True).patterns_version,

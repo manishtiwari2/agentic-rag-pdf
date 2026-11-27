@@ -1,8 +1,9 @@
 # Environment: everything the app needs
 
-## Today
-The code reads **no environment variables**. All settings live in
-`src/config.py`. No API keys are needed, because every model runs locally.
+## Standalone CLI
+
+Model and retrieval settings live in `src/config.py` and can be overridden
+with CLI flags. Local models do not require an API key.
 
 | Need | Required? | What it is |
 |---|---|---|
@@ -11,6 +12,15 @@ The code reads **no environment variables**. All settings live in
 | Tesseract binary | only for scanned PDFs | System install. `pytesseract` only calls it. |
 | Hugging Face cache (`HF_HOME`) | optional | Where models download to. Default `~/.cache/huggingface`. |
 | `HF_TOKEN` | no | Only needed if a model becomes gated. Never commit it. |
+
+## Web service
+
+Set `RAG_RERANKER_MIN_SCORE` to a finite raw score to enable or override the
+reranker floor for the API. Use a score calibrated for the active reranker.
+The model-backed preset leaves the floor off when this variable is unset.
+
+Set `RAG_RETRIEVAL_STRATEGY=adaptive` to try a verified hybrid answer before
+running the full agent loop. The API defaults to `agentic`.
 
 ## Planned (from ROADMAP P3 to P7; goes into `.env.example`)
 Never put real values in git. Use `.env` locally (gitignored) and secrets on the server.

@@ -2,12 +2,10 @@
 
 - **Updated:** 2026-11-27
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
-- **Branch:** `feat/p4-web-ui`, based on P3 merge `005b7a8`.
-- **Work:** FastAPI pages, upload progress and status, SSE chat, safe message rendering, and a PDF viewer with owner-checked highlights. Gradio was removed.
-- **Decision:** DD-079 covers server-rendered pages, safe streaming, and citation matching.
-- **Key files:** `src/web/`, `src/ingestion/highlight.py`, `src/api/app.py`, `migrations/versions/0003_job_filename.py`.
-- **Targeted:** after `docker info`, set the Postgres and Redis test URLs and run `python -m pytest tests/test_highlight.py tests/test_api.py tests/test_postgres_library.py -o addopts="" -q -rs --tb=short`. 13 passed on Python 3.10 and 3.13.
-- **Full:** `python -m pytest -o addopts="" -q -rs --tb=short` on Python 3.13 gave 813 passed and one OCR skip (Tesseract absent).
-- **Other checks:** `python -m src.cli validate-benchmark`, `node --check src/web/static/app.js`, the clean wheel, and the offline notebook against `v0.7-gpu-run` passed.
-- **Browser:** Manish verified registration, PDF upload, chat and a highlighted citation in Chrome.
-- **Next:** after approval, commit P4, run `git log origin/main..HEAD` and `git diff origin/main --stat`, then `git push -u origin feat/p4-web-ui` and open the PR. Start P5 after merge.
+- **Branch:** `feat/p5-agent-quality`, based on PR #61 merge `f1d9716`.
+- **P5 complete:** Reranker floor, missing-term hints, opt-in adaptive retrieval and cited table arithmetic. DD-080 through DD-084 record the decisions.
+- **Benchmark:** Rule committed as `dc628a3` before the 33-question offline dev runs. Adaptive missed the safety and call-count gates. Agentic stays the default. DD-084 has the paired intervals and commands.
+- **Known issue:** Adaptive's first-pass verifier accepted a current-employer excerpt for a previous-employer question (bug #14).
+- **Targeted:** `python -m pytest tests/test_statistics.py tests/test_agentic.py::TestAdaptive tests/test_table_calculator.py -o addopts="" -q -rs --tb=short` returned 41 passed.
+- **Full:** At implementation commit `4b46118`, `python -m pytest -o addopts="" -q -x -rs --tb=short` with PostgreSQL and Redis returned 852 passed and one OCR skip because Tesseract was absent. P5.5 changes documentation.
+- **Next:** After approval, run `git log origin/main..HEAD` and `git diff origin/main --stat`, push `feat/p5-agent-quality`, and open one P5 PR. P6 follows P5.

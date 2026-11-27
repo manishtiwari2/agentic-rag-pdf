@@ -3666,3 +3666,187 @@ CDN availability. Version 2.0.11 is vendored with its upstream license.
 After the browser flow passed, the FastAPI workspace replaced the Gradio app.
 The `chat` command starts FastAPI. Colab still supports local question
 examples and the follow-up conversation through `ChatSession`.
+
+## DD-080. Decline answers below the reranker score floor
+
+Check the highest raw reranker score among the evidence about to be sent to
+the generator. For a passage found by several queries, use its best score
+from those queries. The check reuses scores the reranker already computed
+and does not affect retrieval or rank fusion. Below the floor, return the
+standard refusal before calling the generator. The basic retrieval threshold
+remains separately configurable for callers who use it.
+
+Term overlap and cross-encoder logits have different scales. Tune the offline
+term-overlap floor independently. The cross-encoder floor is opt-in until a
+model-backed dev run can calibrate it. Dense retrieval and reranker-off runs
+bypass the reranker floor.
+
+### Offline dev decision rule
+
+Run hybrid and agentic on the dev split with the floor off and at 0.10, 0.20,
+0.35, and 0.50. Reject a candidate that lowers answerable accuracy or increases
+answerable refusals in either system. Among the rest, choose the floor with
+the largest combined gain in correct refusals on unanswerable questions, with
+ties going to the lower floor. If none improves refusals, use 0.01 only if it
+passes the same checks. This catches zero-overlap evidence. Leave the floor
+disabled if that fallback also fails. Report paired 95% bootstrap intervals
+against the floor-off run. Use the offline stand-in stack and the dev split
+throughout.
+
+### Dev results
+
+The rule selected the 0.01 floor. For hybrid and agentic, answerable
+accuracy stayed at 8/30. Correct refusals stayed at 0/3 for hybrid and 1/3
+for agentic. The paired 95% intervals for the change in answerable accuracy,
+answerable refusals, and correct refusals were all [0.000, 0.000].
+There were no changed questions at this floor. The 0.35 and 0.50 floors
+caught more unanswerable questions but also refused more answerable ones.
+With three unanswerable questions, this run gives limited coverage.
+
+Use `--reranker-min-score` to set the floor or `--no-reranker-floor` for the
+reference arm and to reproduce the archived Baseline B. The API reads
+`RAG_RERANKER_MIN_SCORE`. Changing the floor changes the run fingerprint
+and keeps the stored index usable.
+
+## DD-081. Flag question terms missing from the evidence
+
+Before agentic generation, compare explicit numbers and likely names in the
+question with the exact passages selected for the prompt. Reuse the rule
+agents' number tokens and compare names case-insensitively. A capital at the
+start of the question alone is ambiguous. Number matching handles the
+tokenizer's thousands separators. This check is a lexical hint and may miss
+lowercase names or alternate spellings.
+
+When terms are absent, put a bounded list before the evidence. Ask the model
+to prefer the standard refusal if answering depends on those terms. The
+scripted backend uses the hint to refuse. An advisory prompt lets the model
+consider equivalent wording that is explicitly supported. Baselines keep the
+reference prompt. Use `--no-missing-term-hint` for the agentic reference run.
+The feature changes the generation prompt and run fingerprint. Existing
+indexes can be reused.
+
+Compare both settings on the offline dev split. Report paired 95% intervals
+for answerable accuracy, answerable refusals, and correct refusals. This
+comparison measures the heuristic with the scripted backend. The targeted
+checks cover missing terms, present terms, and truncated evidence.
+
+### Dev results
+
+On the 33-question offline dev split, measured answerable accuracy went from
+8/30 to 7/30 (paired change −0.033, 95% CI [−0.100, 0.000]). Answerable
+refusals went from 4/30 to 5/30 (change +0.033, 95% CI [0.000, 0.100]).
+Correct refusals stayed at 1/3 (change 0.000, 95% CI [0.000, 0.000]).
+
+The changed question asked about student S17. The prompt evidence lacked
+S17, so the hinted run refused. The reference run quoted rows S1 through
+S7. The scorer credited the reference answer despite the wrong rows and
+the missing six-year value (bug #13). Keep the hint enabled to follow the
+grounding rule.
+
+## DD-082. Verify one hybrid answer before escalating
+
+Adaptive runs one hybrid query with reranking and attempts one grounded
+answer. It returns a cited answer after the verifier passes it. A refusal,
+missing citation, failed verdict or unavailable verifier sends the question
+through the existing agentic loop with the same deadline. The loop can reuse
+the original query's ranking. A conflict refusal with unresolved source dates
+ends the request so a different ranking cannot bypass the version policy.
+
+The answer record reports which path ran and includes both attempts in the
+cost and latency figures. The benchmark scores the ranking used by that path.
+The adaptive mode shares stored indexes with agentic when the index settings
+and code version match.
+
+Use `--system adaptive` in the CLI or `RAG_RETRIEVAL_STRATEGY=adaptive` for the
+API. Agentic remains the API default until the P5.5 dev comparison meets its
+decision rule. Tests cover first-pass verification, fallback, index reuse
+and unresolved conflicts.
+
+## DD-083. Calculate with cited table cells
+
+Agentic and adaptive recognise explicit English arithmetic requests. The
+selector gets the table headers and complete rows visible in the selected
+evidence. It returns evidence, row and column coordinates. The calculator
+looks up each value, checks operand counts and units, and uses decimal
+arithmetic. It emits citations through the normal evidence markers and
+records the operands alongside the result.
+
+The calculator handles sums, differences, subtraction, unitless products,
+ratios, averages and percent change from a positive starting value. It
+refuses invalid plans, missing cells, mismatched units and division by zero.
+The verifier accepts answers produced by the calculator because code checked
+every operand. The conflict policy still applies before selecting cells.
+Asking the model to compute directly would leave the result and the choice
+of cells harder to check.
+
+The offline stand-in selects explicitly named rows and columns. The CLI
+flag `--no-table-calculator` restores the reference behaviour. Changing the
+calculator setting changes run fingerprints while allowing index reuse.
+Tests exercise cross-page citations, truncated evidence, malformed plans
+and the end-to-end agentic and adaptive paths.
+
+## DD-084. Decide whether adaptive should become the default
+
+Run the current agentic and adaptive strategies on the same dev questions.
+Use the same model stack and settings, including the reranker floor,
+missing-term hint and table calculator. Run agentic first, then adaptive,
+in fresh processes on the same machine without overlapping the two runs.
+Keep timings for the request path measured by the harness. Start with
+the local offline stand-in stack. Its results apply only to that stack.
+
+Use the existing paired percentile bootstrap by question (2,000 samples,
+seed 42, 95% confidence intervals). All differences are adaptive minus
+agentic. Promote adaptive only on a stack that satisfies every gate:
+
+| Gate | Requirement |
+|---|---|
+| Valid comparison | Both runs cover the entire dev split, the question IDs match, both runs finish without per-question execution errors, and the strategy is the only config change |
+| Answerable accuracy | Point difference is at least 0 and the lower CI bound is at least −0.05 |
+| Token faithfulness | Point difference is at least 0 and the lower CI bound is at least −0.03 |
+| Safety | No increase in the point estimates for false answers on unanswerable questions, refusals on answerable questions, or unsupported answers |
+| Cost | The upper paired CI bound for mean latency is below 0, and neither observed P95 latency nor mean generation-model calls increases |
+
+The accuracy and faithfulness bounds limit how much uncertainty we will
+accept around an observed result that holds quality. The cost gate makes
+the default switch earn its purpose. Report the sample sizes and intervals
+even when a gate fails. Keep the agentic default for any stack that fails
+or has no comparison. The production model-backed default requires its
+own passing run because the stand-ins do not measure remote model costs
+or model-backed answer quality.
+
+Reproduce the offline comparison from the repository root with fresh
+output directories:
+
+```powershell
+$adaptiveStudy = Join-Path ([IO.Path]::GetTempPath()) ("rag-adaptive-dev-" + [guid]::NewGuid())
+python -m src.cli run-benchmark --offline --system agentic --split dev --out "$adaptiveStudy/agentic"
+python -m src.cli run-benchmark --offline --system adaptive --split dev --out "$adaptiveStudy/adaptive"
+python -m src.cli compare-runs --baseline "$adaptiveStudy/agentic" --system "$adaptiveStudy/adaptive" --split dev --out "$adaptiveStudy/comparison.json"
+```
+
+### Offline dev results
+
+Both arms completed the same 33 dev questions without execution errors.
+The hashing embedder, term-overlap reranker, scripted generator and rule
+agents ran on CPU with Python 3.13. The strategy was the only config change.
+
+| Metric | Pairs | Agentic | Adaptive | Paired change [95% CI] |
+|---|---:|---:|---:|---:|
+| Accuracy overall | 33 | 8/33 | 7/33 | −0.030 [−0.091, 0.000] |
+| Accuracy on answerable questions | 30 | 7/30 | 7/30 | 0.000 [0.000, 0.000] |
+| Token faithfulness | 33 | 0.818 | 0.879 | +0.061 [0.000, +0.152] |
+| False answers on unanswerable questions | 3 | 2/3 | 3/3 | +0.333 [0.000, +1.000] |
+| Refusals on answerable questions | 30 | 5/30 | 4/30 | −0.033 [−0.100, 0.000] |
+| Unsupported answer rate | 33 | 0.000 | 0.000 | 0.000 [0.000, 0.000] |
+| Mean latency (seconds) | 33 | 0.023519 | 0.007974 | −0.015545 [−0.020866, −0.010986] |
+| Mean generation calls | 33 | 0.848 | 1.061 | +0.212 [+0.091, +0.364] |
+
+Observed P95 latency was 0.0579 s for agentic and 0.0181 s for adaptive.
+Adaptive used the first pass for 27 questions and the full loop for six.
+The accuracy and faithfulness gates passed. The safety gate failed on an
+extra false answer. In dev question q057, first-pass verification passed
+an excerpt about a current employer for a question about the previous
+employer (bug #14). The cost gate failed on mean calls.
+
+Keep agentic as the default. Adaptive remains available for opt-in use.
+There was no model-backed comparison.

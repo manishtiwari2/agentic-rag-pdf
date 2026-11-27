@@ -36,6 +36,8 @@ _MARKER = re.compile(r"\[[Cc]?\s*\d+(?:\s*[,;]\s*[Cc]?\s*\d+)*\]")
 #: The only form ``resolve_citations`` emits. A bare ``[3]`` still in a resolved
 #: answer is source text the answer quoted, not a citation (DD-062).
 _CANONICAL_MARKER = re.compile(r"\[C\d+(?:, C\d+)*\]")
+_NAME = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:[-.][A-Za-z0-9]+)*\b")
+_MAX_MISSING_TERMS = 8
 
 
 def content_terms(text: str) -> list[str]:
@@ -74,6 +76,24 @@ def stems(text: str) -> set[str]:
 def numbers_in(text: str) -> set[str]:
     """The numbers in ``text`` as the lexical tokenizer sees them (``1,200`` -> ``1200``)."""
     return {token for token in tokenize(_MARKER.sub(" ", text or "")) if _NUMBER.match(token)}
+
+
+def missing_question_terms(question: str, evidence: str) -> tuple[str, ...]:
+    """Find explicit numbers and likely names absent from the prompt's evidence."""
+    terms = set(tokenize(_MARKER.sub(" ", evidence)))
+    missing = sorted(term for term in numbers_in(question) - numbers_in(evidence) if len(term) <= 64)
+    question = _MARKER.sub(" ", question).strip()
+    for match in _NAME.finditer(question):
+        name = match[0]
+        # Capitalization at the start of a question alone does not identify a name.
+        distinctive = any(letter.isupper() for letter in name[1:])
+        if not (distinctive or match.start() and name[0].isupper()):
+            continue
+        tokens = content_terms(name)
+        if tokens and len(name) <= 64 and not terms.issuperset(tokens):
+            missing.append(name)
+    unique = {term.casefold(): term for term in missing}
+    return tuple(unique.values())[:_MAX_MISSING_TERMS]
 
 
 def sentences(text: str) -> list[str]:

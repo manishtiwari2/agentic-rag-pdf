@@ -764,8 +764,11 @@ def hybrid_run(tmp_path_factory):
         pytest.skip("benchmark/questions.json is not present")
     out = tmp_path_factory.mktemp("hybrid")
     config = RAGConfig.offline()
+    # The archived Baseline B predates the generation score floor.
     config = dataclasses.replace(
-        config, retrieval=dataclasses.replace(config.retrieval, strategy="hybrid")
+        config,
+        retrieval=dataclasses.replace(config.retrieval, strategy="hybrid"),
+        reranking=dataclasses.replace(config.reranking, min_score=None),
     )
     run = run_benchmark_cli(
         questions_path=BENCHMARK, documents_dir=DOCUMENTS, out_dir=out, config=config

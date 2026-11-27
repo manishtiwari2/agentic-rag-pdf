@@ -17,6 +17,7 @@ instead of needing a private interface.
 
 from __future__ import annotations
 
+import json
 import re
 
 #: The one sentence the generator must emit when the evidence does not support
@@ -29,6 +30,7 @@ ABSTENTION_SENTENCE = (
 
 EVIDENCE_HEADER = "EVIDENCE"
 QUESTION_HEADER = "QUESTION"
+MISSING_TERMS_HEADER = "MISSING QUESTION TERMS\n"
 MARKER_FORMAT = "[C{n}]"
 
 #: Uploaded PDFs are untrusted. Text inside them that looks like an instruction
@@ -52,15 +54,39 @@ Rules:
 7. If the evidence does not contain enough information to answer, reply with exactly this sentence and nothing else:
 {ABSTENTION_SENTENCE}"""
 
+TABLE_SYSTEM_PROMPT = f"""Select table cells for the requested arithmetic.
+{DOCUMENT_TEXT_IS_DATA}
+Use the requested operation. Select numeric cells from the rows and columns
+that match the question. Count body rows and columns from 1. For subtraction
+and division, list the operands in computation order. For percent_change,
+list the old value before the new value.
+Return only JSON with a single cells array. Each item has three integers:
+the evidence number, body row number, and column number. Never supply your
+own values. Return {{"cells": []}} when the question's operands are missing."""
+
+
+def build_table_prompt(question: str, operation: str, tables: list[dict[str, object]]) -> str:
+    return json.dumps({"question": question, "operation": operation, "tables": tables})
+
 
 def format_evidence_block(number: int, text: str) -> str:
     return f"{MARKER_FORMAT.format(n=number)}\n{text.strip()}"
 
 
-def build_user_prompt(question: str, blocks: list[tuple[int, str]]) -> str:
+def build_user_prompt(
+    question: str, blocks: list[tuple[int, str]], *, missing_terms: tuple[str, ...] = (),
+) -> str:
     """Render the evidence list and the question."""
     rendered = "\n\n".join(format_evidence_block(n, text) for n, text in blocks)
+    hint = ""
+    if missing_terms:
+        hint = (
+            f"{MISSING_TERMS_HEADER}{json.dumps(missing_terms)}\n"
+            "These question terms were not found in the evidence. Prefer the standard refusal "
+            "if the missing terms are needed and the passages do not substantiate them.\n\n"
+        )
     return (
+        f"{hint}"
         f"{EVIDENCE_HEADER}\n{rendered}\n\n"
         f"{QUESTION_HEADER}\n{question.strip()}\n\n"
         "Answer:"

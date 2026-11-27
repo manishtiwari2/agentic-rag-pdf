@@ -1,5 +1,6 @@
 """Environment settings shared by API processes and ingestion jobs."""
 
+import math
 import os
 from dataclasses import dataclass, replace
 from urllib.parse import urlsplit
@@ -24,8 +25,14 @@ class Settings:
     max_question_chars: int = 2000
     job_timeout_s: int = 240
     job_memory_bytes: int = 8 * 1024**3
+    reranker_min_score: float | None = None
+    retrieval_strategy: str = "agentic"
 
     def __post_init__(self) -> None:
+        if self.retrieval_strategy not in ("agentic", "adaptive"):
+            raise ConfigurationError("RAG_RETRIEVAL_STRATEGY must be agentic or adaptive.")
+        if self.reranker_min_score is not None and not math.isfinite(self.reranker_min_score):
+            raise ConfigurationError("RAG_RERANKER_MIN_SCORE must be finite.")
         for origin in self.cors_origins:
             url = urlsplit(origin)
             if url.scheme not in {"https", "http"} or not url.netloc or origin != f"{url.scheme}://{url.netloc}":
@@ -48,6 +55,12 @@ class Settings:
                     optional[name] = int(os.environ[name.upper()])
                 except ValueError as exc:
                     raise ConfigurationError(f"{name.upper()} must be an integer.") from exc
+        floor = os.environ.get("RAG_RERANKER_MIN_SCORE")
+        if floor:
+            try:
+                optional["reranker_min_score"] = float(floor)
+            except ValueError as exc:
+                raise ConfigurationError("RAG_RERANKER_MIN_SCORE must be a number.") from exc
         return cls(
             database_url=required["DATABASE_URL"], redis_url=required["REDIS_URL"],
             code_version=required["RAG_CODE_VERSION"], offline=os.environ.get("RAG_OFFLINE") == "1",
@@ -55,13 +68,18 @@ class Settings:
             llm_model=os.environ.get("LLM_MODEL", cls.llm_model),
             llm_api_key=os.environ.get("LLM_API_KEY", ""),
             cors_origins=tuple(v.strip() for v in os.environ.get("CORS_ORIGINS", "").split(",") if v.strip()),
+            retrieval_strategy=os.environ.get("RAG_RETRIEVAL_STRATEGY", cls.retrieval_strategy),
             **optional,
         )
 
     def rag_config(self) -> RAGConfig:
         config = RAGConfig.offline() if self.offline else RAGConfig.default()
+        reranking = config.reranking
+        if self.reranker_min_score is not None:
+            reranking = replace(reranking, min_score=self.reranker_min_score)
         return replace(
-            config, retrieval=replace(config.retrieval, strategy="agentic"),
+            config, retrieval=replace(config.retrieval, strategy=self.retrieval_strategy),
             generation=config.generation if self.offline else replace(config.generation, model_id=self.llm_model),
+            reranking=reranking,
             conflicts=replace(config.conflicts, enabled=True),
         )

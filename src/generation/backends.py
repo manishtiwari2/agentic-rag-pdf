@@ -28,7 +28,8 @@ from typing import Protocol, runtime_checkable
 from ..config import GenerationConfig
 from ..deadlines import remaining_seconds, run_bounded
 from ..errors import GenerationError, ModelLoadError
-from .prompts import ABSTENTION_SENTENCE, parse_user_prompt
+from .prompts import ABSTENTION_SENTENCE, MISSING_TERMS_HEADER, TABLE_SYSTEM_PROMPT, parse_user_prompt
+from .table_calculator import scripted_cell_selection
 
 
 @runtime_checkable
@@ -70,11 +71,14 @@ class ScriptedBackend:
         self.config = config or GenerationConfig()
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
+        answer = scripted_cell_selection if system_prompt == TABLE_SYSTEM_PROMPT else self._answer
         return run_bounded(
-            "Model call", self.config.call_timeout_s, self._slot, lambda: self._answer(user_prompt)
+            "Model call", self.config.call_timeout_s, self._slot, lambda: answer(user_prompt)
         )
 
     def _answer(self, user_prompt: str) -> str:
+        if user_prompt.startswith(MISSING_TERMS_HEADER):
+            return ABSTENTION_SENTENCE
         question, blocks = parse_user_prompt(user_prompt)
         if not blocks:
             return ABSTENTION_SENTENCE
