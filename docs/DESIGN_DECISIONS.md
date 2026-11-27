@@ -3784,3 +3784,42 @@ flag `--no-table-calculator` restores the reference behaviour. Changing the
 calculator setting changes run fingerprints while allowing index reuse.
 Tests exercise cross-page citations, truncated evidence, malformed plans
 and the end-to-end agentic and adaptive paths.
+
+## DD-084. Decide whether adaptive should become the default
+
+Run the current agentic and adaptive strategies on the same dev questions.
+Use the same model stack and settings, including the reranker floor,
+missing-term hint and table calculator. Run agentic first, then adaptive,
+in fresh processes on the same machine without overlapping the two runs.
+Keep timings for the request path measured by the harness. Start with
+the local offline stand-in stack. Its results apply only to that stack.
+
+Use the existing paired percentile bootstrap by question (2,000 samples,
+seed 42, 95% confidence intervals). All differences are adaptive minus
+agentic. Promote adaptive only on a stack that satisfies every gate:
+
+| Gate | Requirement |
+|---|---|
+| Valid comparison | Both runs cover the entire dev split, the question IDs match, both runs finish without per-question execution errors, and the strategy is the only config change |
+| Answerable accuracy | Point difference is at least 0 and the lower CI bound is at least −0.05 |
+| Token faithfulness | Point difference is at least 0 and the lower CI bound is at least −0.03 |
+| Safety | No increase in the point estimates for false answers on unanswerable questions, refusals on answerable questions, or unsupported answers |
+| Cost | The upper paired CI bound for mean latency is below 0, and neither observed P95 latency nor mean generation-model calls increases |
+
+The accuracy and faithfulness bounds limit how much uncertainty we will
+accept around an observed result that holds quality. The cost gate makes
+the default switch earn its purpose. Report the sample sizes and intervals
+even when a gate fails. Keep the agentic default for any stack that fails
+or has no comparison. The production model-backed default requires its
+own passing run because the stand-ins do not measure remote model costs
+or model-backed answer quality.
+
+Reproduce the offline comparison from the repository root with fresh
+output directories:
+
+```powershell
+$adaptiveStudy = Join-Path ([IO.Path]::GetTempPath()) ("rag-adaptive-dev-" + [guid]::NewGuid())
+python -m src.cli run-benchmark --offline --system agentic --split dev --out "$adaptiveStudy/agentic"
+python -m src.cli run-benchmark --offline --system adaptive --split dev --out "$adaptiveStudy/adaptive"
+python -m src.cli compare-runs --baseline "$adaptiveStudy/agentic" --system "$adaptiveStudy/adaptive" --split dev --out "$adaptiveStudy/comparison.json"
+```
