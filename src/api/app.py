@@ -20,6 +20,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from starlette.exceptions import HTTPException
 
+from ..generation.backends import build_backend
 from ..request_log import configure_logging, request_id, request_scope
 from ..reranking.reranker import build_reranker
 from ..storage.database import build_engine
@@ -93,7 +94,10 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
         backend = None if settings.offline else RemoteBackend(config.generation, settings.llm_base_url, settings.llm_api_key)
         try:
             reranker = build_reranker(config.reranking) if config.uses_reranker else None
-            library = DocumentLibrary(db, config, settings.code_version, backend=backend, reranker=reranker)
+            library = DocumentLibrary(
+                db, config, settings.code_version, reranker=reranker,
+                backend=backend if backend is not None else build_backend(config.generation),
+            )
             await run_in_threadpool(library.embedder.embed_query, "startup")
             if reranker is not None:
                 await run_in_threadpool(reranker.score, "startup", ["startup"])

@@ -239,24 +239,55 @@ def test_worker_terminates_a_job_that_exceeds_its_deadline(monkeypatch):
     failed, stopped = [], []
 
     async def scenario():
-        process = SimpleNamespace(wait=asyncio.Event().wait)
+        process = object()
 
-        async def spawn(*args, **kwargs):
-            return process
+        async def stall(ingester, *_):
+            ingester.process = process
+            await asyncio.Event().wait()
 
         async def stop(child):
             stopped.append(child)
 
-        monkeypatch.setattr(ingestion_worker.asyncio, "create_subprocess_exec", spawn)
+        monkeypatch.setattr(ingestion_worker, "_run_job", stall)
         monkeypatch.setattr(ingestion_worker, "_stop", stop)
         uploads = SimpleNamespace(
             claim=lambda *_: True, fail=lambda *args: failed.append(args), job_timeout_s=0.01,
         )
-        await ingest({"uploads": uploads}, str(owner), str(job))
+        ingester = ingestion_worker.IngestionProcess()
+        ctx = {"uploads": uploads, "ingester": ingester}
+        await ingest(ctx, str(owner), str(job))
         assert stopped == [process]
+        assert ingester.process is None
 
     asyncio.run(scenario())
     assert failed == [(owner, job, "job_timeout")]
+
+
+def test_worker_reuses_one_ingester_for_two_uploads(settings, engine, monkeypatch):
+    published = []
+    spawn = asyncio.create_subprocess_exec
+
+    async def tracked(*args, **kwargs):
+        process = await spawn(*args, **kwargs)
+        published.append(process)
+        return process
+
+    monkeypatch.setattr(ingestion_worker.asyncio, "create_subprocess_exec", tracked)
+    monkeypatch.setenv("WORKER_EMBEDDING_BATCH_SIZE", "1")
+    with client(settings, engine) as alice, client(settings, engine) as bob:
+        first = upload(alice, sign_in(alice))
+        second = bob.post(
+            "/documents?filename=second.pdf", content=pdf_fixtures.hyphenation_pdf(),
+            headers={**sign_in(bob), "Content-Type": "application/pdf"},
+        )
+        assert first.status_code == second.status_code == 202
+        asyncio.run(finish_jobs())
+        assert alice.get(f"/jobs/{first.json()['job_id']}").json()["status"] == "succeeded"
+        assert bob.get(f"/jobs/{second.json()['job_id']}").json()["status"] == "succeeded"
+        assert alice.get(f"/jobs/{second.json()['job_id']}").status_code == 404
+        assert [doc["name"] for doc in alice.get("/documents").json()] == ["report.pdf"]
+        assert [doc["name"] for doc in bob.get("/documents").json()] == ["second.pdf"]
+    assert len(published) == 1 and published[0].returncode == 0
 
 
 def test_web_pages_use_saved_passages_and_escape_stored_content(settings, engine):

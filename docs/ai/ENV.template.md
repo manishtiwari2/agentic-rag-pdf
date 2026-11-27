@@ -22,6 +22,10 @@ The model-backed preset leaves the floor off when this variable is unset.
 Set `RAG_RETRIEVAL_STRATEGY=adaptive` to try a verified hybrid answer before
 running the full agent loop. The API defaults to `agentic`.
 
+Set `WORKER_EMBEDDING_BATCH_SIZE` to the number of PDF chunks embedded and
+written at a time. It defaults to 8. Changing it preserves the stored
+index key.
+
 ## Planned (from ROADMAP P3 to P7; goes into `.env.example`)
 Never put real values in git. Use `.env` locally (gitignored) and secrets on the server.
 

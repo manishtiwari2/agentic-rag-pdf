@@ -3850,3 +3850,24 @@ employer (bug #14). The cost gate failed on mean calls.
 
 Keep agentic as the default. Adaptive remains available for opt-in use.
 There was no model-backed comparison.
+
+## DD-085. Reuse the isolated ingester and write embeddings in batches
+
+The arq worker sends one claimed job at a time to a persistent child process.
+The child applies its memory limit before loading models and reuses one
+embedder and database engine. The API reuses its startup embedder, reranker
+and generation backend. The model server manages its own model lifetime.
+
+The worker enforces a deadline for every job, including the initial child
+launch. It terminates the child on timeout or cancellation. It also discards
+a child that reports a memory limit or fails to acknowledge a job. The next
+job can start a new child. A finished job keeps its committed result if the
+worker loses the acknowledgement. The child exits on shutdown when its input
+closes.
+
+The library embeds and writes one batch at a time inside the existing upload
+transaction. `WORKER_EMBEDDING_BATCH_SIZE` defaults to 8 and controls the
+worker's model and write batches. Batch size changes keep stored index keys.
+A failure in any batch rolls back the entire upload. Moving ingestion into
+the arq process would share model weights, and a stuck job could take down
+the queue worker. The child keeps that isolation.

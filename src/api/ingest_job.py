@@ -1,7 +1,9 @@
-"""Isolated ingestion subprocess, invoked only by the arq worker."""
+"""Isolated ingestion process that reads one job at a time from the arq worker."""
 
 import os
 import sys
+from contextlib import redirect_stdout
+from dataclasses import replace
 from uuid import UUID
 
 
@@ -18,23 +20,10 @@ def limit_memory() -> None:
         raise RuntimeError("Production ingestion requires POSIX memory limits.")
 
 
-def main() -> int:
-    limit_memory()
+def _process_job(service, owner, job_id) -> int:
     from ..errors import IngestionError, LibraryItemNotFound, StorageError
-    from ..request_log import configure_logging, request_scope
-    from ..storage.database import build_engine
-    from ..storage.library import DocumentLibrary
-    from .jobs import UploadJobs
-    from .settings import Settings
+    from ..request_log import request_scope
 
-    configure_logging()
-    settings = Settings.from_env()
-    engine = build_engine(settings.database_url)
-    service = UploadJobs(
-        DocumentLibrary(engine, settings.rag_config(), settings.code_version),
-        settings.storage_bytes, settings.job_timeout_s,
-    )
-    owner, job_id = (UUID(value) for value in sys.argv[1:])
     try:
         with request_scope("ingestion job"):
             try:
@@ -45,10 +34,46 @@ def main() -> int:
                 service.fail(owner, job_id, "document_missing")
             except MemoryError:
                 service.fail(owner, job_id, "job_memory_limit")
+                return 76
     except StorageError:
         return 75
+    return 0
+
+
+def _serve(replies) -> None:
+    from ..request_log import configure_logging
+    from ..retrieval.embeddings import build_embedder
+    from ..storage.database import build_engine
+    from ..storage.library import DocumentLibrary
+    from .jobs import UploadJobs
+    from .settings import Settings
+
+    configure_logging()
+    settings = Settings.from_env()
+    engine = build_engine(settings.database_url)
+    try:
+        config = settings.rag_config()
+        size = settings.worker_embedding_batch_size
+        embedder = build_embedder(replace(config.embedding, batch_size=size), fit_idf=False)
+        library = DocumentLibrary(
+            engine, config, settings.code_version, embedder=embedder, embedding_batch_size=size,
+        )
+        service = UploadJobs(library, settings.storage_bytes, settings.job_timeout_s)
+        for line in sys.stdin:
+            owner, job_id = (UUID(value) for value in line.split())
+            code = _process_job(service, owner, job_id)
+            print(f"{job_id} {code}", file=replies, flush=True)
+            if code == 76:
+                return
     finally:
         engine.dispose()
+
+
+def main() -> int:
+    limit_memory()
+    replies = sys.stdout
+    with redirect_stdout(sys.stderr):
+        _serve(replies)
     return 0
 
 

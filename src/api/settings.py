@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass, replace
 from urllib.parse import urlsplit
 
-from ..config import RAGConfig
+from ..config import EmbeddingConfig, RAGConfig
 from ..errors import ConfigurationError
 
 
@@ -27,6 +27,7 @@ class Settings:
     job_memory_bytes: int = 8 * 1024**3
     reranker_min_score: float | None = None
     retrieval_strategy: str = "agentic"
+    worker_embedding_batch_size: int = EmbeddingConfig().batch_size
 
     def __post_init__(self) -> None:
         if self.retrieval_strategy not in ("agentic", "adaptive"):
@@ -38,7 +39,7 @@ class Settings:
             if url.scheme not in {"https", "http"} or not url.netloc or origin != f"{url.scheme}://{url.netloc}":
                 raise ConfigurationError("CORS_ORIGINS must contain explicit origins without paths.")
         for name in ("session_seconds", "storage_bytes", "daily_questions", "max_question_chars",
-                     "job_timeout_s", "job_memory_bytes"):
+                     "job_timeout_s", "job_memory_bytes", "worker_embedding_batch_size"):
             if getattr(self, name) <= 0:
                 raise ConfigurationError(f"{name.upper()} must be positive.")
 
@@ -49,7 +50,7 @@ class Settings:
             raise ConfigurationError("Set DATABASE_URL, REDIS_URL, and RAG_CODE_VERSION.")
         optional = {}
         for name in ("session_seconds", "storage_bytes", "daily_questions", "max_question_chars",
-                     "job_timeout_s", "job_memory_bytes"):
+                     "job_timeout_s", "job_memory_bytes", "worker_embedding_batch_size"):
             if name.upper() in os.environ:
                 try:
                     optional[name] = int(os.environ[name.upper()])
