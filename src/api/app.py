@@ -112,7 +112,9 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
             app.state.accounts = Accounts(db, settings.session_seconds)
             app.state.jobs = UploadJobs(library, settings.storage_bytes, settings.job_timeout_s)
             app.state.history = History(db)
-            app.state.answer_configuration = (settings.code_version, config.fingerprint(), settings.llm_base_url)
+            app.state.answer_configuration = (
+                settings.code_version, config.fingerprint(), settings.llm_base_url, settings.llm_model_revision,
+            )
             app.state.max_question_chars = settings.max_question_chars
             yield
         finally:

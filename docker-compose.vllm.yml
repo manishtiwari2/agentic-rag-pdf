@@ -1,0 +1,62 @@
+x-vllm-environment: &vllm-environment
+  LLM_BASE_URL: http://vllm:8000/v1
+  LLM_MODEL_REVISION: ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
+
+services:
+  api:
+    environment: *vllm-environment
+    depends_on: !override
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      prefetch-models: {condition: service_completed_successfully}
+      vllm: {condition: service_healthy}
+
+  worker:
+    environment: *vllm-environment
+
+  ollama:
+    profiles: [ollama]
+
+  ollama-model:
+    profiles: [ollama]
+
+  vllm:
+    profiles: [vllm]
+    image: vllm/vllm-openai:v0.21.0@sha256:a230095847e93bd4df9888b33dab956fa9504537b828a23657d2b26fed57b5c9
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen3-4B-Instruct-2507}
+      - --revision
+      - ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
+      - --tokenizer-revision
+      - ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
+      - --served-model-name
+      - ${LLM_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
+      - --dtype
+      - float16
+      - --max-model-len
+      - "8192"
+      - --gpu-memory-utilization
+      - "0.85"
+    shm_size: 1gb
+    volumes:
+      - vllm-models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15m
+      retries: 4
+    restart: unless-stopped
+
+volumes:
+  vllm-models:

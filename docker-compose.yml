@@ -1,0 +1,148 @@
+x-app: &app
+  image: ${RAG_IMAGE:-agentic-pdf-rag:local}
+  build: .
+  security_opt:
+    - no-new-privileges:true
+
+x-runtime-environment: &runtime-environment
+  DATABASE_URL: postgresql+psycopg://rag_app@postgres:5432/${RAG_DB_NAME:-rag}
+  PGPASSWORD: ${RAG_DB_PASSWORD:?Set RAG_DB_PASSWORD for the app role}
+  REDIS_URL: redis://redis:6379/0
+  RAG_CODE_VERSION: ${RAG_CODE_VERSION:?Set RAG_CODE_VERSION for this deployment}
+  RAG_OFFLINE: ${RAG_OFFLINE:-0}
+  LLM_BASE_URL: http://ollama:11434/v1
+  LLM_MODEL: ${LLM_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
+  HF_TOKEN: ${HF_TOKEN:-}
+  HF_HUB_OFFLINE: "1"
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  RAG_RETRIEVAL_STRATEGY: ${RAG_RETRIEVAL_STRATEGY:-agentic}
+  RAG_RERANKER_MIN_SCORE: ${RAG_RERANKER_MIN_SCORE:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg16-bookworm@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+    environment:
+      POSTGRES_DB: ${RAG_DB_NAME:-rag}
+      POSTGRES_USER: rag_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD for PostgreSQL}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "rag_admin", "-d", "${RAG_DB_NAME:-rag}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["python", "-m", "src.storage.bootstrap"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://rag_admin@postgres:5432/${RAG_DB_NAME:-rag}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD for PostgreSQL}
+      RAG_DB_PASSWORD: ${RAG_DB_PASSWORD:?Set RAG_DB_PASSWORD for the app role}
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      disable: true
+
+  prefetch-models:
+    <<: *app
+    command: ["python", "-m", "src.api.prefetch_models"]
+    environment:
+      <<: *runtime-environment
+      HF_HUB_OFFLINE: "0"
+    volumes:
+      - hf-cache:/data/hf
+    healthcheck:
+      disable: true
+
+  api:
+    <<: *app
+    environment: *runtime-environment
+    ports:
+      - "${API_HOST:-127.0.0.1}:${API_PORT:-8000}:8000"
+    volumes:
+      - hf-cache:/data/hf
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      prefetch-models: {condition: service_completed_successfully}
+      ollama-model: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/ready', timeout=6).close()"]
+      interval: 15s
+      timeout: 8s
+      start_period: 10m
+      retries: 4
+    restart: unless-stopped
+    stop_grace_period: 3m20s
+
+  worker:
+    <<: *app
+    command: ["arq", "src.api.worker.WorkerSettings"]
+    environment:
+      <<: *runtime-environment
+      JOB_TIMEOUT_S: ${JOB_TIMEOUT_S:-240}
+      JOB_MEMORY_BYTES: ${JOB_MEMORY_BYTES:-8589934592}
+      WORKER_EMBEDDING_BATCH_SIZE: ${WORKER_EMBEDDING_BATCH_SIZE:-8}
+    volumes:
+      - hf-cache:/data/hf
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      prefetch-models: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "arq", "--check", "src.api.worker.WorkerSettings"]
+      interval: 15s
+      timeout: 8s
+      start_period: 30s
+      retries: 4
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  ollama:
+    image: &ollama-image ollama/ollama:0.40.19@sha256:7e8c7ba387b11b09dcce1eff1118b1ab433564ed263434a7730c209f2ee346f4
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "OLLAMA_HOST=127.0.0.1:11434 ollama list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+    restart: unless-stopped
+
+  ollama-model:
+    image: *ollama-image
+    entrypoint: ["ollama", "pull"]
+    command: ["${LLM_MODEL:-qwen3:4b-instruct-2507-q4_K_M}"]
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama: {condition: service_healthy}
+
+volumes:
+  postgres-data:
+  redis-data:
+  hf-cache:
+  ollama-models:

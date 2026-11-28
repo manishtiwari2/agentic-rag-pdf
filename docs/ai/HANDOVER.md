@@ -2,10 +2,11 @@
 
 - **Updated:** 2026-11-28
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
-- **Branch:** `feat/p6-performance`, based on PR #62 merge `98ff9e9`.
-- **P6.2:** DD-086 covers cached verified answers, invalidation with migration `0004_library_revision`, SSE text after verification, evidence limits, and `/metrics` latency and first-token times.
-- **Key files:** `src/api/app.py`, `src/api/answer_cache.py`, `src/api/llm.py`, `src/api/metrics.py`, `src/storage/library.py`.
-- **Targeted:** After `docker info`, set the PostgreSQL and Redis test URLs and run `python -m pytest tests/test_api.py tests/test_postgres_library.py tests/test_generation.py -o addopts="" -q -x -rs --tb=short`. 78 passed on Python 3.10 and 3.13.
-- **Full:** With the same services, `python -m pytest -o addopts="" -q -x -rs --tb=short` on Python 3.13 returned 856 passed and 1 skipped (Tesseract absent).
-- **Other checks:** `python -m src.cli validate-benchmark` returned `Benchmark OK.`. Migration preserved an existing account. The chat script passed a simulated SSE rendering check.
-- **Next:** Complete P6 review, then start P7.1 for the multi-stage Dockerfile.
+- **Branch:** `feat/p7-deployment`, based on PR #63 merge `80a6cae`.
+- DD-089 covers the locked Docker build, pinned model revisions, shared model cache, `.env.example`, and PostgreSQL backup and restore.
+- `uv lock --check` and `docker build --check .` passed. `docker build -t agentic-pdf-rag:local .` installed CPU PyTorch from the lockfile.
+- `python -m pytest tests/test_model_revisions.py tests/test_compose_config.py tests/test_postgres_backup.py -o addopts="" -q` returned 7 passed on Python 3.10 and 3.13.
+- Rehearsed `python scripts/postgres_backup.py backup rag.dump` and `python scripts/postgres_backup.py restore rag.dump --database rag_restored` in a disposable CPU Compose project. Switching the stack preserved PDF bytes, vectors, tenant isolation, and citations.
+- Full tests use disposable PostgreSQL and Redis after `docker info`. With `RAG_TEST_DOCKER_IMAGE` set to the built tag, `python -m pytest -o addopts="" -q -x -rs --tb=short` returned 864 passed and 1 skipped (host Tesseract absent).
+- `python -m src.cli validate-benchmark` returned `Benchmark OK.` GPU configuration and model pin wiring were checked. Runtime smoke used offline models.
+- Finish P7 review. P8.1 adds CI quality checks, a Docker build, and a benchmark smoke test.

@@ -5,6 +5,7 @@ Type: bug, AI mistake (hallucinated or wrong AI output), or regression.
 
 | # | Date | Type | What happened | Where | Status |
 |---|---|---|---|---|---|
+| 17 | 2026-11-28 | bug | The PostgreSQL test fixture can pick up `public.alembic_version` and attempt to downgrade the app schema if it is run against a migrated database. | `tests/test_postgres_library.py` | Open. Use a fresh disposable test database separate from the app smoke database. |
 | 16 | 2026-11-28 | bug | An answer could be saved and released after a selected source was deleted during generation. | `/ask` and `History.save` | Fixed in P6.2, DD-086. |
 | 15 | 2026-11-28 | bug | The generation evidence budget omitted citation markers, separators and the truncation suffix. | `src/generation/evidence.py` | Fixed in P6.2, DD-086. |
 | 14 | 2026-11-27 | bug | The adaptive stand-in verifier passed a current-employer excerpt for an unanswerable question about the previous employer. The agentic evidence controller refused it. | DD-084, dev question q057 | Open. Check the question premise before accepting a first-pass draft. |

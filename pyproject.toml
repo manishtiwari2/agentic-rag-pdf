@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,12 +20,16 @@ api = [
     "jinja2>=3.1,<4",
 ]
 faiss = ["faiss-cpu>=1.8"]
-models = [
+retrieval-models = [
     "torch>=2.1",
     "transformers>=4.44",
+    "sentencepiece>=0.2",
+]
+cpu = ["agentic-pdf-rag[retrieval-models]", "torch>=2.1"]
+models = [
+    "agentic-pdf-rag[retrieval-models]",
     "accelerate>=0.30",
     "bitsandbytes>=0.43",
-    "sentencepiece>=0.2",
 ]
 # The Colab notebook's OCR support (requirements-colab.txt, DD-067).
 colab = ["pytesseract>=0.3.10"]
@@ -33,6 +37,17 @@ colab = ["pytesseract>=0.3.10"]
 # as the second parser backend. See DD-033 and requirements-dev.txt.
 dev = ["pytest>=8.0", "pymupdf>=1.24,<2", "nbformat>=5.9", "nbclient>=0.10", "ipykernel>=6.29"]
 pymupdf = ["pymupdf>=1.24,<2"]
+
+[tool.uv]
+conflicts = [[{extra = "cpu"}, {extra = "models"}]]
+
+[tool.uv.sources]
+torch = [{index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'"}]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.setuptools.packages.find]
 include = ["src*"]
