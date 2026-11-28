@@ -38,6 +38,7 @@ users = Table(
     Column("email", Text, nullable=False, unique=True),
     Column("password_hash", Text, nullable=False),
     Column("role", String(5), nullable=False, server_default="user"),
+    Column("library_revision", Uuid),
     timestamp(),
     CheckConstraint("role IN ('user', 'admin')", name="role"),
     CheckConstraint("email = lower(email)", name="email_lower"),

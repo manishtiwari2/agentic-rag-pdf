@@ -3,7 +3,8 @@
 from threading import BoundedSemaphore
 from time import sleep
 
-from openai import APIConnectionError, APIStatusError, OpenAI
+from httpx import TransportError
+from openai import APIConnectionError, APIError, APIStatusError, OpenAI
 
 from ..config import GenerationConfig
 from ..deadlines import remaining_seconds, run_bounded
@@ -31,16 +32,30 @@ class RemoteBackend:
     def _generate(self, system_prompt: str, user_prompt: str) -> str:
         for attempt in range(3):
             try:
-                response = self.client.with_options(timeout=min(20, remaining_seconds())).chat.completions.create(
+                stream = self.client.with_options(timeout=min(20, remaining_seconds())).chat.completions.create(
                     model=self.config.model_id,
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                    temperature=self.config.temperature, max_tokens=self.config.max_new_tokens,
+                    temperature=self.config.temperature, max_tokens=self.config.max_new_tokens, stream=True,
                 )
-                if not response.choices or not response.choices[0].message.content:
-                    raise GenerationError("The model returned no answer.")
-                return response.choices[0].message.content
-            except (APIConnectionError, APIStatusError) as exc:
-                retryable = isinstance(exc, APIConnectionError) or exc.status_code in {408, 429} or exc.status_code >= 500
+                with stream:
+                    parts = []
+                    finished = False
+                    for chunk in stream:
+                        remaining_seconds()
+                        if not chunk.choices:
+                            continue
+                        choice = chunk.choices[0]
+                        if choice.delta and choice.delta.content:
+                            parts.append(choice.delta.content)
+                        if choice.finish_reason in {"stop", "length"}:
+                            finished = True
+                    if not finished or not parts:
+                        raise GenerationError("The model did not return a complete answer.")
+                    return "".join(parts)
+            except (APIError, TransportError) as exc:
+                retryable = isinstance(exc, (APIConnectionError, TransportError)) or (
+                    isinstance(exc, APIStatusError) and (exc.status_code in {408, 429} or exc.status_code >= 500)
+                )
                 if attempt == 2 or not retryable:
                     raise GenerationError("The model service could not answer.") from exc
                 sleep(min(0.25 * 2**attempt, remaining_seconds()))

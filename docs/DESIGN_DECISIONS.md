@@ -3871,3 +3871,35 @@ worker's model and write batches. Batch size changes keep stored index keys.
 A failure in any batch rolls back the entire upload. Moving ingestion into
 the arq process would share model weights, and a stuck job could take down
 the queue worker. The child keeps that isolation.
+
+## DD-086. Cache verified answers and stream released text
+
+Redis holds cited answers that passed verification for five minutes. The
+key hashes the account, selected version IDs, question, relevant chat turns,
+model configuration, code version, and current library revision. Successful
+publication and deletion update the account's library revision in the same
+PostgreSQL transaction. Old keys expire on their own. This avoids a second
+write that could be lost when Redis is down. A failed answer-cache read or
+write leaves generation and history available when the request rate limiter
+is healthy.
+
+The model client reads response deltas and requires a completed response.
+The API releases answer text in `token` events only after the pipeline has
+finished and the selected versions have been checked again while saving
+history. This lets the verifier refuse or replace any draft before it
+reaches the client. The final `answer` event still contains the full text,
+resolved citations, and conflict information. The API evidence limit counts
+truncation markers and separators in the rendered evidence. The stored index
+key and historical benchmark formatting stay compatible with previous runs.
+
+`/metrics` exposes `rag_ask_latency_seconds` and
+`rag_ask_first_token_seconds` histograms. The first-token timer ends when
+the API emits its first answer text event, after verification and history
+save. `rag_ask_latency_quantile_seconds` exposes p50 and p95 for the latest
+1,024 completed answers per process. Use the histogram buckets to compute
+percentiles across multiple instances.
+
+Integration tests check cache hits, chat and configuration scope, committed
+upload and delete invalidation, Redis fallback, and answer release when a
+source is deleted concurrently. Transport tests cover retries and a partial
+completion. Generation tests check that the rendered evidence fits its cap.

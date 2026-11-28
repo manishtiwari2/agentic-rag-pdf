@@ -20,6 +20,7 @@ from arq.worker import Worker
 from arq.connections import RedisSettings
 from fastapi.testclient import TestClient
 from openai import OpenAI
+from redis.exceptions import RedisError
 from sqlalchemy import select
 
 from src.api.app import create_app
@@ -30,6 +31,7 @@ from src.api.settings import Settings
 from src.api import worker as ingestion_worker
 from src.api.worker import ingest, shutdown, startup
 from src.config import GenerationConfig
+from src.errors import GenerationError
 from src.generation.prompts import ABSTENTION_SENTENCE
 from src.storage.schema import users
 
@@ -69,8 +71,8 @@ def sign_in(browser):
     return {"X-CSRF-Token": result.json()["csrf_token"]}
 
 
-def upload(browser, csrf, **params):
-    return browser.post("/documents", params={"filename": "report.pdf", **params}, content=PDF,
+def upload(browser, csrf, *, data=PDF, **params):
+    return browser.post("/documents", params={"filename": "report.pdf", **params}, content=data,
                         headers={**csrf, "Content-Type": "application/pdf"})
 
 
@@ -86,6 +88,15 @@ async def finish_jobs():
         # arq's signal-based close path uses SIGUSR1, which Windows lacks.
         await shutdown(worker.ctx)
         await worker.pool.aclose(close_connection_pool=True)
+
+
+def question_events(response):
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
+    return [
+        (event.removeprefix("event: "), json.loads(data.removeprefix("data: ")))
+        for block in response.text.strip().split("\n\n") if block.startswith("event: ")
+        for event, data in [block.split("\n", 1)]
+    ]
 
 
 def test_upload_answer_history_and_cross_user_denials(settings, engine):
@@ -115,10 +126,11 @@ def test_upload_answer_history_and_cross_user_denials(settings, engine):
         denied = bob.post("/ask", headers=bob_token, json=payload)
         assert denied.status_code == 404
         response = alice.post("/ask", headers=alice_token, json=payload)
-        assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
-        assert response.text.startswith("event: start")
-        answers = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
-        final = answers[-1]
+        events = question_events(response)
+        assert events[0][0] == "start" and events[-1][0] == "answer"
+        final = events[-1][1]
+        assert len(events[1:-1]) > 1 and all(kind == "token" for kind, _ in events[1:-1])
+        assert "".join(data["text"] for _, data in events[1:-1]) == final["answer"]
         assert final["citations"] and not final["abstained"]
         assert all(citation["document_id"] == version and citation["pages"] for citation in final["citations"])
         chat = final["chat_id"]
@@ -137,6 +149,100 @@ def test_upload_answer_history_and_cross_user_denials(settings, engine):
         asyncio.run(finish_jobs())
         failed = alice.get(f"/jobs/{bad.json()['job_id']}").json()
         assert failed["status"] == "failed" and failed["error_code"] == "invalid_pdf"
+
+
+def test_answer_cache_isolated_and_invalidated_at_commit(settings, engine, monkeypatch):
+    settings = replace(settings, daily_questions=12)
+    with client(settings, engine) as alice, client(settings, engine) as bob:
+        a_token, b_token = sign_in(alice), sign_in(bob)
+        a_job = upload(alice, a_token).json()["job_id"]
+        b_job = upload(bob, b_token).json()["job_id"]
+        asyncio.run(finish_jobs())
+        a_version = alice.get(f"/jobs/{a_job}").json()["result_version_id"]
+        b_version = bob.get(f"/jobs/{b_job}").json()["result_version_id"]
+        state = alice.app.state
+        ask_library = state.library.ask
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append(kwargs["turns"])
+            return ask_library(*args, **kwargs)
+
+        monkeypatch.setattr(state.library, "ask", counted)
+
+        def ask(browser, token, version, *, chat_id=None):
+            events = question_events(browser.post("/ask", headers=token, json={
+                "question": QUESTION, "version_ids": [version], "chat_id": chat_id,
+            }))
+            assert events[-1][0] == "answer"
+            return events[-1][1]
+
+        original = ask(alice, a_token, a_version)
+        cached = ask(alice, a_token, a_version)
+        assert len(calls) == 1 and original["chat_id"] != cached["chat_id"]
+        assert original["citations"] == cached["citations"]
+        assert alice.get(f"/chats/{cached['chat_id']}/messages").json()[-1]["content"] == cached["answer"]
+        assert alice.post("/ask", headers=a_token, json={"question": QUESTION, "version_ids": [b_version]}).status_code == 404
+        assert ask(bob, b_token, b_version)["citations"][0]["document_id"] == b_version
+        assert ask(alice, a_token, a_version, chat_id=original["chat_id"])["citations"]
+        assert len(calls) == 2 and calls[-1]
+
+        new_job = upload(alice, a_token, data=PDF + b"\n% different source", filename="second.pdf").json()["job_id"]
+        ask(alice, a_token, a_version)
+        assert len(calls) == 2
+        asyncio.run(finish_jobs())
+        added = alice.get(f"/jobs/{new_job}").json()
+        assert added["status"] == "succeeded"
+        ask(alice, a_token, a_version)
+        assert len(calls) == 3
+        assert alice.delete(f"/documents/{added['document_id']}", headers=a_token).status_code == 204
+        ask(alice, a_token, a_version)
+        assert len(calls) == 4
+
+        redis_get, redis_set = state.redis.get, state.redis.set
+
+        async def broken_get(key, *args, **kwargs):
+            if key.startswith("rag:answer:"):
+                raise RedisError("cache read unavailable")
+            return await redis_get(key, *args, **kwargs)
+
+        async def broken_set(key, *args, **kwargs):
+            if key.startswith("rag:answer:"):
+                raise RedisError("cache write unavailable")
+            return await redis_set(key, *args, **kwargs)
+
+        monkeypatch.setattr(state.redis, "get", broken_get)
+        monkeypatch.setattr(state.redis, "set", broken_set)
+        assert ask(alice, a_token, a_version)["answer"] == original["answer"]
+        assert len(calls) == 5
+        metrics = alice.get("/metrics").text
+        assert "rag_ask_first_token_seconds_count 7.0" in metrics
+        assert "rag_ask_latency_seconds_count 7.0" in metrics
+        assert 'rag_ask_latency_quantile_seconds{quantile="0.5"}' in metrics
+        assert 'rag_ask_latency_quantile_seconds{quantile="0.95"}' in metrics
+
+
+def test_deleted_source_is_never_streamed_or_saved(settings, engine, monkeypatch):
+    with client(settings, engine) as browser:
+        token = sign_in(browser)
+        job = upload(browser, token).json()["job_id"]
+        asyncio.run(finish_jobs())
+        stored = browser.get(f"/jobs/{job}").json()
+        library = browser.app.state.library
+        ask = library.ask
+
+        def delete_before_release(owner, *args, **kwargs):
+            result = ask(owner, *args, **kwargs)
+            library.delete_document(owner, UUID(stored["document_id"]))
+            return result
+
+        monkeypatch.setattr(library, "ask", delete_before_release)
+        events = question_events(browser.post("/ask", headers=token, json={
+            "question": QUESTION, "version_ids": [stored["result_version_id"]],
+        }))
+        assert [kind for kind, _ in events] == ["start", "error"]
+        assert events[-1][1]["error"]["code"] == "not_found"
+        assert browser.get("/chats").json() == []
 
 
 def test_csrf_origin_password_hash_and_session_revocation(settings, engine):
@@ -219,10 +325,7 @@ def test_remote_backend_retries_transient_error():
         calls.append(json.loads(request.content))
         if len(calls) == 1:
             return httpx.Response(429, json={"error": {"message": "busy"}})
-        return httpx.Response(200, json={
-            "id": "reply", "object": "chat.completion", "created": 1, "model": "local-model",
-            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "answer"}}],
-        })
+        return completion_stream()
 
     backend = RemoteBackend(GenerationConfig(model_id="local-model", call_timeout_s=5), "http://model/v1", "local")
     backend.client.close()
@@ -232,6 +335,28 @@ def test_remote_backend_retries_transient_error():
         assert backend.ready()
         assert backend.generate("system", "prompt") == "answer"
     assert len(calls) == 2 and calls[-1]["messages"][0]["content"] == "system"
+    assert all(call["stream"] for call in calls)
+
+
+def completion_stream(*, complete=True):
+    frames = []
+    for text, finish in [("ans", None), ("wer", None), (None, "stop")][:3 if complete else 2]:
+        payload = {"id": "reply", "object": "chat.completion.chunk", "created": 1, "model": "local-model",
+                   "choices": [{"index": 0, "finish_reason": finish, "delta": {"content": text}}]}
+        frames.append(f"data: {json.dumps(payload)}\n\n")
+    return httpx.Response(200, headers={"Content-Type": "text/event-stream"},
+                          text="".join(frames) + "data: [DONE]\n\n")
+
+
+def test_remote_backend_never_returns_a_partial_answer():
+    backend = RemoteBackend(GenerationConfig(model_id="local-model"), "http://model/v1", "local")
+    backend.client.close()
+    with OpenAI(base_url="http://model/v1", api_key="local", max_retries=0, http_client=httpx.Client(
+        transport=httpx.MockTransport(lambda request: completion_stream(complete=False)),
+    )) as mock:
+        backend.client = mock
+        with pytest.raises(GenerationError, match="complete answer"):
+            backend.generate("system", "prompt")
 
 
 def test_worker_terminates_a_job_that_exceeds_its_deadline(monkeypatch):
@@ -321,7 +446,9 @@ def test_web_pages_use_saved_passages_and_escape_stored_content(settings, engine
         assert browser.get(f"/citations/{version.id}/foreign/pages/{page}").status_code == 404
 
         chat_id = UUID(answer["chat_id"])
-        browser.app.state.history.save(owner, chat_id, "Another question", dangerous, [], new=False)
+        browser.app.state.history.save(
+            owner, chat_id, "Another question", dangerous, [], version_ids=(version.id,), new=False,
+        )
         saved = browser.get(f"/chat?chat_id={chat_id}")
         assert "&lt;img src=x onerror=alert(1)&gt;" in saved.text and dangerous not in saved.text
         assert f"Page {page}</a>" in saved.text
@@ -333,11 +460,14 @@ def test_configured_reranker_floor_applies_to_an_existing_index(settings, engine
         csrf = sign_in(browser)
         owner = UUID(browser.get("/auth/me").json()["user_id"])
         version = browser.app.state.library.ingest(owner, PDF, "report.pdf")
+        question = {"question": QUESTION, "version_ids": [str(version.id)]}
+        first = question_events(browser.post("/ask", headers=csrf, json=question))[-1][1]
+        assert first["citations"] and not first["abstained"]
 
         monkeypatch.setenv("RAG_RERANKER_MIN_SCORE", "2")
         with client(Settings.from_env(), engine) as strict:
             strict.cookies.update(browser.cookies)
-            response = strict.post("/ask", headers=csrf, json={"question": QUESTION, "version_ids": [str(version.id)]})
+            response = strict.post("/ask", headers=csrf, json=question)
             assert response.status_code == 200 and "event: answer" in response.text
             reply = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")][-1]
             assert reply["abstained"] and reply["answer"] == ABSTENTION_SENTENCE

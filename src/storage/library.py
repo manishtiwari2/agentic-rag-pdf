@@ -138,6 +138,7 @@ class DocumentLibrary:
                 user_id=user_id, id=version_id, document_id=document_id, index_id=index_id,
                 source_name=source_name, version_info=resolved.to_record(),
             ))
+            conn.execute(users.update().where(users.c.id == user_id).values(library_revision=version_id))
             stored = StoredVersion(version_id, document_id, source_name, page_count, resolved)
             if on_indexed is not None:
                 on_indexed(conn, stored)
@@ -224,16 +225,27 @@ class DocumentLibrary:
             raise LibraryItemNotFound("The document version does not exist.")
         return data
 
-    def require_versions(self, user_id: UUID, version_ids: Sequence[UUID]) -> None:
+    @staticmethod
+    def version_revision(
+        conn: Connection, user_id: UUID, version_ids: Sequence[UUID], *, lock: bool = False,
+    ) -> UUID | None:
         selected = set(version_ids)
         if not selected:
             raise LibraryItemNotFound("Select at least one document version.")
-        with tenant_transaction(self.engine, user_id) as conn:
-            actual = set(conn.scalars(select(document_versions.c.id).where(
-                document_versions.c.user_id == user_id, document_versions.c.id.in_(selected),
-            )))
-        if actual != selected:
+        v, u = document_versions.c, users.c
+        query = select(v.id, u.library_revision).join(users, u.id == v.user_id).where(
+            v.user_id == user_id, v.id.in_(selected),
+        )
+        if lock:
+            query = query.with_for_update(read=True, key_share=True, of=document_versions)
+        rows = conn.execute(query).all()
+        if len(rows) != len(selected):
             raise LibraryItemNotFound("One or more document versions do not exist.")
+        return rows[0].library_revision
+
+    def require_versions(self, user_id: UUID, version_ids: Sequence[UUID]) -> UUID | None:
+        with tenant_transaction(self.engine, user_id) as conn:
+            return self.version_revision(conn, user_id, version_ids)
 
     @request_scope("delete document")
     def delete_document(self, user_id: UUID, document_id: UUID) -> None:
@@ -256,6 +268,7 @@ class DocumentLibrary:
                 f.user_id == user_id, f.sha256.in_(unused_files),
                 ~exists(select(1).where(i.user_id == user_id, i.file_sha256 == f.sha256)),
             ))
+            conn.execute(users.update().where(users.c.id == user_id).values(library_revision=uuid4()))
             conn.execute(audit_log.insert().values(user_id=user_id, action="document_deleted", resource_id=document_id))
 
     @request_scope("ask document library")

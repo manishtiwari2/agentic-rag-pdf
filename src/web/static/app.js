@@ -236,7 +236,7 @@ question?.addEventListener("submit", async (event) => {
   }
   const messages = document.querySelector("#messages");
   button.disabled = true;
-  let pending, userMessage, answered = false;
+  let pending, userMessage, streamed, answered = false, scrollPending = false;
   try {
     const result = await fetch("/ask", {
       method: "POST", headers: jsonHeaders,
@@ -254,6 +254,21 @@ question?.addEventListener("submit", async (event) => {
     messages.scrollTop = messages.scrollHeight;
     await readEvents(result.body, (type, data) => {
       if (type === "error") throw new Error(data.error.message);
+      if (type === "token") {
+        if (!streamed) {
+          streamed = document.createTextNode("");
+          pending.content.replaceChildren(streamed);
+        }
+        streamed.appendData(data.text);
+        if (!scrollPending) {
+          scrollPending = true;
+          requestAnimationFrame(() => {
+            messages.scrollTop = messages.scrollHeight;
+            scrollPending = false;
+          });
+        }
+        return;
+      }
       if (type !== "answer") return;
       pending.content.textContent = data.answer;
       if (Object.hasOwn(conflictMessages, data.conflict_policy)) {
