@@ -5,11 +5,15 @@ FROM python:3.13.18-slim-bookworm@sha256:f0fa218d5b06f9b9235024fa061cde2cb141f72
 FROM python-base AS build
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /build
-COPY pyproject.toml LICENSE NOTICE ./
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock LICENSE NOTICE ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --python /usr/local/bin/python --no-python-downloads --no-default-groups \
+    --extra api --extra postgres --extra cpu --no-install-project
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv --python /usr/local/bin/python /opt/venv \
-    && uv pip install --link-mode copy --python /opt/venv/bin/python --torch-backend cpu '.[api,postgres,retrieval-models]'
+    uv sync --locked --python /usr/local/bin/python --no-python-downloads --no-default-groups \
+    --extra api --extra postgres --extra cpu --no-editable
 
 FROM python-base AS runtime
 ENV PATH="/opt/venv/bin:${PATH}" \

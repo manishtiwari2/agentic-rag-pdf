@@ -1,6 +1,7 @@
 **
 !Dockerfile
 !pyproject.toml
+!uv.lock
 !LICENSE
 !NOTICE
 !alembic.ini
