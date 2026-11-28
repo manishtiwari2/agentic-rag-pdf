@@ -142,15 +142,18 @@ class TestEvidenceBudget:
         assert len(items) == 3
 
     def test_context_budget_is_respected(self):
-        config = GenerationConfig(max_context_chars=80, max_evidence_chars=80)
+        config = GenerationConfig(max_context_chars=80, max_evidence_chars=80, strict_evidence_budget=True)
         items = build_evidence(_retrieved(), config)
         assert len(items) == 1  # the top hit always survives
+        evidence = build_user_prompt("question", evidence_blocks(items)).split("EVIDENCE\n")[1].split("\n\nQUESTION")[0]
+        assert len(evidence) <= config.max_context_chars
 
     def test_oversized_block_is_truncated_not_dropped(self):
-        config = GenerationConfig(max_context_chars=200, max_evidence_chars=30)
+        config = GenerationConfig(max_context_chars=200, max_evidence_chars=30, strict_evidence_budget=True)
         items = build_evidence(_retrieved(), config)
         assert items[0].truncated
         assert items[0].text.endswith("[...]")
+        assert len(items[0].text) <= config.max_evidence_chars
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from ..chunking.base import Chunk
 from ..config import GenerationConfig
 from ..retrieval.retriever import RetrievedChunk
+from .prompts import format_evidence_block
 
 
 @dataclass(frozen=True)
@@ -60,27 +61,35 @@ def build_evidence(
     items: list[EvidenceItem] = []
     seen: set[str] = set()
     used = 0
+    strict = config.strict_evidence_budget
 
     for candidate in retrieved:
-        key = " ".join(candidate.chunk.text.split()).lower()
-        if key in seen:
+        body = candidate.chunk.text.strip() if strict else candidate.chunk.text
+        key = " ".join(body.split()).lower()
+        if key in seen or (strict and not key):
             continue
         seen.add(key)
 
-        text, truncated = _truncate(candidate.chunk.text, config.max_evidence_chars)
-        # Always admit the top-ranked chunk even if it alone fills the budget:
-        # answering from a truncated best passage beats answering from none.
-        if items and used + len(text) > config.max_context_chars:
+        number = len(items) + 1
+        overhead = 0
+        if strict:
+            overhead = len(format_evidence_block(number, "")) + (2 if items else 0)
+        available = config.max_context_chars - used - overhead
+        if strict and available <= 0:
             break
+        limit = min(config.max_evidence_chars, available) if strict and not items else config.max_evidence_chars
+        text, truncated = _truncate(body, limit, strict=strict)
+        if (strict or items) and len(text) > available:
+            break
+        used += overhead + len(text)
         items.append(
             EvidenceItem(
-                number=len(items) + 1,
+                number=number,
                 text=text,
                 retrieved=candidate,
                 truncated=truncated,
             )
         )
-        used += len(text)
     return items
 
 
@@ -93,10 +102,14 @@ def evidence_blocks(items: list[EvidenceItem]) -> list[tuple[int, str]]:
     return [(item.number, item.text) for item in items]
 
 
-def _truncate(text: str, limit: int) -> tuple[str, bool]:
+def _truncate(text: str, limit: int, *, strict: bool) -> tuple[str, bool]:
     if limit <= 0 or len(text) <= limit:
         return text, False
-    cut = text.rfind(" ", 0, limit)
+    suffix = " [...]"
+    available = limit - len(suffix) if strict else limit
+    if available <= 0:
+        return text[:limit].rstrip(), True
+    cut = text.rfind(" ", 0, available)
     if cut <= 0:
-        cut = limit
-    return text[:cut].rstrip() + " [...]", True
+        cut = available
+    return text[:cut].rstrip() + suffix, True

@@ -75,12 +75,15 @@ class Settings:
 
     def rag_config(self) -> RAGConfig:
         config = RAGConfig.offline() if self.offline else RAGConfig.default()
+        generation = replace(config.generation, strict_evidence_budget=True)
+        if not self.offline:
+            generation = replace(generation, model_id=self.llm_model)
         reranking = config.reranking
         if self.reranker_min_score is not None:
             reranking = replace(reranking, min_score=self.reranker_min_score)
         return replace(
             config, retrieval=replace(config.retrieval, strategy=self.retrieval_strategy),
-            generation=config.generation if self.offline else replace(config.generation, model_id=self.llm_model),
+            generation=generation,
             reranking=reranking,
             conflicts=replace(config.conflicts, enabled=True),
         )
