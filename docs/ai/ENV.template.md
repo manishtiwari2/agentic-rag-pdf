@@ -26,6 +26,39 @@ Set `WORKER_EMBEDDING_BATCH_SIZE` to the number of PDF chunks embedded and
 written at a time. It defaults to 8. Changing it preserves the stored
 index key.
 
+## Docker Compose
+
+Set `POSTGRES_PASSWORD`, `RAG_DB_PASSWORD`, and `RAG_CODE_VERSION` in
+the shell or an untracked `.env`. The first password belongs to the
+database administrator and the second to the API and worker. Set
+`RAG_CODE_VERSION` consistently across a deployment. The API is published
+on `127.0.0.1:8000` by default. Set `API_PORT` to change the host port.
+
+Start the default stack with an NVIDIA GPU available to Docker.
+
+```console
+docker compose up --build --wait
+```
+
+Use the CPU override for development and CI with offline models.
+
+```console
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build --wait
+```
+
+Use the vLLM profile to serve a Hugging Face model through vLLM. Set
+`VLLM_MODEL` to change the checkpoint. `LLM_MODEL` is the shared API model
+name and selects the Ollama model in the default stack.
+
+```console
+docker compose -f docker-compose.yml -f docker-compose.vllm.yml --profile vllm up --build --wait
+```
+
+Use the same files and profile with `docker compose down` to stop the
+current stack before switching model servers. The named volumes retain
+documents and model files across `down` and `up`.
+[Compose file overrides](https://docs.docker.com/reference/compose-file/merge/)
+
 ## Planned (from ROADMAP P3 to P7; goes into `.env.example`)
 Never put real values in git. Use `.env` locally (gitignored) and secrets on the server.
 

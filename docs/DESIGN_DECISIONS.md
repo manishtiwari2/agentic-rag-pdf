@@ -3929,3 +3929,23 @@ same image with its own command and health policy.
 
 The image smoke test checks the runtime user, the writable model cache, OCR,
 installed assets, Alembic, and the distinction between liveness and readiness.
+
+## DD-088. Deploy one Compose stack with a choice of model server
+
+The app image runs the API, worker, and one-shot migration job. PostgreSQL and
+Redis must pass their health checks before dependent services start. The
+migration job applies Alembic and grants the runtime role access to the app
+tables in one transaction. The API and worker use a non-superuser login with
+row-level security and no access to the Alembic version table. PostgreSQL
+receives passwords through libpq so URL punctuation in the password needs no
+encoding. A readiness check for the API and an arq health check for the worker
+let Compose wait for the stack to be ready.
+[Compose startup order](https://docs.docker.com/compose/how-tos/startup-order/)
+
+Only the API publishes a host port, on loopback by default. PostgreSQL, Redis,
+and model caches use named volumes. Redis uses append-only persistence. The
+default model server is Ollama and a one-shot job pulls the configured model.
+The vLLM profile uses the same served model name and reserves the GPU for one
+inference server. The CPU override runs offline models for development and CI
+with the same database, job queue, and API.
+[Compose GPU reservations](https://docs.docker.com/compose/how-tos/gpu-support/)

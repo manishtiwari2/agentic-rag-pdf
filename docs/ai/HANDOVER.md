@@ -3,10 +3,9 @@
 - **Updated:** 2026-11-28
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
 - **Branch:** `feat/p7-deployment`, based on PR #63 merge `80a6cae`.
-- **P7.1:** DD-087 covers a digest-pinned Python base, multi-stage build, a non-root runtime with English OCR, and a Docker `/health` liveness probe.
-- **Build:** `docker build --check .` and `docker build -t agentic-pdf-rag:p7 .`.
-- **Targeted:** Set `RAG_TEST_DOCKER_IMAGE` to the built tag and run `python -m pytest tests/test_docker_image.py -o addopts="" -q`. 1 passed.
-- **End to end:** `alembic upgrade head` ran from the image. The containerized API and worker indexed a PDF and returned a page citation with offline models.
-- **Full:** After `docker info`, point the test URLs at disposable PostgreSQL and Redis. Use a fresh database separate from the app smoke database. `python -m pytest -o addopts="" -q -x -rs --tb=short` returned 857 passed and 1 skipped (host Tesseract absent).
-- **Other checks:** `python -m src.cli validate-benchmark` returned `Benchmark OK.`. The image shut down gracefully after serving a cited answer.
-- **Next:** P7.2 adds Compose for the API, worker, PostgreSQL, Redis, Ollama and the optional vLLM profile and CPU override.
+- DD-088 covers the P7.2 Compose deployment with default Ollama, a vLLM profile, and an offline CPU override.
+- Set the required variables from `ENV.template.md` and run `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build --wait`. Upload, citation, tenant isolation, and volume persistence across restart passed.
+- `python -m pytest tests/test_compose_config.py -o addopts="" -q` returned 4 passed on Python 3.10 and 3.13. Ollama and vLLM configs passed. Docker on this host has no NVIDIA adapter.
+- After `docker info`, use disposable PostgreSQL and Redis separate from the Compose app database. With `RAG_TEST_DOCKER_IMAGE` set to the built tag, `python -m pytest -o addopts="" -q -x -rs --tb=short` returned 861 passed and 1 skipped (host Tesseract absent).
+- `python -m src.cli validate-benchmark` returned `Benchmark OK.`
+- P7.3 pins Hugging Face revisions and dependencies and adds `.env.example` and PostgreSQL backup and restore.

@@ -45,7 +45,7 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 
 ## P7 Deployment
 - [x] 7.1 Multi-stage Dockerfile: non-root user, HEALTHCHECK, pinned base image.
-- [ ] 7.2 Compose: api, worker, postgres, redis, ollama, plus vllm profile and CPU override.
+- [x] 7.2 Compose: api, worker, postgres, redis, ollama, plus vllm profile and CPU override.
 - [ ] 7.3 Pinned HF model revisions, uv lockfile, `.env.example`, backup and restore script.
 
 ## P8 CI and docs
