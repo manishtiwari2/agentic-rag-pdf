@@ -8,6 +8,7 @@ Add a row per merged PR. If no AI was used, write "none". A human
 
 | Date | PR / task | Subsystem | AI tool and model | Human reviewer |
 |---|---|---|---|---|
+| 2026-11-27 | #62 | Agent quality and adaptive dev evaluation | Codex, GPT-6.2 | Manish |
 | 2026-11-27 | #61 | Web workspace and PDF citation highlights | Codex, GPT-6.2 | Manish |
 | 2026-11-27 | #60 | Authenticated API and ingestion worker | Codex, GPT-6.2 | Manish |
 | 2026-11-27 | #59 | Postgres storage and persistent indexing | Codex, GPT-6.2 | Manish |

@@ -19,7 +19,6 @@ from sqlalchemy import func, select, text
 
 from src.config import RAGConfig
 from src.errors import LibraryItemNotFound, RetrievalError
-from src.retrieval.embeddings import HashingEmbedder
 from src.storage.database import build_engine, tenant_transaction
 from src.storage.library import DocumentLibrary
 from src.storage.schema import chunk_embeddings, chunks, document_indexes, documents, pdf_files, users
@@ -104,7 +103,7 @@ def test_duplicate_upload_reuses_index_after_reconnect(engine, owners, monkeypat
     assert count(engine, owner, document_indexes) == count(engine, owner, pdf_files) == 1
 
     engine.dispose()
-    restored = DocumentLibrary(engine, config, "test-v1")
+    restored = DocumentLibrary(engine, config, "test-v1", embedding_batch_size=1)
 
     def reject_embed(*args):
         pytest.fail("a duplicate upload or question must not embed documents")
@@ -184,12 +183,22 @@ def test_versions_change_with_config_and_code_and_share_pdf_bytes(engine, owners
 def test_failed_index_is_rolled_back_and_can_retry(engine, owners, monkeypatch):
     owner, _ = owners
     config = RAGConfig.offline()
-    library = DocumentLibrary(engine, config, "test-v1", embedder=HashingEmbedder(config.embedding, fit_idf=False))
+    library = DocumentLibrary(engine, config, "test-v1", embedding_batch_size=1)
     data = pdf_fixtures.structured_pdf()
+    embed = library.embedder.embed_documents
+    batches = []
+
+    def fail_second_batch(texts):
+        batches.append(len(texts))
+        vectors = embed(texts)
+        return np.full_like(vectors, np.nan) if len(batches) == 2 else vectors
+
     with monkeypatch.context() as patch:
-        patch.setattr(library.embedder, "embed_documents", lambda texts: np.full((len(texts), 8), np.nan))
+        patch.setattr(library.embedder, "embed_documents", fail_second_batch)
         with pytest.raises(RetrievalError, match="finite"):
             library.ingest(owner, data, "report.pdf")
+    assert batches == [1, 1]
     for table in (documents, pdf_files, document_indexes, chunks, chunk_embeddings):
         assert count(engine, owner, table) == 0
     assert library.ingest(owner, data, "report.pdf").page_count > 0
+    assert count(engine, owner, chunks) == count(engine, owner, chunk_embeddings) > 1

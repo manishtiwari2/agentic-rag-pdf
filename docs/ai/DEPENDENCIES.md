@@ -32,7 +32,7 @@ OK and a new row here, with its licence. No AGPL code at runtime.
 | htmx (vendored JS file) | P4 | BSD-2 | UI interactions without a Node build |
 | openai | P1/P3 | Apache-2.0 | One client for Ollama and vLLM (OpenAI-compatible) |
 | prometheus-client | P3 | Apache-2.0 | /metrics |
-| httpx | P3 | BSD-3 | API tests |
+| httpx | P3/P6 | BSD-3 | API tests and model stream transport errors |
 | testcontainers | P8 | Apache-2.0 | Postgres and Redis in tests |
 | ruff, mypy, pip-audit, bandit, pytest-cov | P8 | MIT / Apache-2.0 | CI quality gates |
 | locust | P8 | MIT | Small load test |

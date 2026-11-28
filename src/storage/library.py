@@ -56,10 +56,12 @@ class DocumentLibrary:
     def __init__(
         self, engine: Engine, config: RAGConfig, code_version: str, *,
         embedder: Embedder | None = None, backend: LLMBackend | None = None,
-        reranker: Reranker | None = None,
+        reranker: Reranker | None = None, embedding_batch_size: int | None = None,
     ) -> None:
         if not code_version.strip():
             raise ConfigurationError("A code version is required for persistent indexing.")
+        if embedding_batch_size is not None and embedding_batch_size <= 0:
+            raise ConfigurationError("The indexing batch size must be positive.")
         self.engine = engine
         self.config = config.validate()
         self.code_version = code_version
@@ -68,6 +70,7 @@ class DocumentLibrary:
         self.chunker = build_chunker(config.chunking)
         # Corpus-fitted IDF would make saved vectors depend on the user's other uploads.
         self.embedder = embedder or build_embedder(config.embedding, fit_idf=False)
+        self.embedding_batch_size = embedding_batch_size or max(1, config.embedding.batch_size)
         self.backend = backend
         self.reranker = reranker
 
@@ -135,6 +138,7 @@ class DocumentLibrary:
                 user_id=user_id, id=version_id, document_id=document_id, index_id=index_id,
                 source_name=source_name, version_info=resolved.to_record(),
             ))
+            conn.execute(users.update().where(users.c.id == user_id).values(library_revision=version_id))
             stored = StoredVersion(version_id, document_id, source_name, page_count, resolved)
             if on_indexed is not None:
                 on_indexed(conn, stored)
@@ -147,29 +151,34 @@ class DocumentLibrary:
         indexed = self.chunker.chunk(document)
         if not indexed:
             raise RetrievalError("The document produced no retrievable text.")
-        vectors = self.embedder.embed_documents([chunk.text for chunk in indexed])
-        if vectors.ndim != 2 or vectors.shape[0] != len(indexed) or not 1 <= vectors.shape[1] <= 16000:
-            raise RetrievalError("The embedder must return one valid pgvector embedding per chunk.")
         index_id = uuid4()
-        dimension = vectors.shape[1]
         raw_date = document.metadata.get("pdf_creation_date")
         creation = str(raw_date) if raw_date else None
         conn.execute(insert(pdf_files).values(
             user_id=user_id, sha256=digest, data=data, size_bytes=len(data),
         ).on_conflict_do_nothing(index_elements=[pdf_files.c.user_id, pdf_files.c.sha256]))
-        conn.execute(document_indexes.insert().values(
-            user_id=user_id, id=index_id, file_sha256=digest, config_fingerprint=self.fingerprint,
-            code_version=self.code_version, dimension=dimension, page_count=document.page_count,
-            pdf_creation_date=creation,
-        ))
-        keys = [f"{index_id}:{chunk.index:05d}" for chunk in indexed]
-        conn.execute(chunks.insert(), [
-            {"user_id": user_id, "index_id": index_id, "chunk_id": key, "position": chunk.index,
-             "text": chunk.text, "pages": list(chunk.pages), "section": chunk.section,
-             "details": {name: value for name, value in chunk.metadata.items() if name != "source_name"}}
-            for key, chunk in zip(keys, indexed)
-        ])
-        PgVectorStore(conn, user_id, (index_id,), dimension).add(keys, vectors)
+        store = None
+        for start in range(0, len(indexed), self.embedding_batch_size):
+            batch = indexed[start : start + self.embedding_batch_size]
+            vectors = self.embedder.embed_documents([chunk.text for chunk in batch])
+            if vectors.ndim != 2 or vectors.shape[0] != len(batch) or not 1 <= vectors.shape[1] <= 16000:
+                raise RetrievalError("The embedder must return one valid pgvector embedding per chunk.")
+            if store is None:
+                dimension = vectors.shape[1]
+                conn.execute(document_indexes.insert().values(
+                    user_id=user_id, id=index_id, file_sha256=digest, config_fingerprint=self.fingerprint,
+                    code_version=self.code_version, dimension=dimension, page_count=document.page_count,
+                    pdf_creation_date=creation,
+                ))
+                store = PgVectorStore(conn, user_id, (index_id,), dimension)
+            keys = [f"{index_id}:{chunk.index:05d}" for chunk in batch]
+            conn.execute(chunks.insert(), [
+                {"user_id": user_id, "index_id": index_id, "chunk_id": key, "position": chunk.index,
+                 "text": chunk.text, "pages": list(chunk.pages), "section": chunk.section,
+                 "details": {name: value for name, value in chunk.metadata.items() if name != "source_name"}}
+                for key, chunk in zip(keys, batch)
+            ])
+            store.add(keys, vectors)
         return index_id, document.page_count, creation
 
     @request_scope("list document versions")
@@ -216,16 +225,27 @@ class DocumentLibrary:
             raise LibraryItemNotFound("The document version does not exist.")
         return data
 
-    def require_versions(self, user_id: UUID, version_ids: Sequence[UUID]) -> None:
+    @staticmethod
+    def version_revision(
+        conn: Connection, user_id: UUID, version_ids: Sequence[UUID], *, lock: bool = False,
+    ) -> UUID | None:
         selected = set(version_ids)
         if not selected:
             raise LibraryItemNotFound("Select at least one document version.")
-        with tenant_transaction(self.engine, user_id) as conn:
-            actual = set(conn.scalars(select(document_versions.c.id).where(
-                document_versions.c.user_id == user_id, document_versions.c.id.in_(selected),
-            )))
-        if actual != selected:
+        v, u = document_versions.c, users.c
+        query = select(v.id, u.library_revision).join(users, u.id == v.user_id).where(
+            v.user_id == user_id, v.id.in_(selected),
+        )
+        if lock:
+            query = query.with_for_update(read=True, key_share=True, of=document_versions)
+        rows = conn.execute(query).all()
+        if len(rows) != len(selected):
             raise LibraryItemNotFound("One or more document versions do not exist.")
+        return rows[0].library_revision
+
+    def require_versions(self, user_id: UUID, version_ids: Sequence[UUID]) -> UUID | None:
+        with tenant_transaction(self.engine, user_id) as conn:
+            return self.version_revision(conn, user_id, version_ids)
 
     @request_scope("delete document")
     def delete_document(self, user_id: UUID, document_id: UUID) -> None:
@@ -248,6 +268,7 @@ class DocumentLibrary:
                 f.user_id == user_id, f.sha256.in_(unused_files),
                 ~exists(select(1).where(i.user_id == user_id, i.file_sha256 == f.sha256)),
             ))
+            conn.execute(users.update().where(users.c.id == user_id).values(library_revision=uuid4()))
             conn.execute(audit_log.insert().values(user_id=user_id, action="document_deleted", resource_id=document_id))
 
     @request_scope("ask document library")

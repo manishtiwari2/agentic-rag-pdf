@@ -3850,3 +3850,56 @@ employer (bug #14). The cost gate failed on mean calls.
 
 Keep agentic as the default. Adaptive remains available for opt-in use.
 There was no model-backed comparison.
+
+## DD-085. Reuse the isolated ingester and write embeddings in batches
+
+The arq worker sends one claimed job at a time to a persistent child process.
+The child applies its memory limit before loading models and reuses one
+embedder and database engine. The API reuses its startup embedder, reranker
+and generation backend. The model server manages its own model lifetime.
+
+The worker enforces a deadline for every job, including the initial child
+launch. It terminates the child on timeout or cancellation. It also discards
+a child that reports a memory limit or fails to acknowledge a job. The next
+job can start a new child. A finished job keeps its committed result if the
+worker loses the acknowledgement. The child exits on shutdown when its input
+closes.
+
+The library embeds and writes one batch at a time inside the existing upload
+transaction. `WORKER_EMBEDDING_BATCH_SIZE` defaults to 8 and controls the
+worker's model and write batches. Batch size changes keep stored index keys.
+A failure in any batch rolls back the entire upload. Moving ingestion into
+the arq process would share model weights, and a stuck job could take down
+the queue worker. The child keeps that isolation.
+
+## DD-086. Cache verified answers and stream released text
+
+Redis holds cited answers that passed verification for five minutes. The
+key hashes the account, selected version IDs, question, relevant chat turns,
+model configuration, code version, and current library revision. Successful
+publication and deletion update the account's library revision in the same
+PostgreSQL transaction. Old keys expire on their own. This avoids a second
+write that could be lost when Redis is down. A failed answer-cache read or
+write leaves generation and history available when the request rate limiter
+is healthy.
+
+The model client reads response deltas and requires a completed response.
+The API releases answer text in `token` events only after the pipeline has
+finished and the selected versions have been checked again while saving
+history. This lets the verifier refuse or replace any draft before it
+reaches the client. The final `answer` event still contains the full text,
+resolved citations, and conflict information. The API evidence limit counts
+truncation markers and separators in the rendered evidence. The stored index
+key and historical benchmark formatting stay compatible with previous runs.
+
+`/metrics` exposes `rag_ask_latency_seconds` and
+`rag_ask_first_token_seconds` histograms. The first-token timer ends when
+the API emits its first answer text event, after verification and history
+save. `rag_ask_latency_quantile_seconds` exposes p50 and p95 for the latest
+1,024 completed answers per process. Use the histogram buckets to compute
+percentiles across multiple instances.
+
+Integration tests check cache hits, chat and configuration scope, committed
+upload and delete invalidation, Redis fallback, and answer release when a
+source is deleted concurrently. Transport tests cover retries and a partial
+completion. Generation tests check that the rendered evidence fits its cap.

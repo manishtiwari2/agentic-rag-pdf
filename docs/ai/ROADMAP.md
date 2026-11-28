@@ -40,8 +40,8 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 5.5 Adaptive vs agentic paired bootstrap on dev, with the rule written first.
 
 ## P6 Performance
-- [ ] 6.1 Load models once per process; batch embedding in the worker.
-- [ ] 6.2 Redis answer cache with invalidation; token streaming; p50, p95 and first-token metrics.
+- [x] 6.1 Load models once per process; batch embedding in the worker.
+- [x] 6.2 Redis answer cache with invalidation; token streaming; p50, p95 and first-token metrics.
 
 ## P7 Deployment
 - [ ] 7.1 Multi-stage Dockerfile: non-root user, HEALTHCHECK, pinned base image.

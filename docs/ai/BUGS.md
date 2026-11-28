@@ -5,6 +5,8 @@ Type: bug, AI mistake (hallucinated or wrong AI output), or regression.
 
 | # | Date | Type | What happened | Where | Status |
 |---|---|---|---|---|---|
+| 16 | 2026-11-28 | bug | An answer could be saved and released after a selected source was deleted during generation. | `/ask` and `History.save` | Fixed in P6.2, DD-086. |
+| 15 | 2026-11-28 | bug | The generation evidence budget omitted citation markers, separators and the truncation suffix. | `src/generation/evidence.py` | Fixed in P6.2, DD-086. |
 | 14 | 2026-11-27 | bug | The adaptive stand-in verifier passed a current-employer excerpt for an unanswerable question about the previous employer. The agentic evidence controller refused it. | DD-084, dev question q057 | Open. Check the question premise before accepting a first-pass draft. |
 | 13 | 2026-11-27 | bug | The dev scorer credited a table excerpt about S1 through S7 as the answer about S17. The excerpt omitted S17 and the correct six-year value. | DD-081, dev question q020 | Open. Check row grounding when scoring table answers. |
 | 12 | 2026-11-26 | AI mistake | An AI review claimed a "shared reranker sigmoid bug" in all three repos. No sigmoid exists in our `src/reranking`. | `source/three-repo-comparison.md` | Closed: claim was false |

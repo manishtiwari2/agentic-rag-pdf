@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from ..chat.session import DEFAULT_MAX_TURNS, Turn
 from ..storage.database import tenant_transaction
+from ..storage.library import DocumentLibrary
 from ..storage.schema import audit_log, chats, messages
 from .errors import ApiError
 
@@ -49,9 +50,12 @@ class History:
         return turns
 
     def save(
-        self, owner: UUID, chat_id: UUID, question: str, answer: str, citations: list[dict], *, new: bool,
+        self, owner: UUID, chat_id: UUID, question: str, answer: str, citations: list[dict], *,
+        version_ids: tuple[UUID, ...], new: bool,
     ) -> None:
         with tenant_transaction(self.engine, owner) as conn:
+            # Keep document deletion from racing the final access check and history write.
+            DocumentLibrary.version_revision(conn, owner, version_ids, lock=True)
             if new:
                 conn.execute(chats.insert().values(user_id=owner, id=chat_id, title=question[:100]))
             else:

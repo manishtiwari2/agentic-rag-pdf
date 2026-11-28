@@ -346,8 +346,12 @@ class GenerationConfig:
     allow_non_commercial_model: bool = False
     call_timeout_s: float = 60.0
     question_timeout_s: float = 180.0
+    #: Count block formatting while preserving historical benchmark defaults.
+    strict_evidence_budget: bool = False
 
     def __post_init__(self) -> None:
+        if self.strict_evidence_budget and min(self.max_context_chars, self.max_evidence_chars) <= 0:
+            raise ConfigurationError("Generation evidence limits must be positive.")
         for name in ("call_timeout_s", "question_timeout_s"):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
@@ -563,6 +567,8 @@ class RAGConfig:
             record["agents"].pop("missing_term_hint")
         if for_index or not self.uses_table_calculator:
             record["agents"].pop("table_calculator")
+        if for_index or not self.generation.strict_evidence_budget:
+            record["generation"].pop("strict_evidence_budget")
         if for_index and self.retrieval.strategy == "adaptive":
             record["retrieval"]["strategy"] = "agentic"
         blob = json.dumps(record, sort_keys=True, default=str)

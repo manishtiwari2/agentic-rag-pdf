@@ -3,7 +3,9 @@
 import asyncio
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
@@ -20,21 +22,26 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from starlette.exceptions import HTTPException
 
+from ..agents.verifier import STATUS_PASSED
+from ..generation.backends import build_backend
 from ..request_log import configure_logging, request_id, request_scope
 from ..reranking.reranker import build_reranker
 from ..storage.database import build_engine
 from ..storage.library import DocumentLibrary
 from ..storage.schema import users
 from ..web.router import router as web_router, static_dir
+from .answer_cache import answer_cache_key, read_answer, write_answer
 from .auth import CSRF_COOKIE, SESSION_COOKIE, Accounts, Identity, email_address
 from .errors import ApiError, error_body, public_error
 from .history import History
 from .jobs import UploadJobs, deserialize_job, enqueue, serialize_job
 from .limits import take, today
 from .llm import RemoteBackend
+from .metrics import QuestionTimings
 from .settings import Settings
 
 logger = logging.getLogger(__name__)
+ANSWER_TOKENS = re.compile(r"\S+\s*|\s+")
 
 
 async def _body(request: Request, limit: int) -> bytes:
@@ -80,6 +87,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
     settings = settings or Settings.from_env()
     registry = CollectorRegistry()
     requests = Counter("rag_http_requests_total", "HTTP requests", ["method", "route", "status"], registry=registry)
+    timings = QuestionTimings(registry)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -93,7 +101,10 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
         backend = None if settings.offline else RemoteBackend(config.generation, settings.llm_base_url, settings.llm_api_key)
         try:
             reranker = build_reranker(config.reranking) if config.uses_reranker else None
-            library = DocumentLibrary(db, config, settings.code_version, backend=backend, reranker=reranker)
+            library = DocumentLibrary(
+                db, config, settings.code_version, reranker=reranker,
+                backend=backend if backend is not None else build_backend(config.generation),
+            )
             await run_in_threadpool(library.embedder.embed_query, "startup")
             if reranker is not None:
                 await run_in_threadpool(reranker.score, "startup", ["startup"])
@@ -101,6 +112,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
             app.state.accounts = Accounts(db, settings.session_seconds)
             app.state.jobs = UploadJobs(library, settings.storage_bytes, settings.job_timeout_s)
             app.state.history = History(db)
+            app.state.answer_configuration = (settings.code_version, config.fingerprint(), settings.llm_base_url)
             app.state.max_question_chars = settings.max_question_chars
             yield
         finally:
@@ -129,6 +141,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
+        request.state.started = perf_counter()
         with request_scope("HTTP request"):
             try:
                 origin = request.headers.get("origin")
@@ -293,6 +306,7 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
 
     @app.post("/ask")
     async def ask(request: Request, current: Identity = Depends(verified)):
+        started = request.state.started
         state, owner = request.app.state, current.user_id
         body = await _json(request, 65536)
         question, versions, requested_chat = body.get("question"), body.get("version_ids"), body.get("chat_id")
@@ -312,27 +326,45 @@ def create_app(settings: Settings | None = None, *, engine=None) -> FastAPI:
         day, ttl = today()
         await take(state.redis, ("ask-ip", _client_ip(request), 30, 60), ("ask-user", str(owner), 12, 60),
                    ("questions-per-day", f"{owner}:{day}", settings.daily_questions, ttl))
-        await run_in_threadpool(state.library.require_versions, owner, version_ids)
+        revision = await run_in_threadpool(state.library.require_versions, owner, version_ids)
         turns = await run_in_threadpool(state.history.recent_turns, owner, chat_id, version_ids) if requested_chat is not None else []
+        key = answer_cache_key(owner, revision, version_ids, question, turns, state.answer_configuration)
+
+        async def answer():
+            payload = await read_answer(state.redis, key)
+            cacheable = False
+            if payload is None:
+                result = await run_in_threadpool(state.library.ask, owner, question, version_ids=version_ids, turns=turns)
+                payload = jsonable_encoder({
+                    "answer": result.answer, "abstained": result.abstained,
+                    "citations": [citation.to_record() for citation in result.citations],
+                    "conflicts": result.metadata.get("conflicts"), "conflict_policy": result.metadata.get("conflict_policy"),
+                })
+                cacheable = (not result.abstained and bool(result.citations)
+                             and result.metadata.get("verification_status") == STATUS_PASSED)
+            await run_in_threadpool(
+                state.history.save, owner, chat_id, question, payload["answer"], payload["citations"],
+                version_ids=version_ids, new=requested_chat is None,
+            )
+            if cacheable:
+                await write_answer(state.redis, key, payload)
+            return payload
 
         async def events():
             yield _sse("start", {"chat_id": chat_id})
-            work = asyncio.create_task(run_in_threadpool(
-                state.library.ask, owner, question, version_ids=version_ids, turns=turns,
-            ))
+            work = asyncio.create_task(answer())
             try:
                 while not work.done():
                     done, _ = await asyncio.wait({work}, timeout=10)
                     if not done:
                         yield ": keep-alive\n\n"
-                result = await work
-                citations = [citation.to_record() for citation in result.citations]
-                await run_in_threadpool(
-                    state.history.save, owner, chat_id, question, result.answer, citations, new=requested_chat is None,
-                )
-                yield _sse("answer", {"chat_id": chat_id, "answer": result.answer, "abstained": result.abstained,
-                                      "citations": citations, "conflicts": result.metadata.get("conflicts"),
-                                      "conflict_policy": result.metadata.get("conflict_policy")})
+                payload = await work
+                for index, token in enumerate(ANSWER_TOKENS.finditer(payload["answer"])):
+                    if index == 0:
+                        timings.first_token.observe(perf_counter() - started)
+                    yield _sse("token", {"text": token.group()})
+                timings.observe_answer(perf_counter() - started)
+                yield _sse("answer", {**payload, "chat_id": chat_id})
             except Exception as exc:
                 logger.warning("Question stream failed (%s)", type(exc).__name__)
                 yield _sse("error", error_body(public_error(exc), request_id.get()))

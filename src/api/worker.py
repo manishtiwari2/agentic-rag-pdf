@@ -5,6 +5,7 @@ import logging
 import os
 import signal
 import sys
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from arq import Retry, cron
@@ -19,16 +20,34 @@ from .settings import Settings
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class IngestionProcess:
+    process: asyncio.subprocess.Process | None = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
 async def startup(ctx):
     configure_logging()
     settings = Settings.from_env()
     library = DocumentLibrary(build_engine(settings.database_url), settings.rag_config(), settings.code_version)
     ctx["uploads"] = UploadJobs(library, settings.storage_bytes, settings.job_timeout_s)
+    # arq copies the context dictionary for each job.
+    ctx["ingester"] = IngestionProcess()
 
 
 async def shutdown(ctx):
-    if "uploads" in ctx:
-        ctx["uploads"].engine.dispose()
+    try:
+        ingester = ctx.pop("ingester", None)
+        process = ingester.process if ingester is not None else None
+        if process is not None:
+            process.stdin.close()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                await _stop(process)
+    finally:
+        if "uploads" in ctx:
+            ctx["uploads"].engine.dispose()
 
 
 async def recover_pending(ctx):
@@ -49,35 +68,56 @@ async def _stop(process):
     await process.wait()
 
 
-async def ingest(ctx, owner_id: str, upload_id: str):
-    owner, job_id = UUID(owner_id), UUID(upload_id)
-    uploads = ctx["uploads"]
-    if not await asyncio.to_thread(uploads.claim, owner, job_id):
-        return
-    try:
+async def _discard_ingester(ingester: IngestionProcess):
+    process, ingester.process = ingester.process, None
+    if process is not None:
+        await _stop(process)
+
+
+async def _run_job(ingester: IngestionProcess, owner, job_id):
+    process = ingester.process
+    if process is None or process.returncode is not None:
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "src.api.ingest_job", owner_id, upload_id,
+            sys.executable, "-u", "-m", "src.api.ingest_job",
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             start_new_session=os.name == "posix",
         )
-    except OSError:
-        await asyncio.to_thread(uploads.fail, owner, job_id, "worker_failed")
-        return
-    try:
-        code = await asyncio.wait_for(process.wait(), timeout=uploads.job_timeout_s)
-    except asyncio.TimeoutError:
-        await _stop(process)
-        await asyncio.to_thread(uploads.fail, owner, job_id, "job_timeout")
-        return
-    except asyncio.CancelledError:
-        await _stop(process)
-        await asyncio.to_thread(uploads.retry, owner, job_id)
-        raise
-    if code == 75:
-        await asyncio.to_thread(uploads.retry, owner, job_id)
-        raise Retry(defer=10)
-    if code != 0:
-        logger.warning("Ingestion subprocess exited (%s)", code)
-        await asyncio.to_thread(uploads.fail, owner, job_id, "worker_failed")
+        ingester.process = process
+    process.stdin.write(f"{owner} {job_id}\n".encode("ascii"))
+    await process.stdin.drain()
+    reply = (await process.stdout.readline()).split()
+    if len(reply) != 2 or reply[0] != str(job_id).encode("ascii") or reply[1] not in (b"0", b"75", b"76"):
+        raise OSError("The ingestion process did not return a valid job result.")
+    return int(reply[1])
+
+
+async def ingest(ctx, owner_id: str, upload_id: str):
+    owner, job_id = UUID(owner_id), UUID(upload_id)
+    ingester = ctx["ingester"]
+    async with ingester.lock:
+        uploads = ctx["uploads"]
+        if not await asyncio.to_thread(uploads.claim, owner, job_id):
+            return
+        try:
+            code = await asyncio.wait_for(_run_job(ingester, owner, job_id), timeout=uploads.job_timeout_s)
+        except asyncio.TimeoutError:
+            await _discard_ingester(ingester)
+            await asyncio.to_thread(uploads.fail, owner, job_id, "job_timeout")
+            return
+        except asyncio.CancelledError:
+            await _discard_ingester(ingester)
+            await asyncio.to_thread(uploads.retry, owner, job_id)
+            raise
+        except (OSError, ValueError) as exc:
+            logger.warning("Ingestion process failed (%s)", type(exc).__name__)
+            await _discard_ingester(ingester)
+            await asyncio.to_thread(uploads.fail, owner, job_id, "worker_failed")
+            return
+        if code == 75:
+            await asyncio.to_thread(uploads.retry, owner, job_id)
+            raise Retry(defer=10)
+        if code == 76:
+            await _discard_ingester(ingester)
 
 
 class WorkerSettings:
