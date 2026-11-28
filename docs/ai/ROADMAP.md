@@ -44,7 +44,7 @@ with pgvector, Redis with arq for jobs, uv with a lockfile. English only.
 - [x] 6.2 Redis answer cache with invalidation; token streaming; p50, p95 and first-token metrics.
 
 ## P7 Deployment
-- [ ] 7.1 Multi-stage Dockerfile: non-root user, HEALTHCHECK, pinned base image.
+- [x] 7.1 Multi-stage Dockerfile: non-root user, HEALTHCHECK, pinned base image.
 - [ ] 7.2 Compose: api, worker, postgres, redis, ollama, plus vllm profile and CPU override.
 - [ ] 7.3 Pinned HF model revisions, uv lockfile, `.env.example`, backup and restore script.
 

@@ -3903,3 +3903,29 @@ Integration tests check cache hits, chat and configuration scope, committed
 upload and delete invalidation, Redis fallback, and answer release when a
 source is deleted concurrently. Transport tests cover retries and a partial
 completion. Generation tests check that the rendered evidence fits its cap.
+
+## DD-087. Build a non-root Docker image for the app
+
+Use the Python 3.13 slim Debian image pinned by digest for both build and
+runtime. A build stage uses a digest-pinned uv image to install the app and its
+dependencies into a virtual environment. The final stage copies that
+environment and the Alembic migrations. The build context includes only the
+files needed by the image. The runtime includes Tesseract with English data
+and gives the non-root user write access to `HF_HOME=/data/hf`.
+
+Use CPU PyTorch for embedding and reranking in the app. The separate model
+server can use the GPU for generation. The `retrieval-models` extra keeps
+CUDA and local-generation packages out of the app image. The `models` extra
+adds the packages needed by standalone generation. Model files can be provided
+through the Hugging Face cache volume.
+[uv PyTorch builds](https://docs.astral.sh/uv/guides/integration/pytorch/)
+
+The default command starts Uvicorn directly so it receives shutdown signals.
+Docker checks `/health` to detect a stopped or unresponsive API. `/ready`
+checks PostgreSQL, Redis, and the model server so a dependency outage can
+remove the API from service without forcing a restart. A worker can use the
+same image with its own command and health policy.
+[Docker health checks](https://docs.docker.com/reference/dockerfile/#healthcheck)
+
+The image smoke test checks the runtime user, the writable model cache, OCR,
+installed assets, Alembic, and the distinction between liveness and readiness.

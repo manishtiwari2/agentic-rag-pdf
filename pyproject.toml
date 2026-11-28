@@ -20,12 +20,15 @@ api = [
     "jinja2>=3.1,<4",
 ]
 faiss = ["faiss-cpu>=1.8"]
-models = [
+retrieval-models = [
     "torch>=2.1",
     "transformers>=4.44",
+    "sentencepiece>=0.2",
+]
+models = [
+    "agentic-pdf-rag[retrieval-models]",
     "accelerate>=0.30",
     "bitsandbytes>=0.43",
-    "sentencepiece>=0.2",
 ]
 # The Colab notebook's OCR support (requirements-colab.txt, DD-067).
 colab = ["pytesseract>=0.3.10"]

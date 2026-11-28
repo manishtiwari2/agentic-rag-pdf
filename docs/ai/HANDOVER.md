@@ -2,10 +2,11 @@
 
 - **Updated:** 2026-11-28
 - **Goal:** make the repo production-ready (see `ROADMAP.md`; full brief in `source/PRODUCTION-PROMPT.md`, local only).
-- **Branch:** `feat/p6-performance`, based on PR #62 merge `98ff9e9`.
-- **P6.2:** DD-086 covers cached verified answers, invalidation with migration `0004_library_revision`, SSE text after verification, evidence limits, and `/metrics` latency and first-token times.
-- **Key files:** `src/api/app.py`, `src/api/answer_cache.py`, `src/api/llm.py`, `src/api/metrics.py`, `src/storage/library.py`.
-- **Targeted:** After `docker info`, set the PostgreSQL and Redis test URLs and run `python -m pytest tests/test_api.py tests/test_postgres_library.py tests/test_generation.py -o addopts="" -q -x -rs --tb=short`. 78 passed on Python 3.10 and 3.13.
-- **Full:** With the same services, `python -m pytest -o addopts="" -q -x -rs --tb=short` on Python 3.13 returned 856 passed and 1 skipped (Tesseract absent).
-- **Other checks:** `python -m src.cli validate-benchmark` returned `Benchmark OK.`. Migration preserved an existing account. The chat script passed a simulated SSE rendering check.
-- **Next:** Complete P6 review, then start P7.1 for the multi-stage Dockerfile.
+- **Branch:** `feat/p7-deployment`, based on PR #63 merge `80a6cae`.
+- **P7.1:** DD-087 covers a digest-pinned Python base, multi-stage build, a non-root runtime with English OCR, and a Docker `/health` liveness probe.
+- **Build:** `docker build --check .` and `docker build -t agentic-pdf-rag:p7 .`.
+- **Targeted:** Set `RAG_TEST_DOCKER_IMAGE` to the built tag and run `python -m pytest tests/test_docker_image.py -o addopts="" -q`. 1 passed.
+- **End to end:** `alembic upgrade head` ran from the image. The containerized API and worker indexed a PDF and returned a page citation with offline models.
+- **Full:** After `docker info`, point the test URLs at disposable PostgreSQL and Redis. Use a fresh database separate from the app smoke database. `python -m pytest -o addopts="" -q -x -rs --tb=short` returned 857 passed and 1 skipped (host Tesseract absent).
+- **Other checks:** `python -m src.cli validate-benchmark` returned `Benchmark OK.`. The image shut down gracefully after serving a cited answer.
+- **Next:** P7.2 adds Compose for the API, worker, PostgreSQL, Redis, Ollama and the optional vLLM profile and CPU override.
