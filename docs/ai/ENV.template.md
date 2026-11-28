@@ -28,8 +28,9 @@ index key.
 
 ## Docker Compose
 
-Set `POSTGRES_PASSWORD`, `RAG_DB_PASSWORD`, and `RAG_CODE_VERSION` in
-the shell or an untracked `.env`. The first password belongs to the
+Copy `.env.example` to `.env` or set the variables in your shell. Fill
+`POSTGRES_PASSWORD`, `RAG_DB_PASSWORD`, and `RAG_CODE_VERSION` before
+starting Compose. The first password belongs to the
 database administrator and the second to the API and worker. Set
 `RAG_CODE_VERSION` consistently across a deployment. The API is published
 on `127.0.0.1:8000` by default. Set `API_PORT` to change the host port.
@@ -47,7 +48,8 @@ docker compose -f docker-compose.yml -f docker-compose.cpu.yml up --build --wait
 ```
 
 Use the vLLM profile to serve a Hugging Face model through vLLM. Set
-`VLLM_MODEL` to change the checkpoint. `LLM_MODEL` is the shared API model
+`VLLM_MODEL` and its full `VLLM_MODEL_REVISION` together to change the
+checkpoint. `LLM_MODEL` is the shared API model
 name and selects the Ollama model in the default stack.
 
 ```console
@@ -58,6 +60,30 @@ Use the same files and profile with `docker compose down` to stop the
 current stack before switching model servers. The named volumes retain
 documents and model files across `down` and `up`.
 [Compose file overrides](https://docs.docker.com/reference/compose-file/merge/)
+
+## PostgreSQL backup and restore
+
+Run these commands from the repository root while the PostgreSQL service
+is running.
+
+```console
+python scripts/postgres_backup.py backup rag.dump
+python scripts/postgres_backup.py restore rag.dump --database rag_restored
+```
+
+The backup contains database records, uploaded PDFs, and vectors. Store it
+with the same access restrictions as the database. The script creates a
+new archive path for each backup. Restore requires an unused database name
+and loads the archive in one transaction. Database roles come from the
+Compose migration job. A failed restore after database creation can leave
+an empty target.
+
+To serve restored data, stop the stack with the same Compose files and
+profile, set `RAG_DB_NAME=rag_restored`, and start it again. The migration
+job grants the app role access before the API and worker start. Use
+`--project-name` or `--env-file` before the backup subcommand when the
+running stack uses those flags.
+[PostgreSQL archive restore](https://www.postgresql.org/docs/16/app-pgrestore.html)
 
 ## Planned (from ROADMAP P3 to P7; goes into `.env.example`)
 Never put real values in git. Use `.env` locally (gitignored) and secrets on the server.

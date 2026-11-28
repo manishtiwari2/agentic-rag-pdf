@@ -3949,3 +3949,31 @@ The vLLM profile uses the same served model name and reserves the GPU for one
 inference server. The CPU override runs offline models for development and CI
 with the same database, job queue, and API.
 [Compose GPU reservations](https://docs.docker.com/compose/how-tos/gpu-support/)
+
+## DD-089. Lock the deployment and restore backups into a new database
+
+The app image installs dependencies with `uv sync --locked` using the CPU
+PyTorch extra. The standalone generation extra retains its own torch source.
+The lockfile and pinned build backend make Python dependency selection
+repeatable.
+[uv Docker builds](https://docs.astral.sh/uv/guides/integration/docker/)
+
+The Compose prefetch job uses the normal embedding and reranking loaders to
+fill the shared Hugging Face cache with pinned weights and tokenizers. The API
+and worker read that cache in offline mode. The vLLM profile pins a separate
+generation checkpoint and includes its revision in the answer cache key.
+When upgrading from an unpinned embedding configuration, re-index the old
+model-backed documents. A change to the reranker revision refreshes answer
+cache keys and preserves stored vectors. Historical offline benchmark keys
+and prompts are unchanged.
+[BGE-M3 weights](https://huggingface.co/BAAI/bge-m3/tree/5617a9f61b028005a4858fdac845db406aefb181)
+[BGE reranker weights](https://huggingface.co/BAAI/bge-reranker-v2-m3/tree/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e)
+[Qwen generation weights](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/tree/cdbee75f17c01a7cc42f958dc650907174af0554)
+
+The backup script streams a PostgreSQL custom archive through Compose and
+publishes it only after the dump succeeds. Restore checks the archive format,
+creates a new database, and loads it in one transaction. Switching
+`RAG_DB_NAME` applies migrations and recreates app grants before starting
+against restored data. An in-place restore would require overwriting the
+active database and would prevent verification before cutover.
+[PostgreSQL dump and restore](https://www.postgresql.org/docs/16/backup-dump.html)
