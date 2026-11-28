@@ -22,6 +22,7 @@ def compose_config(tmp_path):
         **os.environ, "COMPOSE_PROFILES": "", "POSTGRES_PASSWORD": "admin@:/test",
         "RAG_DB_PASSWORD": "app/:@test", "RAG_CODE_VERSION": "compose-tests", "RAG_OFFLINE": "0", "HF_TOKEN": "",
         "API_HOST": "127.0.0.1", "API_PORT": "8000", "LLM_MODEL": "test-model", "VLLM_MODEL": "org/test-model",
+        "RAG_DB_NAME": "rag_test", "VLLM_MODEL_REVISION": "0" * 40,
     }
 
     def config(*options, omit=None):
@@ -47,11 +48,13 @@ def test_default_profile_uses_ollama_and_a_restricted_runtime_login(compose_conf
     assert services["api"]["ports"][0]["host_ip"] == "127.0.0.1"
     for name in ("api", "worker"):
         environment = services[name]["environment"]
-        assert environment["DATABASE_URL"] == "postgresql+psycopg://rag_app@postgres:5432/rag"
+        assert environment["DATABASE_URL"] == "postgresql+psycopg://rag_app@postgres:5432/rag_test"
         assert environment["PGPASSWORD"] == "app/:@test"
         assert "POSTGRES_PASSWORD" not in environment
         assert services[name]["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
     assert services["migrate"]["environment"]["PGPASSWORD"] == "admin@:/test"
+    assert services["postgres"]["environment"]["POSTGRES_DB"] == "rag_test"
+    assert services["api"]["depends_on"]["prefetch-models"]["condition"] == "service_completed_successfully"
     assert services["api"]["environment"]["LLM_MODEL"] == services["ollama-model"]["command"][0]
     assert services["api"]["depends_on"]["ollama-model"]["condition"] == "service_completed_successfully"
     assert services["ollama"]["deploy"]["resources"]["reservations"]["devices"][0]["count"] == 1
@@ -60,8 +63,8 @@ def test_default_profile_uses_ollama_and_a_restricted_runtime_login(compose_conf
 def test_cpu_override_runs_offline_without_model_servers(compose_config):
     services = compose_config("-f", "docker-compose.cpu.yml")
     assert {"ollama", "ollama-model", "vllm"}.isdisjoint(services)
-    assert all(services[name]["environment"]["RAG_OFFLINE"] == "1" for name in ("api", "worker"))
-    assert set(services["api"]["depends_on"]) == {"migrate", "redis"}
+    assert all(services[name]["environment"]["RAG_OFFLINE"] == "1" for name in ("api", "worker", "prefetch-models"))
+    assert set(services["api"]["depends_on"]) == {"migrate", "redis", "prefetch-models"}
 
 
 def test_vllm_profile_replaces_ollama_with_the_same_served_alias(compose_config):
@@ -70,10 +73,12 @@ def test_vllm_profile_replaces_ollama_with_the_same_served_alias(compose_config)
     assert services["api"]["depends_on"]["vllm"]["condition"] == "service_healthy"
     model_args = services["vllm"]["command"]
     assert model_args[model_args.index("--model") + 1] == "org/test-model"
+    assert model_args[model_args.index("--revision") + 1] == model_args[model_args.index("--tokenizer-revision") + 1]
     for name in ("api", "worker"):
         environment = services[name]["environment"]
         assert environment["LLM_BASE_URL"] == "http://vllm:8000/v1"
         assert environment["LLM_MODEL"] == model_args[model_args.index("--served-model-name") + 1]
+        assert environment["LLM_MODEL_REVISION"] == model_args[model_args.index("--revision") + 1]
 
 
 def test_compose_requires_an_app_password(compose_config):

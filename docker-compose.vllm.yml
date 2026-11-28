@@ -1,5 +1,6 @@
 x-vllm-environment: &vllm-environment
   LLM_BASE_URL: http://vllm:8000/v1
+  LLM_MODEL_REVISION: ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
 
 services:
   api:
@@ -7,6 +8,7 @@ services:
     depends_on: !override
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
+      prefetch-models: {condition: service_completed_successfully}
       vllm: {condition: service_healthy}
 
   worker:
@@ -26,6 +28,10 @@ services:
     command:
       - --model
       - ${VLLM_MODEL:-Qwen/Qwen3-4B-Instruct-2507}
+      - --revision
+      - ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
+      - --tokenizer-revision
+      - ${VLLM_MODEL_REVISION:-cdbee75f17c01a7cc42f958dc650907174af0554}
       - --served-model-name
       - ${LLM_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
       - --dtype

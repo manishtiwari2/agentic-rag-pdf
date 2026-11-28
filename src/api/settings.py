@@ -8,6 +8,9 @@ from urllib.parse import urlsplit
 from ..config import EmbeddingConfig, RAGConfig
 from ..errors import ConfigurationError
 
+EMBEDDING_REVISION = "5617a9f61b028005a4858fdac845db406aefb181"
+RERANKER_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -28,6 +31,7 @@ class Settings:
     reranker_min_score: float | None = None
     retrieval_strategy: str = "agentic"
     worker_embedding_batch_size: int = EmbeddingConfig().batch_size
+    llm_model_revision: str = ""
 
     def __post_init__(self) -> None:
         if self.retrieval_strategy not in ("agentic", "adaptive"):
@@ -68,6 +72,7 @@ class Settings:
             llm_base_url=os.environ.get("LLM_BASE_URL", cls.llm_base_url),
             llm_model=os.environ.get("LLM_MODEL", cls.llm_model),
             llm_api_key=os.environ.get("LLM_API_KEY", ""),
+            llm_model_revision=os.environ.get("LLM_MODEL_REVISION", ""),
             cors_origins=tuple(v.strip() for v in os.environ.get("CORS_ORIGINS", "").split(",") if v.strip()),
             retrieval_strategy=os.environ.get("RAG_RETRIEVAL_STRATEGY", cls.retrieval_strategy),
             **optional,
@@ -75,15 +80,17 @@ class Settings:
 
     def rag_config(self) -> RAGConfig:
         config = RAGConfig.offline() if self.offline else RAGConfig.default()
+        embedding, reranking = config.embedding, config.reranking
         generation = replace(config.generation, strict_evidence_budget=True)
         if not self.offline:
             generation = replace(generation, model_id=self.llm_model)
-        reranking = config.reranking
+            embedding = replace(embedding, revision=EMBEDDING_REVISION)
+            reranking = replace(reranking, revision=RERANKER_REVISION)
         if self.reranker_min_score is not None:
             reranking = replace(reranking, min_score=self.reranker_min_score)
         return replace(
             config, retrieval=replace(config.retrieval, strategy=self.retrieval_strategy),
-            generation=generation,
+            embedding=embedding, generation=generation,
             reranking=reranking,
             conflicts=replace(config.conflicts, enabled=True),
         )

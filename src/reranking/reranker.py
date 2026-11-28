@@ -161,9 +161,9 @@ class CrossEncoderReranker:
             dtype = torch.float16
 
         try:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, revision=self.config.revision)
             self._model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_id, torch_dtype=dtype
+                self.model_id, revision=self.config.revision, torch_dtype=dtype
             )
         except Exception as exc:  # pragma: no cover - environment dependent
             raise RerankingError(

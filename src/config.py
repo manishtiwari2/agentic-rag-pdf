@@ -269,6 +269,7 @@ class EmbeddingConfig:
     max_length: int = 512
     #: Dimension of the dependency-free hashing embedder.
     hashing_dim: int = 1024
+    revision: str | None = None
 
 
 #: Retrievers a hybrid system may fuse (ARCHITECTURE.md section 8).
@@ -326,6 +327,7 @@ class RerankingConfig:
     candidates: int = 20
     #: Raw scores use the active reranker's scale (DD-080).
     min_score: float | None = None
+    revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -563,6 +565,10 @@ class RAGConfig:
         if for_index or self.reranker_score_floor is None:
             # The floor controls generation and can change without re-indexing.
             record["reranking"].pop("min_score")
+        if self.embedding.revision is None:
+            record["embedding"].pop("revision")
+        if for_index or self.reranking.revision is None:
+            record["reranking"].pop("revision")
         if for_index or not self.uses_missing_term_hint:
             record["agents"].pop("missing_term_hint")
         if for_index or not self.uses_table_calculator:

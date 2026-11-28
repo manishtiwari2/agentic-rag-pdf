@@ -203,8 +203,8 @@ class HuggingFaceEmbedder:
             dtype = torch.float16
 
         try:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-            self._model = AutoModel.from_pretrained(self.model_id, torch_dtype=dtype)
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, revision=self.config.revision)
+            self._model = AutoModel.from_pretrained(self.model_id, revision=self.config.revision, torch_dtype=dtype)
         except Exception as exc:  # pragma: no cover - environment dependent
             raise EmbeddingError(
                 f"Could not load embedding model {self.model_id!r}: {exc}. Check "
