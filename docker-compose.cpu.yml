@@ -1,0 +1,17 @@
+services:
+  api:
+    environment:
+      RAG_OFFLINE: "1"
+    depends_on: !override
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  worker:
+    environment:
+      RAG_OFFLINE: "1"
+
+  ollama:
+    profiles: [ollama]
+
+  ollama-model:
+    profiles: [ollama]
